@@ -10,7 +10,7 @@ Hauptfenster des QMToolPy-Projekts.
   der Logs-Button erscheint und die LogView kann geladen werden.
 
 Speicherort:
-QMToolPy/main_window.py
+QMToolPy/framework/gui/main_window.py
 
 Integration:
 - Importiert LoginView aus features/login/gui/login_view.py
@@ -20,14 +20,12 @@ Integration:
 import tkinter as tk
 from tkinter import Frame, Label, Button, X, LEFT, RIGHT
 
-# Import LoginView - Pfad ggf. anpassen
-from framework.gui.login_view import LoginView
+from framework.gui.login_view import LoginView  # Pfad ggf. anpassen
 
-# Import LogView - Pfad ggf. anpassen
 try:
-    from core.logging.gui.log_view import LogView
+    from features.logging.gui.log_view import LogView
 except ImportError:
-    # Fallback Dummy, falls LogView nicht vorhanden ist
+    # Dummy-Fallback, falls LogView fehlt
     class LogView(tk.Frame):
         def __init__(self, parent, controller=None):
             super().__init__(parent)
@@ -53,67 +51,73 @@ class MainWindow(tk.Tk):
         self.logged_in = False
         self.active_view = None
 
-        # Navigationsleiste (oben)
+        # === Navigation (oben) ===
         self.nav_frame = Frame(self, height=40, bg="#dddddd")
         self.nav_frame.pack(side="top", fill=X)
 
-        # Container für Navigationsbuttons links
+        # Container für Navigations-Buttons links
         self.nav_buttons_frame = Frame(self.nav_frame, bg="#dddddd")
         self.nav_buttons_frame.pack(side=LEFT)
 
-        # Rechts in der Navigationsleiste evtl. Buttons o.ä. (hier nicht genutzt)
+        # Login/Logout-Button rechts fest im Nav-Bereich
+        self.login_logout_button = Button(self.nav_frame, text="Login", command=self.toggle_login_logout)
+        self.login_logout_button.pack(side=RIGHT, padx=10, pady=5)
 
-        # Anzeige-Bereich in der Mitte für wechselnde Views
+        # === Anzeigebereich (Mitte) ===
         self.display_area = Frame(self, bg="white")
         self.display_area.pack(fill="both", expand=True)
 
-        # Statusleiste (unten)
+        # === Statusleiste (unten) ===
         self.status_bar = Label(self, text="Bitte einloggen", anchor="w", bg="#eeeeee")
         self.status_bar.pack(side="bottom", fill=X)
 
-        # LoginView instanziieren mit Callback auf MainWindow Methode
-        self.login_view = LoginView(self.display_area, login_callback=self.on_login_result)
-
-        # Direkt beim Start die LoginView anzeigen
+        # Beim Start die LoginView laden
         self.load_login_view()
 
-    def load_login_view(self):
+    def toggle_login_logout(self):
         """
-        Zeigt die LoginView im Anzeige-Bereich an.
+        Reagiert auf Klick auf Login/Logout-Button.
+        Wechselt den Login-Status und aktualisiert UI entsprechend.
         """
-        self.clear_display_area()
-        self.login_view.pack(fill="both", expand=True)
-        self.set_status("Bitte einloggen")
+        if self.logged_in:
+            # Logout
+            self.logged_in = False
+            self.login_logout_button.config(text="Login")
+            self.load_login_view()
+            self.refresh_navigation()
+            self.set_status("Abgemeldet")
+        else:
+            # Login (LoginView anzeigen, tatsächliche Auth im LoginView)
+            self.load_login_view()
 
     def on_login_result(self, success, username):
         """
-        Callback, der vom LoginView aufgerufen wird.
+        Callback vom LoginView bei Loginversuch.
 
-        :param success: True, wenn Login erfolgreich, sonst False
-        :param username: Name des angemeldeten Benutzers oder None
+        :param success: True bei erfolgreichem Login
+        :param username: Eingeloggter Benutzername
         """
         if success:
             self.logged_in = True
+            self.login_logout_button.config(text="Logout")
             self.set_status(f"Eingeloggt als: {username}")
             self.refresh_navigation()
-            self.load_logs_view()  # Optional: LogView nach Login automatisch laden
+            self.load_logs_view()  # Optional: Logs direkt nach Login anzeigen
         else:
-            self.logged_in = False
             self.set_status("Login fehlgeschlagen")
 
     def refresh_navigation(self):
         """
-        Aktualisiert die Navigationsleiste abhängig vom Login-Status.
+        Baut die Navigationsbuttons links neu auf, abhängig vom Login-Status.
         """
-        # Bestehende Buttons entfernen
+        # Vorherige Buttons entfernen
         for widget in self.nav_buttons_frame.winfo_children():
             widget.destroy()
 
         if self.logged_in:
-            # Logs-Button nur anzeigen, wenn eingeloggt
+            # Logs-Button anzeigen, wenn eingeloggt
             btn_logs = Button(self.nav_buttons_frame, text="Logs", command=self.load_logs_view)
             btn_logs.pack(side=LEFT, padx=5, pady=5)
-
             # Hier können weitere Feature-Buttons ergänzt werden
 
     def clear_display_area(self):
@@ -124,9 +128,24 @@ class MainWindow(tk.Tk):
             widget.destroy()
         self.active_view = None
 
+    def load_login_view(self):
+        """
+        Lädt die LoginView im Anzeigebereich.
+
+        Erstellt eine neue LoginView-Instanz, um Fehler mit zerstörten Widgets zu vermeiden.
+        """
+        self.clear_display_area()
+
+        if hasattr(self, 'login_view') and self.login_view.winfo_exists():
+            self.login_view.destroy()
+
+        self.login_view = LoginView(self.display_area, login_callback=self.on_login_result)
+        self.login_view.pack(fill="both", expand=True)
+        self.set_status("Bitte einloggen")
+
     def load_logs_view(self):
         """
-        Lädt die LogView in den Anzeige-Bereich.
+        Lädt die LogView im Anzeigebereich.
         """
         self.clear_display_area()
         self.active_view = LogView(self.display_area, controller=self)
@@ -138,6 +157,7 @@ class MainWindow(tk.Tk):
         Setzt den Text in der Statusleiste.
         """
         self.status_bar.config(text=message)
+
 
 if __name__ == "__main__":
     app = MainWindow()
