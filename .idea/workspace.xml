@@ -4,21 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/QMToolPyV4.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/config/config_loader.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/helpers/date_time_helper.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/helpers/status_helper.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/locale.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/logging/logger.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/create_init_files.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/structure.md" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250624">
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/framework/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/framework/gui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/framework/gui/login_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/framework/gui/main_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/framework/gui/main_window.py.old" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/framework/logic/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/framework/models/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -35,6 +31,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "layzieshin"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/layzieshin/QmToolPyV4.git",
+    "accountId": "d6c5f587-079e-411b-9c64-856bacc9c6b6"
+  }
+}]]></component>
   <component name="ProjectColorInfo"><![CDATA[{
   "associatedIndex": 3
 }]]></component>
@@ -48,13 +56,21 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Python.log_view.executor": "Run",
+    "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "git-widget-placeholder": "master",
-    "ignore.virus.scanning.warn.message": "true"
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QMToolPyV4"
   }
 }]]></component>
   <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4" />
+      <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core" />
+    </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\logging\logic" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\logging" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\helpers" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\config" />
@@ -76,6 +92,19 @@
       <option name="presentableId" value="Default" />
       <updated>1750795055702</updated>
     </task>
+    <task id="LOCAL-00001" summary="20250624">
+      <option name="closed" value="true" />
+      <created>1750797876791</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1750797876791</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="20250624" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250624" />
   </component>
 </project>

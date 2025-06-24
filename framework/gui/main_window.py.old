@@ -1,0 +1,159 @@
+# main_window.py
+#
+# Main application window for QMTool.
+# Horizontal navigation bar at the top, status bar at the bottom, main area for views.
+# Logging and status for every relevant action.
+
+import tkinter as tk
+from tkinter import Frame, Button
+from core.i18n.locale import locale
+from core.utils.status_helper import set_status
+from core.logging.logic.logger import logger
+from usermanagement.logic.user_manager import UserManager
+from usermanagement.gui.user_view import UserManagementView
+from core.logging.gui.log_view import LogView
+
+class MainWindow(tk.Tk):
+    """
+    The main window of the application.
+    Handles top navigation bar, main view switching, and status bar.
+    All logging and status via logger and set_status.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.title(locale.t("app_title"))
+        self.geometry("960x720")
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        # --- Topbar: navigation and logout (always at top) ---
+        self.topbar = Frame(self)
+        self.topbar.pack(side="top", fill="x")
+        self.user = None
+        self.user_manager = UserManager()
+
+        # --- Main area: loads all views ---
+        self.main_area = Frame(self)
+        self.main_area.pack(fill="both", expand=True)
+        self.active_view = None
+
+        # --- Status bar (bottom, persistent) ---
+        self.statusbar_label = tk.Label(self, text="", anchor="w", bg="#e9e9e9")
+        self.statusbar_label.pack(side="bottom", fill="x", ipady=2)
+
+        self.build_navbar(logged_in=False)
+        self.show_login_screen()
+
+    def build_navbar(self, logged_in):
+        """
+        Builds the top navigation bar with locale-aware buttons for all features.
+        Left: feature navigation. Right: Logout (if logged in).
+        """
+        for widget in self.topbar.winfo_children():
+            widget.destroy()
+        Button(self.topbar, text=locale.t("user_management"),
+               command=lambda: self.show_view("user")).pack(side="left", padx=4, pady=4)
+        Button(self.topbar, text=locale.t("log_view"),
+               command=lambda: self.show_view("log")).pack(side="left", padx=4, pady=4)
+        # Add more feature buttons as needed
+
+        if logged_in:
+            Button(self.topbar, text=locale.t("logout"),
+                   command=self.on_logout).pack(side="right", padx=8, pady=4)
+
+    def show_login_screen(self):
+        """
+        Shows the login view and clears any loaded views.
+        """
+        self.clear_main_area()
+        self.build_navbar(logged_in=False)
+        self.user = None
+        self.active_view = UserManagementView(
+            self.main_area,
+            user_manager=self.user_manager,
+            on_login_success=self.on_login_success,
+            on_logout=self.on_logout,
+            set_status_message=self.set_status,
+            controller=self
+        )
+        self.active_view.pack(fill="both", expand=True)
+        self.set_status(locale.t("login"))
+
+    def on_login_success(self):
+        """
+        Callback when login is successful. Clears the main area, enables logout.
+        """
+        self.user = self.active_view.active_user
+        self.set_status(f"{locale.t('login')} {locale.t('success')}")
+        logger.log(feature="User", event="Login", user=self.user, message="Login successful.")
+        self.clear_main_area()
+        self.build_navbar(logged_in=True)
+
+    def on_logout(self):
+        """
+        Handles logout action, returns to login screen.
+        """
+        if self.user:
+            logger.log(feature="User", event="Logout", user=self.user, message="Logout successful.")
+        self.user = None
+        self.set_status(locale.t("logout"))
+        self.show_login_screen()
+
+    def clear_main_area(self):
+        """
+        Clears the main area (for switching between views).
+        """
+        for widget in self.main_area.winfo_children():
+            widget.destroy()
+        self.active_view = None
+
+    def show_view(self, feature):
+        """
+        Loads the requested feature view into main_area.
+        """
+        self.clear_main_area()
+        if feature == "user":
+            self.active_view = UserManagementView(
+                self.main_area,
+                user_manager=self.user_manager,
+                on_login_success=self.on_login_success,
+                on_logout=self.on_logout,
+                set_status_message=self.set_status,
+                controller=self
+            )
+            logger.log(feature="UserManagement", event="ViewOpened", user=self.user, message="Opened user management")
+            self.set_status(locale.t("user_management"))
+        elif feature == "log":
+            self.active_view = LogView(self.main_area, controller=self)
+            self.active_view.pack(fill="both", expand=True)
+            logger.log(feature="LogView", event="ViewOpened", user=self.user, message="Opened log view")
+            self.set_status(locale.t("log_view"))
+
+    def set_status(self, msg, duration=0):
+        """
+        Sets the message in the persistent status bar.
+        """
+        self.statusbar_label.config(text=msg)
+        if duration > 0:
+            self.after(duration * 1000, lambda: self.statusbar_label.config(text=""))
+
+    def get_filter_options(self):
+        """
+        Returns a dict with filter options for LogView.
+        Both 'levels' and 'log_levels' keys are included for compatibility.
+        """
+        empty_levels = []
+        return {
+            "features": [],
+            "events": [],
+            "users": [],
+            "log_levels": empty_levels,
+            "levels": empty_levels,
+        }
+
+    def on_close(self):
+        """
+        Handles window close event.
+        """
+        logger.log(feature="App", event="Close", user=self.user, message="Application closed")
+        self.destroy()
