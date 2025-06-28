@@ -1,0 +1,8 @@
+# IDE configuration files
+.idea/
+
+# Compiled Python bytecode
+__pycache__/
+
+# Local SQLite databases
+**/databases/*.db
