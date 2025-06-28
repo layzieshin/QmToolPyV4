@@ -5,14 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250624_3">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/helpers/date_time_helper.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/helpers/date_time_helper.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/gui/log_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/gui/log_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/log_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/log_controller.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/log_export_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/log_export_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger_repository.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/models/log_entry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/models/log_entry.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/DEVELOPERGUIDE.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -155,7 +148,15 @@
       <option name="project" value="LOCAL" />
       <updated>1750802374969</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="20250624_3">
+      <option name="closed" value="true" />
+      <created>1751153339168</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1751153339168</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
