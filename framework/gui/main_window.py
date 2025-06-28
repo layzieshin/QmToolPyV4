@@ -22,15 +22,8 @@ from tkinter import Frame, Label, Button, X, LEFT, RIGHT
 
 from framework.gui.login_view import LoginView  # Pfad ggf. anpassen
 
-try:
-    from features.logging.gui.log_view import LogView
-except ImportError:
-    # Dummy-Fallback, falls LogView fehlt
-    class LogView(tk.Frame):
-        def __init__(self, parent, controller=None):
-            super().__init__(parent)
-            label = Label(self, text="LogView nicht verfügbar", fg="red")
-            label.pack(expand=True)
+# LogView is part of the core logging package
+from core.logging.gui.log_view import LogView
 
 class MainWindow(tk.Tk):
     """
