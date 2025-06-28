@@ -9,7 +9,7 @@ Verwaltet die SQLite-Datenbank für die persistenten Logeinträge.
 
 import sqlite3
 from pathlib import Path
-from core.logging.models import Log
+from core.logging.models.log_entry import LogEntry
 
 class LoggerRepository:
     def __init__(self, db_path: Path):
@@ -40,7 +40,7 @@ class LoggerRepository:
         """)
         self._conn.commit()
 
-    def insert_log(self, entry: log_entry):
+    def insert_log(self, entry: LogEntry):
         self._connect()
         cursor = self._conn.cursor()
         cursor.execute(
@@ -67,7 +67,7 @@ class LoggerRepository:
             "SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?", (limit,)
         )
         rows = cursor.fetchall()
-        return [log_entry.from_dict(dict(row)) for row in rows]
+        return [LogEntry.from_dict(dict(row)) for row in rows]
 
     def query_logs(self, user_id=None, username=None, feature=None, level=None,
                    start_time=None, end_time=None, limit=1000):
@@ -100,7 +100,7 @@ class LoggerRepository:
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        return [log_entry.from_dict(dict(row)) for row in rows]
+        return [LogEntry.from_dict(dict(row)) for row in rows]
 
     def clear_logs(self):
         self._connect()
