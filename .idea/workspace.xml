@@ -6,7 +6,13 @@
   <component name="ChangeListManager">
     <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250624_3">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/framework/gui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/helpers/date_time_helper.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/helpers/date_time_helper.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/gui/log_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/gui/log_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/logic/log_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/log_controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/logic/log_export_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/log_export_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger_repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/models/log_entry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/models/log_entry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -23,21 +29,21 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "layzieshin"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;layzieshin&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/layzieshin/QmToolPyV4.git",
-    "accountId": "d6c5f587-079e-411b-9c64-856bacc9c6b6"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/layzieshin/QmToolPyV4.git&quot;,
+    &quot;accountId&quot;: &quot;d6c5f587-079e-411b-9c64-856bacc9c6b6&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 3
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3
+}</component>
   <component name="ProjectId" id="2yy7ehLnHzVQ1lF3LfZW8sWWOeZ" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true">
     <ConfirmationsSetting value="2" id="Add" />
@@ -48,13 +54,16 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Python.create_init_files.executor": "Run",
+    "Python.log_controller.executor": "Run",
     "Python.log_view.executor": "Run",
     "Python.main.executor": "Run",
     "Python.main_window.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "master",
     "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QMToolPyV4"
+    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QMToolPy"
   }
 }]]></component>
   <component name="RecentsManager">
@@ -68,6 +77,35 @@
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\helpers" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\config" />
     </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="main_window" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="QMToolPyV4" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/framework/gui" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/framework/gui/main_window.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.main_window" />
+      </list>
+    </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -109,7 +147,15 @@
       <option name="project" value="LOCAL" />
       <updated>1750801248178</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="20250624_3">
+      <option name="closed" value="true" />
+      <created>1750802374969</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1750802374969</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">

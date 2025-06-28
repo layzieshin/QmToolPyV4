@@ -1,12 +1,7 @@
 """
 log_entry.py
 
-Defines the LogEntry data model used throughout the logging feature.
-
-Encapsulates all relevant fields of a log entry and provides convenient
-methods for conversion between dictionary representations and LogEntry instances.
-
-To be used by Logger, LoggerRepository, LogController, and GUI views.
+Definiert das LogEntry-Datenmodell für das Logging-System.
 """
 
 from dataclasses import dataclass
@@ -15,18 +10,7 @@ from typing import Optional
 @dataclass
 class LogEntry:
     """
-    Data class representing a single log entry.
-
-    Fields:
-        id: Optional log entry ID (from DB, may be None for new entries)
-        timestamp: UTC ISO8601 string of the event
-        user_id: Optional user ID associated with the event
-        username: Optional user name (string)
-        feature: Name of the feature/module generating the log
-        event: Event name or short description
-        reference_id: Optional reference to related entity (e.g., document ID)
-        message: Optional details about the event
-        log_level: Severity level ('INFO', 'WARN', 'ERROR', etc.)
+    Datenklasse für einen Logeintrag.
     """
     id: Optional[int]
     timestamp: str
@@ -41,7 +25,7 @@ class LogEntry:
     @staticmethod
     def from_dict(data: dict) -> "LogEntry":
         """
-        Creates a LogEntry instance from a dictionary.
+        Erzeugt ein LogEntry-Objekt aus einem Dictionary.
         """
         return LogEntry(
             id=data.get("id"),
@@ -57,7 +41,7 @@ class LogEntry:
 
     def to_dict(self) -> dict:
         """
-        Converts the LogEntry instance to a dictionary for serialization/storage.
+        Wandelt das LogEntry-Objekt in ein Dictionary um.
         """
         return {
             "id": self.id,
