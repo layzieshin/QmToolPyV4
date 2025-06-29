@@ -23,7 +23,7 @@ from tkinter import Frame, Label, Button, X, LEFT, RIGHT
 from framework.gui.login_view import LoginView  # Pfad ggf. anpassen
 
 try:
-    from features.logging.gui.log_view import LogView
+    from core.logging.gui.log_view import LogView
 except ImportError:
     # Dummy-Fallback, falls LogView fehlt
     class LogView(tk.Frame):
