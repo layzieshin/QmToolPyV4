@@ -4,10 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250624_5">
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250708_2">
+      <change afterPath="$PROJECT_DIR$/core/common/module_registry.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/config/modules.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/log_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/log_controller.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/framework/gui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/main_window.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -83,7 +84,7 @@
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\config" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.log_view">
+  <component name="RunManager" selected="Python.main_window">
     <configuration name="log_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
@@ -130,8 +131,8 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.log_view" />
         <item itemvalue="Python.main_window" />
+        <item itemvalue="Python.log_view" />
       </list>
     </recent_temporary>
   </component>
@@ -231,7 +232,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752006688201</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="20250708_2">
+      <option name="closed" value="true" />
+      <created>1752008051705</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1752008051705</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -240,6 +249,7 @@
     <MESSAGE value="20250624_3" />
     <MESSAGE value="20250624_4" />
     <MESSAGE value="20250624_5" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250624_5" />
+    <MESSAGE value="20250708_2" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250708_2" />
   </component>
 </project>

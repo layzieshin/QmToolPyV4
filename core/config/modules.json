@@ -1,0 +1,17 @@
+[
+  {
+    "id": "logs",
+    "label": "Logs",
+    "module": "core.logging.gui.log_view",
+    "class": "LogView",
+    "requires_login": true
+  }
+  ,
+  {
+   "id": "dashboard",
+    "label": "Dashboard",
+    "module": "core.dashboard.gui.dashboard_view",
+    "class": "DashboardView",
+    "requires_login": true
+  }
+]

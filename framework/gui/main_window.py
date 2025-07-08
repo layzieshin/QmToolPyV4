@@ -1,127 +1,159 @@
 """
-main_window.py
-
-Hauptfenster des QMToolPy-Projekts.
+main_window.py  – dynamic navigation via module registry
 """
 
+from __future__ import annotations
+
 import tkinter as tk
-from tkinter import Frame, Label, Button, X, LEFT, RIGHT
+from tkinter import Frame, Label, Button, X, LEFT, RIGHT, DISABLED, NORMAL
+from typing import Optional, Dict
 
-from framework.gui.login_view import LoginView                      #  Login GUI
-from core.logging.logic.log_controller import LogController         #  NEW import
-
-# LogView (oder Fallback, falls Modul fehlt)
-try:
-    from core.logging.gui.log_view import LogView
-except ImportError:
-    class LogView(tk.Frame):
-        def __init__(self, parent, controller=None):
-            super().__init__(parent)
-            Label(self, text="LogView nicht verfügbar", fg="red").pack(expand=True)
+from framework.gui.login_view import LoginView
+from core.common.module_registry import load_registry, ModuleDescriptor
+from core.logging.logic.log_controller import LogController      # shared business logic
 
 
 class MainWindow(tk.Tk):
-    """Hauptfenster der Anwendung."""
+    """Root window with dynamic navigation."""
 
-    # -------------------------------------------------------------- #
-    # Construction                                                   #
-    # -------------------------------------------------------------- #
-
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-        # Shared controller instance (single responsibility!)
+        # Shared controllers / services
         self.log_controller = LogController()
 
-        self.title("QMToolPy Hauptfenster")
+        # Window
+        self.title("QMToolPy")
         self.geometry("1100x750")
 
+        # State
         self.logged_in = False
-        self.active_view = None
+        self.active_view: Optional[tk.Frame] = None
+        self.registry: Dict[str, ModuleDescriptor] = load_registry()
+        self.nav_buttons: Dict[str, Button] = {}
 
-        # === Navigation (oben) ===
+        # ---------- Navigation bar ----------
         self.nav_frame = Frame(self, height=40, bg="#dddddd")
         self.nav_frame.pack(side="top", fill=X)
 
         self.nav_buttons_frame = Frame(self.nav_frame, bg="#dddddd")
         self.nav_buttons_frame.pack(side=LEFT)
 
-        self.login_logout_button = Button(
-            self.nav_frame, text="Login", command=self.toggle_login_logout
-        )
-        self.login_logout_button.pack(side=RIGHT, padx=10, pady=5)
+        self.build_navigation()           # <— dynamic!
+        self.build_login_button()
 
-        # === Anzeige-Bereich (Mitte) ===
+        # ---------- Central area & status ----------
         self.display_area = Frame(self, bg="white")
         self.display_area.pack(fill="both", expand=True)
 
-        # === Statusbar (unten) ===
-        self.status_bar = Label(self, text="Willkommen", anchor="w", bg="#eeeeee")
+        self.status_bar = Label(self, text="Welcome", anchor="w", bg="#eeeeee")
         self.status_bar.pack(side="bottom", fill=X)
 
-        # Beim Start zunächst Login-Maske anzeigen
         self.load_login_view()
 
-    # -------------------------------------------------------------- #
-    # Navigation helper                                              #
-    # -------------------------------------------------------------- #
+    # ------------------------------------------------------------------ #
+    # Navigation                                                         #
+    # ------------------------------------------------------------------ #
+    def build_navigation(self) -> None:
+        """Create one button per registry entry."""
+        for mod in self.registry.values():
+            btn = Button(
+                self.nav_buttons_frame,
+                text=mod.label,
+                command=lambda m=mod: self.load_view(m),
+                state=DISABLED if mod.requires_login else NORMAL,
+                padx=12,
+                pady=2,
+            )
+            btn.pack(side=LEFT, padx=5, pady=5)
+            self.nav_buttons[mod.id] = btn
 
-    def clear_display_area(self):
+    def build_login_button(self) -> None:
+        self.login_logout_button = Button(
+            self.nav_frame,
+            text="Login",
+            command=self.toggle_login_logout,
+            padx=12,
+            pady=2,
+        )
+        self.login_logout_button.pack(side=RIGHT, padx=10, pady=5)
+
+    # ------------------------------------------------------------------ #
+    # View loading                                                       #
+    # ------------------------------------------------------------------ #
+    def clear_display_area(self) -> None:
         for widget in self.display_area.winfo_children():
             widget.destroy()
 
-    def set_status(self, message: str):
-        self.status_bar.config(text=message)
+    def load_view(self, mod: ModuleDescriptor) -> None:
+        """Instantiate and display the view of *mod*."""
+        self.clear_display_area()
 
-    # -------------------------------------------------------------- #
-    # Login handling                                                 #
-    # -------------------------------------------------------------- #
+        view_cls = mod.load_class()
 
-    def toggle_login_logout(self):
+        # Provide common controllers only if requested via __init__ signature
+        try:
+            self.active_view = view_cls(
+                self.display_area,
+                controller=self.log_controller,   # works for LogView
+            )
+        except TypeError:
+            # View doesn't expect a controller
+            self.active_view = view_cls(self.display_area)
+
+        self.active_view.pack(fill="both", expand=True)
+        self.set_status(f"{mod.label} loaded")
+
+    # ------------------------------------------------------------------ #
+    # Login / logout                                                     #
+    # ------------------------------------------------------------------ #
+    def toggle_login_logout(self) -> None:
         if self.logged_in:
-            # Logout
             self.logged_in = False
             self.login_logout_button.config(text="Login")
+            self.set_nav_login_state(False)
             self.load_login_view()
-            self.set_status("Abgemeldet")
+            self.set_status("Logged out")
         else:
-            # Login-Maske
             self.load_login_view()
 
-    def load_login_view(self):
+    def load_login_view(self) -> None:
         self.clear_display_area()
         LoginView(self.display_area, login_callback=self.on_login_result).pack(
             fill="both", expand=True
         )
 
-    def on_login_result(self, success: bool, username: str):
+    def on_login_result(self, success: bool, username: str) -> None:
         if success:
             self.logged_in = True
             self.login_logout_button.config(text="Logout")
+            self.set_nav_login_state(True)
             self.load_welcome_view()
-            self.set_status(f"Eingeloggt als {username}")
+            self.set_status(f"Logged in as {username}")
         else:
-            self.set_status("Login fehlgeschlagen")
+            self.set_status("Login failed")
 
-    # -------------------------------------------------------------- #
-    # Feature – LOGS                                                 #
-    # -------------------------------------------------------------- #
+    def set_nav_login_state(self, logged_in: bool) -> None:
+        """Enable/disable buttons that require login."""
+        for mod in self.registry.values():
+            if mod.requires_login:
+                state = NORMAL if logged_in else DISABLED
+                self.nav_buttons[mod.id].config(state=state)
 
-   # def load_logs_view(self):
-   #     """Lädt die LogView in den Anzeigebereich."""
-   #     self.clear_display_area()
-   #     self.active_view = LogView(
-   #         self.display_area, controller=self.log_controller      # <-- richtiger Controller
-   #     )
-   #     self.active_view.pack(fill="both", expand=True)
-   #     self.set_status("Logs geladen")
-
-    def load_welcome_view(self):
+    # ------------------------------------------------------------------ #
+    # Misc                                                               #
+    # ------------------------------------------------------------------ #
+    def load_welcome_view(self) -> None:
         self.clear_display_area()
-        # Erstellen eines einfachen Fensters mit dem Text „Willkommen“
-        Label(self.display_area, text="Willkommen im QMTool!", font=("Arial", 24)).pack(
-            expand=True
-        )
+        Label(
+            self.display_area,
+            text="Welcome to QMTool!",
+            font=("Arial", 24)
+        ).pack(expand=True)
+
+    def set_status(self, message: str) -> None:
+        self.status_bar.config(text=message)
+
 
 if __name__ == "__main__":
     MainWindow().mainloop()
