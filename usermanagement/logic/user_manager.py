@@ -1,94 +1,114 @@
-# user_manager.py
-#
-# Handles all user-related business logic.
-# - Interfaces between GUI and persistence (user_repository)
-# - Manages login state, user registration, profile update, and deletion
-# - Provides role logic and validation
+"""
+user_manager.py
+
+Business-logic for user handling: login, logout, registration, profile
+updates, password changes.  All audit-relevant events are logged here
+(never in the GUI layer).
+
+© QMToolPyV4 – 2025
+"""
+from __future__ import annotations
+
+from typing import Optional
 
 from usermanagement.logic.user_repository import UserRepository
+from core.logging.logic.logger import logger
 from core.models.user import User, UserRole
 
+
 class UserManager:
-    """
-    Provides user management functionality including login, registration,
-    password management, profile updates, and session tracking.
-    """
+    """Provides user-management functionality and session tracking."""
 
-    def __init__(self):
-        """Initializes the manager with a user repository and login session state."""
-        self.repo = UserRepository()
-        self._current_user = None
+    # ------------------------------------------------------------------ #
+    # Construction                                                       #
+    # ------------------------------------------------------------------ #
+    def __init__(self) -> None:
+        self._repo = UserRepository()
+        self._current_user: Optional[User] = None
 
-    def try_login(self, username: str, password: str) -> User | None:
-        """Attempts login. Sets session on success."""
-        user = self.repo.verify_login(username, password)
+    # ------------------------------------------------------------------ #
+    # Session handling                                                   #
+    # ------------------------------------------------------------------ #
+    def try_login(self, username: str, password: str) -> Optional[User]:
+        """
+        Attempt to authenticate *username* with *password*.
+
+        On success:
+            • sets `_current_user`
+            • logs "LoginSuccess"
+        On failure:
+            • logs "LoginFailed"
+        """
+        user = self._repo.verify_login(username, password)
         if user:
             self._current_user = user
-        return user
+            logger.log(
+                feature="User",
+                event="LoginSuccess",
+                user_id=user.id,
+                username=user.username,
+                message="Login successful",
+            )
+            return user
+
+        # Failed attempt
+        logger.log(
+            feature="User",
+            event="LoginFailed",
+            username=username,
+            message="Invalid credentials",
+        )
+        return None
 
     def logout(self) -> None:
-        """Logs out the current user."""
+        """Log out the current user and write audit log."""
+        if self._current_user:
+            logger.log(
+                feature="User",
+                event="Logout",
+                user_id=self._current_user.id,
+                username=self._current_user.username,
+                message="User logged out",
+            )
         self._current_user = None
 
-    def get_logged_in_user(self) -> User | None:
-        """Returns the currently logged-in user, or None."""
+    def get_logged_in_user(self) -> Optional[User]:
+        """Return the currently logged-in user (or None)."""
         return self._current_user
 
-    def change_password(self, username: str, old_password: str, new_password: str) -> bool:
-        """Validates and sets a new password."""
-        return self.repo.update_password(username, old_password, new_password)
+    # ------------------------------------------------------------------ #
+    # CRUD / helpers (unchanged)                                         #
+    # ------------------------------------------------------------------ #
+    def change_password(self, username: str, old_pw: str, new_pw: str) -> bool:
+        return self._repo.update_password(username, old_pw, new_pw)
 
     def register_full(self, user_data: dict) -> bool:
-        """Registers a user with all available fields."""
         username = user_data.get("username")
-        password = user_data.get("password")
-        email = user_data.get("email")
-        role = user_data.get("role")
-
-        if not username or not password or not email or not role:
+        if not username or self._repo.get_user(username):
             return False
-
-        try:
-            role_enum = UserRole[role.upper()]
-        except KeyError:
-            return False
-
-        if self.repo.get_user(username):
-            return False
-
-        return self.repo.create_user_full(user_data, role_enum)
+        role_enum = UserRole[user_data.get("role", "USER").upper()]
+        return self._repo.create_user_full(user_data, role_enum)
 
     def register_admin_minimal(self, username: str, password: str, email: str) -> bool:
-        """Creates a new admin user with minimal data."""
-        if self.repo.get_user(username):
+        if self._repo.get_user(username):
             return False
-        self.repo.create_admin(username, password, email)
+        self._repo.create_admin(username, password, email)
         return True
 
-    def get_user_by_id(self, user_id: int) -> User | None:
-        """Retrieves a user object by ID."""
-        return self.repo.get_user_by_id(user_id)
+    def get_user_by_id(self, user_id: int) -> Optional[User]:
+        return self._repo.get_user_by_id(user_id)
 
     def get_all_users(self) -> list[User]:
-        """Returns all registered users."""
-        return self.repo.get_all_users()
-
-    def user_exists(self, username: str) -> bool:
-        """Checks whether a user exists."""
-        return self.repo.get_user(username) is not None
+        return self._repo.get_all_users()
 
     def delete_user(self, username: str) -> bool:
-        """Deletes a user."""
-        return self.repo.delete_user(username)
+        return self._repo.delete_user(username)
 
     def update_user_profile(self, username: str, updates: dict) -> bool:
-        """Updates the user profile with the specified fields."""
-        return self.repo.update_user_fields(username, updates)
+        return self._repo.update_user_fields(username, updates)
 
     def get_editable_fields(self) -> list[str]:
-        """Returns all user profile fields relevant to GUI forms."""
         return [
-            "username", "email", "role", "full_name", "phone", "department", "job_title"
+            "username", "email", "role",
+            "full_name", "phone", "department", "job_title",
         ]
-    def authenticate(self, username: str, password: str):
-        return self.try_login(username, password)

@@ -4,31 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250708_3">
-      <change afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/i18n/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/i18n/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/i18n/locale.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/models/user.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/create_admin.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/gui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/gui/user_settings_tab.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/gui/user_settings_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/gui/user_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/logic/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/logic/user_repository.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/models/__init__.py" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250710_1">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/gui/log_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/gui/log_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/log_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/log_controller.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/log_export_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/log_export_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/models/log_entry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/models/log_entry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/framework/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/databases/logging.db" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/framework/gui/login_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/login_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/framework/gui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/main_window.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/framework/gui/main_window.py.old" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -292,7 +271,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752010215268</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="20250710_1">
+      <option name="closed" value="true" />
+      <created>1752099334727</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1752099334728</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -303,6 +290,7 @@
     <MESSAGE value="20250624_5" />
     <MESSAGE value="20250708_2" />
     <MESSAGE value="20250708_3" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250708_3" />
+    <MESSAGE value="20250710_1" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250710_1" />
   </component>
 </project>
