@@ -95,7 +95,8 @@ class LogView(ttk.Frame):
         ttk.Button(btn_frame, text="Archive Older Logs...", command=self._on_archive).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Delete Older Logs", command=self._on_delete).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Export JSON...", command=self._on_export).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Print Logs...", command=self._on_print).pack(side=tk.LEFT, padx=2)
+        # Print-Button entfernt – wird ggf. in Zukunft vom Print-Modul bereitgestellt
+        #ttk.Button(btn_frame, text="Print Logs...", command=self._on_print).pack(side=tk.LEFT, padx=2)
 
         columns = ("timestamp", "username", "feature", "event", "reference_id", "message", "log_level")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
