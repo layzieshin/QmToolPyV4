@@ -1,15 +1,14 @@
 """
 user_manager.py
 
-Business-logic for user handling: login, logout, registration, profile
-updates, password changes.  All audit-relevant events are logged here
-(never in the GUI layer).
+Business-logic: login, logout, user CRUD, profile updates, password
+changes.  *All* audit-relevant events are logged here – never in the GUI.
 
 © QMToolPyV4 – 2025
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Dict
 
 from usermanagement.logic.user_repository import UserRepository
 from core.logging.logic.logger import logger
@@ -30,16 +29,7 @@ class UserManager:
     # Session handling                                                   #
     # ------------------------------------------------------------------ #
     def try_login(self, username: str, password: str) -> Optional[User]:
-        """
-        Attempt to authenticate *username* with *password*.
-
-        Returns
-        -------
-        User  on success
-        None  on failure
-        """
         user = self._repo.verify_login(username, password)
-
         if user:
             self._current_user = user
             logger.log(
@@ -51,7 +41,6 @@ class UserManager:
             )
             return user
 
-        # ---- failed attempt --------------------------------------------
         logger.log(
             feature="User",
             event="LoginFailed",
@@ -61,7 +50,6 @@ class UserManager:
         return None
 
     def logout(self) -> None:
-        """Log out the current user and write audit log."""
         if self._current_user:
             logger.log(
                 feature="User",
@@ -73,30 +61,99 @@ class UserManager:
         self._current_user = None
 
     def get_logged_in_user(self) -> Optional[User]:
-        """Return the currently logged-in user (or None)."""
         return self._current_user
 
     # ------------------------------------------------------------------ #
-    # CRUD / helpers (unchanged)                                         #
+    # Registration / Creation                                            #
     # ------------------------------------------------------------------ #
-    def change_password(self, username: str, old_pw: str, new_pw: str) -> bool:
-        return self._repo.update_password(username, old_pw, new_pw)
-
-    def register_full(self, user_data: dict) -> bool:
+    def register_full(self, user_data: Dict) -> bool:
+        """
+        Create user with optional fields.
+        Unknown role strings are mapped to USER.
+        """
+        creator = self._current_user
         username = user_data.get("username")
+        raw_role = user_data.get("role", "USER")
+
+        # Safe role mapping
+        role_enum = UserRole.USER
+        if isinstance(raw_role, str) and raw_role.upper() in UserRole.__members__:
+            role_enum = UserRole[raw_role.upper()]
+
         if not username or self._repo.get_user(username):
+            logger.log(
+                feature="User",
+                event="CreateFailed",
+                user_id=creator.id if creator else None,
+                username=creator.username if creator else None,
+                message=f"Username '{username}' already exists",
+            )
             return False
-        role_enum = UserRole[user_data.get("role", "USER").upper()]
-        return self._repo.create_user_full(user_data, role_enum)
+
+        ok = self._repo.create_user_full(user_data, role_enum)
+        logger.log(
+            feature="User",
+            event="UserCreated" if ok else "CreateFailed",
+            user_id=creator.id if creator else None,
+            username=creator.username if creator else None,
+            message=f"Created user '{username}'" if ok else "Create failed",
+        )
+        return ok
 
     def register_admin_minimal(self, username: str, password: str, email: str) -> bool:
         if self._repo.get_user(username):
             return False
-        self._repo.create_admin(username, password, email)
-        return True
+        ok = self._repo.create_admin(username, password, email)
+        logger.log(
+            feature="User",
+            event="UserCreated" if ok else "CreateFailed",
+            message=f"Seed-admin '{username}' created" if ok else "Admin seed failed",
+        )
+        return ok
 
-    def get_user(self, username: str):
-        """Return a User object or None."""
+    # ------------------------------------------------------------------ #
+    # Password / Profile                                                 #
+    # ------------------------------------------------------------------ #
+    def change_password(self, username: str, old_pw: str, new_pw: str) -> bool:
+        ok = self._repo.update_password(username, old_pw, new_pw)
+        logger.log(
+            feature="Password",
+            event="Changed" if ok else "ChangeFailed",
+            user_id=self._current_user.id if self._current_user else None,
+            username=self._current_user.username if self._current_user else username,
+            message="Password changed" if ok else "Wrong current password",
+        )
+        return ok
+
+    def update_user_profile(self, username: str, updates: dict) -> bool:
+        ok = self._repo.update_user_fields(username, updates)
+        logger.log(
+            feature="Profile",
+            event="UpdateSuccess" if ok else "UpdateFailed",
+            user_id=self._current_user.id if self._current_user else None,
+            username=self._current_user.username if self._current_user else username,
+            message="Profile updated" if ok else "Profile update failed",
+        )
+        return ok
+
+    # ------------------------------------------------------------------ #
+    # Delete                                                             #
+    # ------------------------------------------------------------------ #
+    def delete_user(self, username: str) -> bool:
+        ok = self._repo.delete_user(username)
+        logger.log(
+            feature="User",
+            event="UserDeleted" if ok else "DeleteFailed",
+            user_id=self._current_user.id if self._current_user else None,
+            username=self._current_user.username if self._current_user else None,
+            message=f"Deleted user '{username}'" if ok else "Delete failed",
+        )
+        return ok
+
+    # ------------------------------------------------------------------ #
+    # Query helpers                                                      #
+    # ------------------------------------------------------------------ #
+    def get_user(self, username: str) -> Optional[User]:
         return self._repo.get_user(username)
 
     def get_user_by_id(self, user_id: int) -> Optional[User]:
@@ -104,12 +161,6 @@ class UserManager:
 
     def get_all_users(self) -> list[User]:
         return self._repo.get_all_users()
-
-    def delete_user(self, username: str) -> bool:
-        return self._repo.delete_user(username)
-
-    def update_user_profile(self, username: str, updates: dict) -> bool:
-        return self._repo.update_user_fields(username, updates)
 
     def get_editable_fields(self) -> list[str]:
         return [

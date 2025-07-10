@@ -17,6 +17,7 @@ import bcrypt
 
 from core.models.user import User, UserRole
 from core.config.config_loader import config_loader
+from core.logging.logic.logger import logger      #  ← NEU
 
 
 class UserRepository:
@@ -201,23 +202,31 @@ class UserRepository:
     def _row_to_user(row: sqlite3.Row | tuple | None) -> Optional[User]:
         if row is None:
             return None
+
         (
-            _id,
-            username,
-            pw_hash,
-            email,
-            role,
-            full_name,
-            phone,
-            department,
-            job_title,
+            _id, username, pw_hash, email, role,
+            full_name, phone, department, job_title,
         ) = row
+
+        # -------- NEW: unknown roles fall back to USER -------------------
+        try:
+            role_enum = UserRole[role]
+        except KeyError:
+            role_enum = UserRole.USER
+            # optional: kleine Warnung ins Log
+            logger.log(
+                feature="User",
+                event="UnknownRole",
+                message=f"Unknown role '{role}' mapped to USER (username='{username}')",
+            )
+        # ----------------------------------------------------------------
+
         return User(
             id=_id,
             username=username,
             password_hash=pw_hash,
             email=email,
-            role=UserRole[role],
+            role=role_enum,
             full_name=full_name or "",
             phone=phone or "",
             department=department or "",
