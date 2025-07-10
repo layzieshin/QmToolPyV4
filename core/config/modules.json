@@ -8,10 +8,10 @@
   }
   ,
   {
-   "id": "dashboard",
-    "label": "Dashboard",
-    "module": "core.dashboard.gui.dashboard_view",
-    "class": "DashboardView",
+   "id": "usermanagement",
+    "label": "User Management",
+    "module": "usermanagement.gui.user_view",
+    "class": "UserManagementView",
     "requires_login": true
   }
 ]

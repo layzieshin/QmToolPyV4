@@ -8,7 +8,7 @@ AppContext für geteilte Services & Login-Status.
 """
 
 from __future__ import annotations
-
+import inspect
 import tkinter as tk
 from tkinter import Frame, Label, Button, X, LEFT, RIGHT, DISABLED, NORMAL
 from typing import Optional, Dict
@@ -99,20 +99,49 @@ class MainWindow(tk.Tk):
             widget.destroy()
 
     def load_view(self, mod: ModuleDescriptor) -> None:
-        """Instanziiert und zeigt die View des angegebenen Moduls an."""
-        self.clear_display_area()
+        """Instantiate and display the view specified by *mod*."""
 
+        # 1) import class + clear area
+        self.clear_display_area()
         view_cls = mod.load_class()
 
-        # Einige Views erwarten ggf. zusätzliche Parameter – Beispiel Logs
+        # 2) analyse __init__ signature
+        sig = inspect.signature(view_cls.__init__)
+        kwargs: dict[str, object] = {}
+
+        for name, param in list(sig.parameters.items())[2:]:  # skip 'self' & 'parent'
+            # ---- ignore *args / **kwargs ----------------------------------
+            if param.kind in (
+                    inspect.Parameter.VAR_POSITIONAL,  # *args
+                    inspect.Parameter.VAR_KEYWORD,  # **kwargs / **_
+            ):
+                continue
+
+            # a) service injection
+            if name in AppContext.services:
+                kwargs[name] = AppContext.services[name]
+
+            # b) automatic callbacks (MainWindow method with same name)
+            elif hasattr(self, name) and callable(getattr(self, name)):
+                kwargs[name] = getattr(self, name)
+
+            # c) required but unknown  →  warn & abort
+            elif param.default is inspect._empty:
+                tk.messagebox.showerror(
+                    "Module error",
+                    f"Cannot instantiate '{mod.label}'.\n"
+                    f"Missing dependency: '{name}'",
+                    parent=self,
+                )
+                return
+            # optional param with default → ignore
+
+        # 3) create and pack ------------------------------------------------
         try:
-            self.active_view = view_cls(
-                self.display_area,
-                controller=self.log_controller,
-            )
-        except TypeError:
-            # View benötigt keinen Controller
-            self.active_view = view_cls(self.display_area)
+            self.active_view = view_cls(self.display_area, **kwargs)
+        except Exception as exc:
+            tk.messagebox.showerror("Module error", str(exc), parent=self)
+            return
 
         self.active_view.pack(fill="both", expand=True)
         self.set_status(f"{mod.label} loaded")

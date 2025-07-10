@@ -33,13 +33,13 @@ class UserManager:
         """
         Attempt to authenticate *username* with *password*.
 
-        On success:
-            • sets `_current_user`
-            • logs "LoginSuccess"
-        On failure:
-            • logs "LoginFailed"
+        Returns
+        -------
+        User  on success
+        None  on failure
         """
         user = self._repo.verify_login(username, password)
+
         if user:
             self._current_user = user
             logger.log(
@@ -51,7 +51,7 @@ class UserManager:
             )
             return user
 
-        # Failed attempt
+        # ---- failed attempt --------------------------------------------
         logger.log(
             feature="User",
             event="LoginFailed",
@@ -94,6 +94,10 @@ class UserManager:
             return False
         self._repo.create_admin(username, password, email)
         return True
+
+    def get_user(self, username: str):
+        """Return a User object or None."""
+        return self._repo.get_user(username)
 
     def get_user_by_id(self, user_id: int) -> Optional[User]:
         return self._repo.get_user_by_id(user_id)

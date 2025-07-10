@@ -1,32 +1,72 @@
-# locale.py
-#
-# Provides centralized language management for UI texts (internationalization).
-# All user-facing texts must be accessed via this module!
-# Supports dynamic language switching (e.g. via settings), with instant effect.
-# Tracks missing translation keys if LOCALE_TRACK_MISSING_KEYS is True (for dev/debug).
+"""
+locale.py
 
-LOCALE_TRACK_MISSING_KEYS = True  # Set to False to disable missing-key logging
+Centralized language management for UI texts (i18n).
+
+Usage
+-----
+from core.i18n.locale import locale
+Label(self, text=locale.t("login"))
+"""
+
+from __future__ import annotations
 
 from core.logging.logic.logger import logger
+from core.common.app_context import AppContext
+
+LOCALE_TRACK_MISSING_KEYS = True   # set False in production
+
 
 class LocaleManager:
-    """
-    Centralized I18n (internationalization) helper for the entire app.
-    Usage:
-        from core.i18n.locale import locale
-        Label(self, text=locale.t("login"))
-    """
-    def __init__(self, default_lang="en"):
+    """Singleton-style helper that stores translations and current language."""
+
+    # ------------------------------------------------------------------ #
+    # Construction                                                       #
+    # ------------------------------------------------------------------ #
+    def __init__(self, default_lang: str = "en") -> None:
         self.supported = {
             "en": self._en_dict(),
             "de": self._de_dict(),
-            # Add more languages as needed!
+            # add further languages here
         }
         self.lang = default_lang
-        self._missing_keys_logged = set()
+        self._missing_keys_logged: set[str] = set()
 
-    def _en_dict(self):
+    # ------------------------------------------------------------------ #
+    # Public API                                                         #
+    # ------------------------------------------------------------------ #
+    def set_language(self, lang: str) -> None:
+        if lang in self.supported:
+            self.lang = lang
+
+    def t(self, key: str) -> str:
+        """
+        Return localized string.  If the key is missing and tracking is
+        enabled, write a log entry and return the key itself.
+        """
+        value = self.supported.get(self.lang, {}).get(key)
+        if value is not None:
+            return value
+
+        if LOCALE_TRACK_MISSING_KEYS and key not in self._missing_keys_logged:
+            user = AppContext.current_user
+            logger.log(
+                feature="Locale",
+                event="MissingKey",
+                user_id=user.id if user else None,
+                username=user.username if user else None,
+                message=f"Missing translation key '{key}' (lang={self.lang})",
+            )
+            self._missing_keys_logged.add(key)
+
+        return key
+
+    # ------------------------------------------------------------------ #
+    # Internal dictionaries                                              #
+    # ------------------------------------------------------------------ #
+    def _en_dict(self) -> dict[str, str]:
         return {
+            "add": "Add",
             "login": "Login",
             "logout": "Logout",
             "username": "Username",
@@ -46,7 +86,7 @@ class LocaleManager:
             "welcome": "Welcome",
             "error": "Error",
             "success": "Success",
-            # User profile/settings
+            # Profile / settings
             "profile_title": "Profile",
             "save_profile": "Save Profile",
             "profile_updated": "Profile Updated",
@@ -67,17 +107,18 @@ class LocaleManager:
             # Language
             "language_settings": "Language Settings",
             "set_language_btn": "Set Language",
-            "language_changed": "Language Changed",
-            "restart_needed": "Please restart the application for language change to take full effect.",
-            # Tab label
+            "language_changed": "Language changed",
+            "restart_needed": "Please restart the application for the language change to take full effect.",
+            # Tabs
             "profile_tab": "Profile & Account",
             "edit": "Edit",
             "delete": "Delete",
             "log_view": "Log View",
         }
 
-    def _de_dict(self):
+    def _de_dict(self) -> dict[str, str]:
         return {
+            "add": "Neu",
             "login": "Anmelden",
             "logout": "Abmelden",
             "username": "Benutzername",
@@ -97,7 +138,7 @@ class LocaleManager:
             "welcome": "Willkommen",
             "error": "Fehler",
             "success": "Erfolg",
-            # User profile/settings
+            # Profile / settings
             "profile_title": "Profil",
             "save_profile": "Profil speichern",
             "profile_updated": "Profil aktualisiert",
@@ -120,38 +161,13 @@ class LocaleManager:
             "set_language_btn": "Sprache setzen",
             "language_changed": "Sprache geändert",
             "restart_needed": "Bitte starten Sie die Anwendung neu, damit die Sprachänderung wirksam wird.",
-            # Tab label
+            # Tabs
             "profile_tab": "Profil & Konto",
             "edit": "Bearbeiten",
             "delete": "Löschen",
             "log_view": "Logbuch",
         }
 
-    def set_language(self, lang: str):
-        """
-        Changes the current language for the application.
-        """
-        if lang in self.supported:
-            self.lang = lang
 
-    def t(self, key: str) -> str:
-        """
-        Returns the localized string for the given key.
-        Logs missing keys if LOCALE_TRACK_MISSING_KEYS is True.
-        If the key does not exist, the key itself is returned.
-        """
-        value = self.supported.get(self.lang, {}).get(key)
-        if value is None:
-            if LOCALE_TRACK_MISSING_KEYS and key not in self._missing_keys_logged:
-                logger.log(
-                    feature="Locale",
-                    event="MissingKey",
-                    user=None,
-                    message=f"Missing translation key: '{key}' (lang: {self.lang})"
-                )
-                self._missing_keys_logged.add(key)
-            return key
-        return value
-
-# Singleton instance for use everywhere in the app
+# Singleton instance
 locale = LocaleManager()

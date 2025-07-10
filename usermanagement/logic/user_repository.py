@@ -1,9 +1,10 @@
 """
 user_repository.py
 
-Low-level SQLite-Zugriff für Benutzer­daten.
-– Pfad kommt aus config.ini (ConfigLoader)
-– Verzeichnis wird automatisch angelegt
+Low-level SQLite access for user data.  All CRUD helpers required by
+UserManager are exposed here.
+
+Database path comes from config.ini  →  section [Database] key "qm_tool".
 """
 
 from __future__ import annotations
@@ -19,27 +20,22 @@ from core.config.config_loader import config_loader
 
 
 class UserRepository:
-    """CRUD-Layer für User-Entitäten."""
+    """Complete CRUD layer for `User` entities."""
 
     # ------------------------------------------------------------------ #
     # Construction                                                       #
     # ------------------------------------------------------------------ #
     def __init__(self) -> None:
-        # Pfad aus config.ini lesen und in Path verwandeln
         raw_path = config_loader.get_config_value("Database", "qm_tool")
         if raw_path is None:
             raise RuntimeError("config.ini: section [Database] key 'qm_tool' missing")
 
         self.db_path = Path(raw_path)
-
-        # Verzeichnis sicherstellen
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Tabelle anlegen, falls noch nicht vorhanden
         self._ensure_table()
 
     # ------------------------------------------------------------------ #
-    # Public API                                                         #
+    # Query helpers                                                      #
     # ------------------------------------------------------------------ #
     def get_user(self, username: str) -> Optional[User]:
         with self._connect() as conn:
@@ -49,16 +45,56 @@ class UserRepository:
             row = cur.fetchone()
             return self._row_to_user(row) if row else None
 
+    def get_user_by_id(self, user_id: int) -> Optional[User]:
+        with self._connect() as conn:
+            cur = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            return self._row_to_user(cur.fetchone())
+
+    def get_all_users(self) -> List[User]:
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM users ORDER BY LOWER(username)"
+            ).fetchall()
+            return [self._row_to_user(r) for r in rows]
+
+    # ------------------------------------------------------------------ #
+    # Authentication / Password                                          #
+    # ------------------------------------------------------------------ #
     def verify_login(self, username: str, password: str) -> Optional[User]:
         user = self.get_user(username)
-        if user and bcrypt.checkpw(password.encode("utf-8"), user.password_hash):
+        if user and bcrypt.checkpw(password.encode(), user.password_hash):
             return user
         return None
 
-    def create_user(self, user_data: dict, role: UserRole = UserRole.USER) -> bool:
-        """Legt einen neuen Nutzer an; `user_data` muss username / password / email enthalten."""
-        pw_hash = bcrypt.hashpw(user_data["password"].encode(), bcrypt.gensalt())
+    def update_password(self, username: str, old_pw: str, new_pw: str) -> bool:
+        """Change password after verifying the old one."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "SELECT id, password_hash FROM users WHERE username = ?",
+                (username.lower(),),
+            )
+            row = cur.fetchone()
+            if not row or not bcrypt.checkpw(old_pw.encode(), row["password_hash"]):
+                return False
 
+            new_hash = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt())
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (new_hash, row["id"]),
+            )
+            return True
+
+    # ------------------------------------------------------------------ #
+    # Create                                                             #
+    # ------------------------------------------------------------------ #
+    def create_user_full(self, data: dict, role: UserRole) -> bool:
+        """
+        Insert a fully-populated user row.
+        Expected keys: username, password, email, role, full_name, phone,
+                       department, job_title
+        """
+        pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt())
         try:
             with self._connect() as conn:
                 conn.execute(
@@ -69,29 +105,75 @@ class UserRepository:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        user_data["username"].lower(),
+                        data["username"].lower(),
                         pw_hash,
-                        user_data["email"],
+                        data["email"],
                         role.name,
-                        user_data.get("full_name", ""),
-                        user_data.get("phone", ""),
-                        user_data.get("department", ""),
-                        user_data.get("job_title", ""),
+                        data.get("full_name", ""),
+                        data.get("phone", ""),
+                        data.get("department", ""),
+                        data.get("job_title", ""),
                     ),
                 )
             return True
         except sqlite3.IntegrityError:
             return False
 
-    # -- weitere CRUD-Methoden (update_user_fields, delete_user …) --
-    #    … falls benötigt, hier analog anpassen …
+    def create_user(self, data: dict, role: UserRole = UserRole.USER) -> bool:
+        """Alias für create_user_full – akzeptiert Minimal-Dict."""
+        return self.create_user_full(data, role)
+
+    def create_admin(self, username: str, password: str, email: str) -> bool:
+        return self.create_user_full(
+            {
+                "username": username,
+                "password": password,
+                "email": email,
+            },
+            role=UserRole.ADMIN,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Update selective fields                                            #
+    # ------------------------------------------------------------------ #
+    def update_user_fields(self, username: str, updates: dict) -> bool:
+        if not updates:
+            return True
+
+        allowed = {
+            "email", "role", "full_name",
+            "phone", "department", "job_title",
+        }
+        updates = {k: v for k, v in updates.items() if k in allowed}
+        if not updates:
+            return False
+
+        set_clause = ", ".join(f"{k}=?" for k in updates)
+        params = list(updates.values()) + [username.lower()]
+
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE users SET {set_clause} WHERE LOWER(username) = ?", params
+            )
+            return cur.rowcount == 1
+
+    # ------------------------------------------------------------------ #
+    # Delete                                                             #
+    # ------------------------------------------------------------------ #
+    def delete_user(self, username: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM users WHERE LOWER(username) = ?", (username.lower(),)
+            )
+            return cur.rowcount == 1
 
     # ------------------------------------------------------------------ #
     # Internals                                                          #
     # ------------------------------------------------------------------ #
     def _connect(self) -> sqlite3.Connection:
-        """Öffnet eine SQLite-Verbindung (Path → str)."""
-        return sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row  # <— NEW: named access everywhere
+        return conn
 
     def _ensure_table(self) -> None:
         with self._connect() as conn:
@@ -112,9 +194,11 @@ class UserRepository:
             )
             conn.commit()
 
-    # -- Row-Mapper ----------------------------------------------------- #
+    # ------------------------------------------------------------------ #
+    # Row-mapper                                                         #
+    # ------------------------------------------------------------------ #
     @staticmethod
-    def _row_to_user(row: tuple | None) -> Optional[User]:
+    def _row_to_user(row: sqlite3.Row | tuple | None) -> Optional[User]:
         if row is None:
             return None
         (
