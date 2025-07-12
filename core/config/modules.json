@@ -14,4 +14,13 @@
     "class": "UserManagementView",
     "requires_login": true
   }
+  ,
+  {
+  "id": "settings",
+  "label": "Settings",
+  "module": "core.settings.gui.settings_view",
+  "class": "SettingsView",
+  "requires_login": false
+}
+
 ]

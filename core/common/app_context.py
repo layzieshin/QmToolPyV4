@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from core.logging.logic.log_controller import LogController
 from usermanagement.logic.user_manager import UserManager
-
+from core.settings.logic.settings_manager import SettingsManager
+from core.i18n.locale import locale   # bereits vorhanden
 
 class AppContext:
     """Central runtime context (no GUI-state)."""
@@ -26,7 +27,7 @@ class AppContext:
     # ------------------------------------------------------------------ #
     log_controller = LogController()
     user_manager = UserManager()
-
+    settings_manager = SettingsManager()
     # Session information (updated in UserManager / MainWindow)
     current_user = None                # type: core.models.user.User | None
 
@@ -41,6 +42,9 @@ class AppContext:
 
         # user management / auth
         "user_manager":    user_manager,
+
+        # settings
+        "settings_manager": settings_manager,
     }
 
     @classmethod
@@ -50,3 +54,18 @@ class AppContext:
         Call this from plugins if they provide their own singletons.
         """
         cls.services[name] = instance
+    @classmethod
+    def update_language(cls) -> None:
+        """Load language (user override > global > 'de')."""
+        # 1) versuchen, user-spezifisch
+        lang = cls.settings_manager.get("app", "language",
+                                        user_specific=True, default=None)
+        # 2) fallback global
+        if lang is None:
+            lang = cls.settings_manager.get("app", "language",
+                                            user_specific=False, default="de")
+
+        from core.i18n.locale import locale   # lazy
+        locale.set_language(lang)
+
+AppContext.update_language()

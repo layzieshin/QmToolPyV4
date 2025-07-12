@@ -14,7 +14,6 @@ from usermanagement.logic.user_repository import UserRepository
 from core.logging.logic.logger import logger
 from core.models.user import User, UserRole
 
-
 class UserManager:
     """Provides user-management functionality and session tracking."""
 
@@ -32,6 +31,8 @@ class UserManager:
         user = self._repo.verify_login(username, password)
         if user:
             self._current_user = user
+            from core.common.app_context import AppContext  # noqa: WPS433
+            AppContext.update_language()
             logger.log(
                 feature="User",
                 event="LoginSuccess",
@@ -59,6 +60,8 @@ class UserManager:
                 message="User logged out",
             )
         self._current_user = None
+        from core.common.app_context import AppContext        # noqa: WPS433
+        AppContext.update_language()
 
     def get_logged_in_user(self) -> Optional[User]:
         return self._current_user

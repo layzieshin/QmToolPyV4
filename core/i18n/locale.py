@@ -12,7 +12,7 @@ Label(self, text=locale.t("login"))
 from __future__ import annotations
 
 from core.logging.logic.logger import logger
-from core.common.app_context import AppContext
+#from core.common.app_context import AppContext
 
 LOCALE_TRACK_MISSING_KEYS = True   # set False in production
 
@@ -49,6 +49,7 @@ class LocaleManager:
             return value
 
         if LOCALE_TRACK_MISSING_KEYS and key not in self._missing_keys_logged:
+            from core.common.app_context import AppContext  # noqa: WPS433
             user = AppContext.current_user
             logger.log(
                 feature="Locale",
@@ -66,6 +67,7 @@ class LocaleManager:
     # ------------------------------------------------------------------ #
     def _en_dict(self) -> dict[str, str]:
         return {
+            "app_language": "App language",
             "role": "Role",
             "job_title": "Job Title",
             "department": "Department",
@@ -210,6 +212,8 @@ class LocaleManager:
             "edit": "Bearbeiten",
             "delete": "Löschen",
             "log_view": "Logbuch",
+            "app_language": "App-Sprache",
+
         }
 
 
