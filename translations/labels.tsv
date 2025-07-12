@@ -1,0 +1,69 @@
+role	Rolle	Role
+job_title	Funktion	Job Title
+department	Abteilung	Department
+phone	Telefon	Phone
+full_name	Vollständiger Name	Full Name
+feature_name	Feature Name	Feature Name
+feature_description	Feature Beschreibung	Feature Description
+feature_enabled	Feature Aktiviert	Feature Enabled
+feature_disabled	Feature Deaktiviert	Feature Disabled
+feature_created	Feature Erstellt	Feature Created
+feature_updated	Feature Aktualisiert	Feature Updated
+feature_deleted	Feature Gelöscht	Feature Deleted
+feature_not_found	Feature nicht gefunden	Feature not found
+feature_already_exists	Modul existiert bereits	Feature already exists
+feature_list	Modul Liste	Feature List
+feature_add	Feature hinzufügen	Add Feature
+feature_edit	Feature bearbeiten	Edit Feature
+feature_delete	Feature löschen	Delete Feature
+feature_save	Feature speichern	Save Feature
+feature_cancel	Feature abbrechen	Cancel
+feature_name_required	Feature Name ist erforderlich.	Feature name is required.
+feature_description_required	Feature description ist erforderlich.	Feature description is required.
+add	Neu	Add
+login	Anmelden	Login
+logout	Abmelden	Logout
+username	Benutzername	Username
+password	Passwort	Password
+fullname	Vollständiger Name	Full Name
+email	E-Mail	Email
+settings	Einstellungen	Settings
+save	Speichern	Save
+cancel	Abbrechen	Cancel
+language	Sprache	Language
+select_language	Sprache auswählen	Select Language
+feature	Modul	Feature
+documents	Dokumente	Documents
+sign_pdf	PDF signieren	Sign PDF
+user_management	Benutzerverwaltung	User Management
+admin	Administrator	Admin
+welcome	Willkommen	Welcome
+error	Fehler	Error
+success	Erfolg	Success
+profile_title	Profil	Profile
+save_profile	Profil speichern	Save Profile
+profile_updated	Profil aktualisiert	Profile Updated
+profile_saved	Profiländerungen wurden gespeichert.	Profile changes have been saved.
+update_failed	Aktualisierung fehlgeschlagen	Update Failed
+profile_save_failed	Profiländerungen konnten nicht gespeichert werden.	Failed to save profile changes.
+name_email_required	Name und E-Mail dürfen nicht leer sein.	Full name and email must not be empty.
+change_password	Passwort ändern	Change Password
+current_password	Aktuelles Passwort	Current password
+new_password	Neues Passwort	New password
+repeat_new_password	Neues Passwort wiederholen	Repeat new password
+change_password_btn	Passwort ändern	Change Password
+all_fields_required	Alle Felder sind erforderlich.	All fields are required.
+passwords_no_match	Neue Passwörter stimmen nicht überein.	New passwords do not match.
+password_changed	Passwort erfolgreich geändert.	Password changed successfully.
+current_password_wrong	Das aktuelle Passwort ist nicht korrekt.	Current password is incorrect.
+language_settings	Spracheinstellungen	Language Settings
+set_language_btn	Sprache setzen	Set Language
+language_changed	Sprache geändert	Language changed
+restart_needed	Bitte starten Sie die Anwendung neu, damit die Sprachänderung wirksam wird.	Please restart the application for the language change to take full effect.
+profile_tab	Profil & Konto	Profile & Account
+edit	Bearbeiten	Edit
+delete	Löschen	Delete
+log_view	Logbuch	Log View
+app_language	App-Sprache	App Language
+main_dictionary    Dict ergänzen    Fill Dict
+

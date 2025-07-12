@@ -4,18 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250710_4">
-      <change afterPath="$PROJECT_DIR$/core/i18n/locale_settings.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/settings/gui/settings_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/settings/logic/settings_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/settings/logic/settings_repository.py" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250712_1">
+      <change afterPath="$PROJECT_DIR$/.idea/csv-editor.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/i18n/translation_manager.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/translations/labels.tsv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config/modules.json" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/modules.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/i18n/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/i18n/locale.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/locale.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/settings/gui/settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/settings_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/settings/logic/settings_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/logic/settings_manager.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/framework/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/databases/logging.db" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -52,6 +51,7 @@
 }</component>
   <component name="ProblemsViewState">
     <option name="selectedTabId" value="CurrentFile" />
+    <option name="showPreview" value="true" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 3
@@ -64,23 +64,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
-    &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_controller.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main_window.executor&quot;: &quot;Run&quot;,
-    &quot;Python.user_view.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/nebul/Nextcloud/Projekte/QMToolPyV4/core&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.create_init_files.executor": "Run",
+    "Python.fill_dictionary_view.executor": "Run",
+    "Python.fix_roles.executor": "Run",
+    "Python.log_controller.executor": "Run",
+    "Python.log_view.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.main_window.executor": "Run",
+    "Python.user_view.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "master",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QMToolPyV4/core",
+    "run.code.analysis.last.selected.profile": "pProject Default"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core" />
@@ -94,6 +96,28 @@
     </key>
   </component>
   <component name="RunManager" selected="Python.main_window">
+    <configuration name="fill_dictionary_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="QMToolPyV4" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/core/i18n" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="fix_roles" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
@@ -185,6 +209,7 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.main_window" />
+        <item itemvalue="Python.fill_dictionary_view" />
         <item itemvalue="Python.fix_roles" />
         <item itemvalue="Python.user_view" />
         <item itemvalue="Python.log_view" />
@@ -335,7 +360,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752185477806</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="20250712_1">
+      <option name="closed" value="true" />
+      <created>1752337942561</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1752337942561</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -350,6 +383,7 @@
     <MESSAGE value="20250710_2" />
     <MESSAGE value="20250710_3" />
     <MESSAGE value="20250710_4" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250710_4" />
+    <MESSAGE value="20250712_1" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250712_1" />
   </component>
 </project>

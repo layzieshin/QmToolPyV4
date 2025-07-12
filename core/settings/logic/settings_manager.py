@@ -44,7 +44,7 @@ class SettingsManager:
         user_specific: bool = False,
     ) -> None:
         scope, uid = self._scope_user(user_specific)
-        self.repo.set(scope, module, key, value, uid)
+        self.repo.set(scope, uid, module, key, value)  # <--- Reihenfolge!
 
     def all_for_module(
         self,

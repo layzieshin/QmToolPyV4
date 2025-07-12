@@ -14,10 +14,22 @@ Global runtime singletons & service-registry for QMToolPy.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from core.i18n.translation_manager import translations
+root = Path(__file__).resolve().parents[2]      # Projekt-Stamm finden
+labels_file = root / "translations" / "labels.tsv"
+
+if labels_file.exists():
+    translations.load_file(labels_file)
+else:
+    # Notfall: leere Tabelle anlegen, damit die App trotzdem startet
+    translations.translations = {"de": {}, "en": {}}
+
 from core.logging.logic.log_controller import LogController
 from usermanagement.logic.user_manager import UserManager
 from core.settings.logic.settings_manager import SettingsManager
-from core.i18n.locale import locale   # bereits vorhanden
+
 
 class AppContext:
     """Central runtime context (no GUI-state)."""
@@ -67,5 +79,10 @@ class AppContext:
 
         from core.i18n.locale import locale   # lazy
         locale.set_language(lang)
+
+def T(label: str) -> str:
+    # Hier aus Settings lesen:
+    lang = AppContext.settings_manager.get("app", "language", user_specific=True, default="de")
+    return translations.t(label, lang)
 
 AppContext.update_language()

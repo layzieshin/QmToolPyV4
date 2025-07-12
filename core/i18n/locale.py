@@ -90,7 +90,7 @@ class LocaleManager:
             "feature_cancel": "Cancel",
             "feature_name_required": "Feature name is required.",
             "feature_description_required": "Feature description is required.",
-            "add": "Add",
+                "add": "Add",
             "login": "Login",
             "logout": "Logout",
             "username": "Username",

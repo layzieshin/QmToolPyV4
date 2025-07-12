@@ -5,16 +5,8 @@ Zeigt alle SETTINGS_SCHEMA-Definitionen:
  • für jedes registrierte Modul
  • plus feste „System-Schemas“ (z. B. core.i18n → App-Sprache)
 
-Jeder Eintrag im Schema hat:
-
-    {
-      "key": "language",
-      "label": "Language",
-      "type": "bool" | "enum" | "str",
-      "options": ["de", "en"],      # nur enum
-      "scope": "global" | "user" | "both",
-      "default": "de",
-    }
+Enthält für Admins einen Button „Dict ergänzen / Fill Dict“,
+um den Übersetzungs-Editor (fill_dictionary_view.py) zu öffnen.
 """
 
 from __future__ import annotations
@@ -27,7 +19,7 @@ from typing import Dict, List, Tuple
 from core.common.app_context import AppContext
 from core.settings.logic.settings_manager import SettingsManager
 from core.common.module_registry import load_registry
-from core.i18n.locale import locale
+from core.i18n.translation_manager import T
 from core.models.user import UserRole
 
 
@@ -54,14 +46,25 @@ class SettingsView(ttk.Frame):
             self._add_tab_for_module(nb, mod.id, mod.module, mod.label)
 
         # ---------- 2) System-Schemas ohne GUI-Modul ------------------
-        system_schemas = [
-            ("app", "core.i18n", "App"),    # Sprache
-            # weitere Kern-Schemas hier ergänzen
-        ]
-        for mod_id, mod_path, label in system_schemas:
-            self._add_tab_for_module(nb, mod_id, mod_path, label)
+        self._add_tab_for_module(nb, "app", "core.i18n", T("app_settings"))
 
-        ttk.Button(self, text="Apply", command=self._save_all).pack(pady=(4, 6))
+        # ---------- Buttons unten -------------------------------------
+        btn_row = ttk.Frame(self)
+        btn_row.pack(pady=(4, 6))
+
+        ttk.Button(
+            btn_row,
+            text=T("save"),
+            command=self._save_all,
+        ).pack(side="left", padx=4)
+
+        # Admin-spezifischer Button für den Dictionary-Editor
+        if self._is_admin:
+            ttk.Button(
+                btn_row,
+                text=T("main_dictionary"),          # de: Dict ergänzen / en: Fill Dict
+                command=self._open_dict_editor,
+            ).pack(side="left", padx=4)
 
     # ------------------------------------------------------------------ #
     # Tab-Erzeugung                                                      #
@@ -76,7 +79,8 @@ class SettingsView(ttk.Frame):
         nb.add(tab, text=label)
         self._build_module_tab(tab, mod_id, schema)
 
-    def _build_module_tab(self, tab: ttk.Frame, module_id: str, schema: list[dict]):
+    def _build_module_tab(self, tab: ttk.Frame, module_id: str,
+                          schema: list[dict]):
         for row, meta in enumerate(schema):
             scope = meta.get("scope", "both")
             if scope == "global" and not self._is_admin:
@@ -132,9 +136,19 @@ class SettingsView(ttk.Frame):
                     user_specific=(scope != "global"),
                 )
             AppContext.update_language()   # Sprache sofort anwenden
-            messagebox.showinfo(locale.t("success"), locale.t("profile_saved"), parent=self)
+            messagebox.showinfo(T("success"), T("profile_saved"), parent=self)
         except Exception as exc:
             messagebox.showerror("Save error", str(exc), parent=self)
+
+    # ------------------------------------------------------------------ #
+    # Dictionary-Editor                                                  #
+    # ------------------------------------------------------------------ #
+    def _open_dict_editor(self):
+        try:
+            from core.i18n.fill_dictionary_view import FillDictionaryView
+            FillDictionaryView(self)
+        except Exception as exc:
+            messagebox.showerror("Error", str(exc), parent=self)
 
     # ------------------------------------------------------------------ #
     # Helpers                                                           #
