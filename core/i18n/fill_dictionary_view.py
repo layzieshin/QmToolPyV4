@@ -14,11 +14,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
 from typing import Dict, List
+from core.common.app_context import AppContext
 
 from core.i18n.translation_manager import translations, T
 from core.logging.logic.logger import logger
 
-LABELS_FILE = Path("translations/labels.tsv")
+LABELS_FILE = translations.file_path or Path("translations/labels.tsv")
 LANGS = ["de", "en"]                     # aktuell gepflegte Sprachen
 
 
@@ -122,6 +123,7 @@ class FillDictionaryView(tk.Toplevel):
     # ---------------------------- Save -------------------------------- #
     def _save(self):
         # lese Tabelle zurück in dict
+        user = AppContext.current_user
         data = {}
         for item in self._table.get_children():
             vals = self._table.item(item)["values"]
@@ -139,6 +141,13 @@ class FillDictionaryView(tk.Toplevel):
         tmp.replace(LABELS_FILE)
 
         translations.load_file(LABELS_FILE)          # Reload in Memory
-        logger.log(feature="Locale", event="DictUpdated", message="labels.tsv updated via GUI")
+        user = AppContext.current_user
+        logger.log(
+            feature="Locale",
+            event="DictUpdated",
+            user_id=user.id if user else None,
+            username=user.username if user else None,
+            message="labels.tsv updated via GUI",
+        )
         messagebox.showinfo("Info", "Dictionary gespeichert.", parent=self)
         self.destroy()

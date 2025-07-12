@@ -10,7 +10,8 @@ import tkinter as tk
 from tkinter import Frame, Label, Entry, Button, ttk, messagebox, StringVar
 from core.models.user import User
 from usermanagement.logic.user_manager import UserManager
-from core.i18n.locale import locale
+from core.i18n.translation_manager import T
+
 
 class UserSettingsTab(Frame):
     """
@@ -23,7 +24,7 @@ class UserSettingsTab(Frame):
         self.controller = controller
         self.user_manager = self.controller.user_manager if controller and hasattr(controller, "user_manager") else UserManager()
         self._active_user = self.user_manager.get_logged_in_user()
-
+        from core.i18n import locale
         self.language_var = StringVar(value=locale.get_language())
         self.fullname_var = StringVar(value=getattr(self._active_user, "full_name", "") or "")
         self.email_var = StringVar(value=getattr(self._active_user, "email", "") or "")
@@ -33,28 +34,28 @@ class UserSettingsTab(Frame):
         self._build_language_section()
 
     def _build_profile_section(self):
-        Label(self, text=locale.t("profile_title"), font=("Arial", 14, "bold")).pack(anchor="w", pady=(10,2))
+        Label(self, text=T("profile_title"), font=("Arial", 14, "bold")).pack(anchor="w", pady=(10,2))
         f = Frame(self)
         f.pack(fill="x", padx=5)
 
-        Label(f, text=locale.t("username")).grid(row=0, column=0, sticky="w")
+        Label(f, text=T("username")).grid(row=0, column=0, sticky="w")
         Label(f, text=self._active_user.username).grid(row=0, column=1, sticky="w")
 
-        Label(f, text=locale.t("fullname")).grid(row=1, column=0, sticky="w")
+        Label(f, text=T("fullname")).grid(row=1, column=0, sticky="w")
         fullname_entry = Entry(f, textvariable=self.fullname_var)
         fullname_entry.grid(row=1, column=1, sticky="ew")
 
-        Label(f, text=locale.t("email")).grid(row=2, column=0, sticky="w")
+        Label(f, text=T("email")).grid(row=2, column=0, sticky="w")
         email_entry = Entry(f, textvariable=self.email_var)
         email_entry.grid(row=2, column=1, sticky="ew")
 
-        Button(f, text=locale.t("save_profile"), command=self._save_profile).grid(row=3, column=1, sticky="e", pady=(8,2))
+        Button(f, text=T("save_profile"), command=self._save_profile).grid(row=3, column=1, sticky="e", pady=(8,2))
 
     def _save_profile(self):
         name = self.fullname_var.get().strip()
         email = self.email_var.get().strip()
         if not name or not email:
-            messagebox.showerror(locale.t("error"), locale.t("name_email_required"))
+            messagebox.showerror(T("error"), T("name_email_required"))
             return
         updated = self.user_manager.update_user(
             username=self._active_user.username,
@@ -63,26 +64,26 @@ class UserSettingsTab(Frame):
             full_name=name
         )
         if updated:
-            messagebox.showinfo(locale.t("profile_updated"), locale.t("profile_saved"))
+            messagebox.showinfo(T("profile_updated"), T("profile_saved"))
             self._active_user.full_name = name
             self._active_user.email = email
         else:
-            messagebox.showerror(locale.t("update_failed"), locale.t("profile_save_failed"))
+            messagebox.showerror(T("update_failed"), T("profile_save_failed"))
 
     def _build_password_section(self):
-        Label(self, text=locale.t("change_password"), font=("Arial", 14, "bold")).pack(anchor="w", pady=(18,2))
+        Label(self, text=T("change_password"), font=("Arial", 14, "bold")).pack(anchor="w", pady=(18,2))
         f = Frame(self)
         f.pack(fill="x", padx=5)
 
-        Label(f, text=locale.t("current_password")).grid(row=0, column=0, sticky="w")
+        Label(f, text=T("current_password")).grid(row=0, column=0, sticky="w")
         old_pw_entry = Entry(f, show="*")
         old_pw_entry.grid(row=0, column=1, sticky="ew")
 
-        Label(f, text=locale.t("new_password")).grid(row=1, column=0, sticky="w")
+        Label(f, text=T("new_password")).grid(row=1, column=0, sticky="w")
         new_pw_entry = Entry(f, show="*")
         new_pw_entry.grid(row=1, column=1, sticky="ew")
 
-        Label(f, text=locale.t("repeat_new_password")).grid(row=2, column=0, sticky="w")
+        Label(f, text=T("repeat_new_password")).grid(row=2, column=0, sticky="w")
         repeat_pw_entry = Entry(f, show="*")
         repeat_pw_entry.grid(row=2, column=1, sticky="ew")
 
@@ -91,27 +92,28 @@ class UserSettingsTab(Frame):
             new_pw = new_pw_entry.get()
             repeat_pw = repeat_pw_entry.get()
             if not old_pw or not new_pw or not repeat_pw:
-                messagebox.showerror(locale.t("error"), locale.t("all_fields_required"))
+                messagebox.showerror(T("error"), T("all_fields_required"))
                 return
             if new_pw != repeat_pw:
-                messagebox.showerror(locale.t("error"), locale.t("passwords_no_match"))
+                messagebox.showerror(T("error"), T("passwords_no_match"))
                 return
             if self.user_manager.change_password(self._active_user.username, old_pw, new_pw):
-                messagebox.showinfo(locale.t("success"), locale.t("password_changed"))
+                messagebox.showinfo(T("success"), T("password_changed"))
                 old_pw_entry.delete(0, "end")
                 new_pw_entry.delete(0, "end")
                 repeat_pw_entry.delete(0, "end")
             else:
-                messagebox.showerror(locale.t("error"), locale.t("current_password_wrong"))
+                messagebox.showerror(T("error"), T("current_password_wrong"))
 
-        Button(f, text=locale.t("change_password_btn"), command=do_change_pw).grid(row=3, column=1, sticky="e", pady=(8,2))
+        Button(f, text=T("change_password_btn"), command=do_change_pw).grid(row=3, column=1, sticky="e", pady=(8,2))
 
     def _build_language_section(self):
-        Label(self, text=locale.t("language_settings"), font=("Arial", 14, "bold")).pack(anchor="w", pady=(18,2))
+        Label(self, text=T("language_settings"), font=("Arial", 14, "bold")).pack(anchor="w", pady=(18,2))
         f = Frame(self)
         f.pack(fill="x", padx=5)
 
-        Label(f, text=locale.t("language")).grid(row=0, column=0, sticky="w")
+        Label(f, text=T("language")).grid(row=0, column=0, sticky="w")
+        from core.i18n import locale
         languages = locale.get_available_languages()
         lang_combo = ttk.Combobox(f, textvariable=self.language_var, values=languages, state="readonly")
         lang_combo.grid(row=0, column=1, sticky="ew")
@@ -119,6 +121,6 @@ class UserSettingsTab(Frame):
         def do_set_language():
             sel = self.language_var.get()
             locale.set_language(sel)
-            messagebox.showinfo(locale.t("language_changed"), locale.t("restart_needed"))
+            messagebox.showinfo(T("language_changed"), T("restart_needed"))
 
-        Button(f, text=locale.t("set_language_btn"), command=do_set_language).grid(row=1, column=1, sticky="e", pady=(8,2))
+        Button(f, text=T("set_language_btn"), command=do_set_language).grid(row=1, column=1, sticky="e", pady=(8,2))

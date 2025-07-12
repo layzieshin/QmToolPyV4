@@ -4,17 +4,16 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250712_1">
-      <change afterPath="$PROJECT_DIR$/.idea/csv-editor.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/i18n/translation_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/translations/labels.tsv" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250712_2">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/i18n/locale.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/locale.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/settings/gui/settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/settings_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/settings/logic/settings_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/logic/settings_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/i18n/translation_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/translation_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/gui/databases/logging.db" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/framework/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/databases/logging.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/translations/labels.tsv" beforeDir="false" afterPath="$PROJECT_DIR$/translations/labels.tsv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usermanagement/gui/user_settings_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/gui/user_settings_tab.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usermanagement/gui/user_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/gui/user_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -368,7 +367,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752337942561</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="20250712_2">
+      <option name="closed" value="true" />
+      <created>1752356994793</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1752356994793</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -384,6 +391,7 @@
     <MESSAGE value="20250710_3" />
     <MESSAGE value="20250710_4" />
     <MESSAGE value="20250712_1" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250712_1" />
+    <MESSAGE value="20250712_2" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250712_2" />
   </component>
 </project>

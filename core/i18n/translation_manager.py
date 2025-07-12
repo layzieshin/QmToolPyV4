@@ -13,10 +13,12 @@ class TranslationManager:
     def __init__(self):
         self.translations = {}  # {lang: {label: text}}
         self.coverage = {}      # {lang: float}
+        self.file_path: Path | None = None     # <— neu
         self._missing_keys_logged = set()
 
     def load_file(self, file_path: Path):
         """Lädt und analysiert die Übersetzungsdatei."""
+        self.file_path = file_path.resolve()    # <— merken
         with open(file_path, encoding="utf-8") as f:
             reader = csv.reader(f, delimiter="\t")
             header = next(reader)
