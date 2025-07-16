@@ -3,11 +3,11 @@ main_window.py
 
 Root-Window mit dynamischer Navigation (Module-Registry) und zentralem
 AppContext für geteilte Services & Login-Status.
-
 © QMToolPyV4 – 2025
 """
 
 from __future__ import annotations
+
 import inspect
 import tkinter as tk
 from tkinter import Frame, Label, Button, X, LEFT, RIGHT, DISABLED, NORMAL
@@ -29,6 +29,7 @@ class MainWindow(tk.Tk):
 
         # Gemeinsame Services aus dem AppContext
         self.log_controller = AppContext.log_controller
+        self.user_manager = AppContext.user_manager        # << NEU >>
 
         # Fenster-Eigenschaften
         self.title("QMToolPy")
@@ -38,7 +39,7 @@ class MainWindow(tk.Tk):
         self.logged_in: bool = False
         self.active_view: Optional[tk.Frame] = None
 
-        # Registry (wird durch PluginLoader / DB aufgebaut)
+        # Registry
         self.registry: Dict[str, ModuleDescriptor] = load_registry()
         self.nav_buttons: Dict[str, Button] = {}
 
@@ -67,7 +68,6 @@ class MainWindow(tk.Tk):
     # Navigation                                                         #
     # ------------------------------------------------------------------ #
     def build_navigation(self) -> None:
-        """Erzeugt einen Button pro Modul-Eintrag aus der Registry."""
         for mod in self.registry.values():
             btn = Button(
                 self.nav_buttons_frame,
@@ -94,38 +94,26 @@ class MainWindow(tk.Tk):
     # View-Handling                                                      #
     # ------------------------------------------------------------------ #
     def clear_display_area(self) -> None:
-        """Entfernt alle Widgets aus dem zentralen Bereich."""
         for widget in self.display_area.winfo_children():
             widget.destroy()
 
     def load_view(self, mod: ModuleDescriptor) -> None:
-        """Instantiate and display the view specified by *mod*."""
-
-        # 1) import class + clear area
         self.clear_display_area()
         view_cls = mod.load_class()
 
-        # 2) analyse __init__ signature
         sig = inspect.signature(view_cls.__init__)
         kwargs: dict[str, object] = {}
-
-        for name, param in list(sig.parameters.items())[2:]:  # skip 'self' & 'parent'
-            # ---- ignore *args / **kwargs ----------------------------------
+        for name, param in list(sig.parameters.items())[2:]:
             if param.kind in (
-                    inspect.Parameter.VAR_POSITIONAL,  # *args
-                    inspect.Parameter.VAR_KEYWORD,  # **kwargs / **_
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
             ):
                 continue
 
-            # a) service injection
             if name in AppContext.services:
                 kwargs[name] = AppContext.services[name]
-
-            # b) automatic callbacks (MainWindow method with same name)
             elif hasattr(self, name) and callable(getattr(self, name)):
                 kwargs[name] = getattr(self, name)
-
-            # c) required but unknown  →  warn & abort
             elif param.default is inspect._empty:
                 tk.messagebox.showerror(
                     "Module error",
@@ -134,9 +122,7 @@ class MainWindow(tk.Tk):
                     parent=self,
                 )
                 return
-            # optional param with default → ignore
 
-        # 3) create and pack ------------------------------------------------
         try:
             self.active_view = view_cls(self.display_area, **kwargs)
         except Exception as exc:
@@ -152,8 +138,8 @@ class MainWindow(tk.Tk):
     def toggle_login_logout(self) -> None:
         if self.logged_in:
             # ---------- Logout ----------
+            self.user_manager.logout()                 # << Aufruf >>
             self.logged_in = False
-            AppContext.current_user = None
             self.login_logout_button.config(text="Login")
             self.set_nav_login_state(False)
             self.load_login_view()
@@ -163,14 +149,13 @@ class MainWindow(tk.Tk):
             self.load_login_view()
 
     def load_login_view(self) -> None:
-        """Zeigt die Login-Maske im zentralen Bereich."""
         self.clear_display_area()
-        LoginView(self.display_area, login_callback=self.on_login_result).pack(
-            fill="both", expand=True
-        )
+        LoginView(
+            self.display_area,
+            login_callback=self.on_login_result,
+        ).pack(fill="both", expand=True)
 
     def on_login_result(self, success: bool, user) -> None:
-        """Callback nach Login-Versuch; erhält User-Objekt bei Erfolg."""
         if success:
             self.logged_in = True
             self.login_logout_button.config(text="Logout")
@@ -184,7 +169,6 @@ class MainWindow(tk.Tk):
     # Button-Aktivierung abhängig vom Login                              #
     # ------------------------------------------------------------------ #
     def set_nav_login_state(self, logged_in: bool) -> None:
-        """Aktiviert/Deaktiviert Buttons, die Login erfordern."""
         for mod in self.registry.values():
             if mod.requires_login:
                 state = NORMAL if logged_in else DISABLED
@@ -194,7 +178,6 @@ class MainWindow(tk.Tk):
     # Sonstige Helfer                                                    #
     # ------------------------------------------------------------------ #
     def load_welcome_view(self) -> None:
-        """Einfacher Welcome-Screen."""
         self.clear_display_area()
         Label(
             self.display_area,
@@ -203,7 +186,6 @@ class MainWindow(tk.Tk):
         ).pack(expand=True)
 
     def set_status(self, message: str) -> None:
-        """Schreibt eine Nachricht in die Status-Leiste."""
         self.status_bar.config(text=message)
 
 

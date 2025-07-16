@@ -60,6 +60,7 @@ class UserManager:
         setzt beide User-Referenzen auf None,
         aktualisiert Sprache auf global/default.
         """
+        print("logout wurde geklickt")
         from core.common.app_context import AppContext  # lazy
 
         user = self._current_user or AppContext.current_user
@@ -67,7 +68,10 @@ class UserManager:
             logger.log(feature="User", event="Logout",
                        user_id=user.id, username=user.username,
                        message="User logged out")
-
+        else:
+            logger.log(feature="User", event="Logout",
+                       user_id=user.id, username=user.username,
+                       message="User logged out")
         self._current_user = None
         AppContext.current_user = None          # << Sync >>
         AppContext.update_language()

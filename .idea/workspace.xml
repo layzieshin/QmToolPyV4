@@ -4,15 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250712_2">
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250712_3">
+      <change beforePath="$PROJECT_DIR$/.idea/csv-editor.xml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/i18n/translation_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/translation_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/gui/databases/logging.db" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/framework/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/databases/logging.db" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/translations/labels.tsv" beforeDir="false" afterPath="$PROJECT_DIR$/translations/labels.tsv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/usermanagement/gui/user_settings_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/gui/user_settings_tab.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/usermanagement/gui/user_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/gui/user_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/framework/gui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/main_window.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -56,32 +52,32 @@
   &quot;associatedIndex&quot;: 3
 }</component>
   <component name="ProjectId" id="2yy7ehLnHzVQ1lF3LfZW8sWWOeZ" />
-  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
+  <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="2" id="Add" />
   </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.create_init_files.executor": "Run",
-    "Python.fill_dictionary_view.executor": "Run",
-    "Python.fix_roles.executor": "Run",
-    "Python.log_controller.executor": "Run",
-    "Python.log_view.executor": "Run",
-    "Python.main.executor": "Run",
-    "Python.main_window.executor": "Run",
-    "Python.user_view.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "master",
-    "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QMToolPyV4/core",
-    "run.code.analysis.last.selected.profile": "pProject Default"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
+    &quot;Python.fill_dictionary_view.executor&quot;: &quot;Run&quot;,
+    &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
+    &quot;Python.log_controller.executor&quot;: &quot;Run&quot;,
+    &quot;Python.log_view.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main_window.executor&quot;: &quot;Run&quot;,
+    &quot;Python.user_view.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/nebul/Nextcloud/Projekte/QMToolPyV4/core&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core" />
@@ -218,7 +214,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-f78a9d071105-aa17d162503b-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-243.26574.90" />
+        <option value="bundled-python-sdk-4c141bd692a7-e2d783800521-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-251.26927.90" />
       </set>
     </attachedChunks>
   </component>
@@ -375,7 +371,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752356994793</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="20250712_3">
+      <option name="closed" value="true" />
+      <created>1752363981223</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1752363981223</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -392,6 +396,7 @@
     <MESSAGE value="20250710_4" />
     <MESSAGE value="20250712_1" />
     <MESSAGE value="20250712_2" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250712_2" />
+    <MESSAGE value="20250712_3" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250712_3" />
   </component>
 </project>
