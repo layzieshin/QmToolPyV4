@@ -1,12 +1,14 @@
 """
-logger.py
+core/logging/logic/logger.py
+============================
 
-Thread-safe Singleton-Logger.
+Thread-sicherer Singleton-Logger.
 
-Persistiert Logeinträge in einer SQLite-Datenbank und bietet flexible
-Abfrage-Methoden mit Filter- und Limit-Unterstützung.
-
-© QMToolPyV4 – 2025
+• Persistiert Logeinträge in der separaten Logging-Datenbank *logs.db*
+  (Pfad wird zentral vom ConfigLoader geliefert).
+• Bietet einfache API: log(), fetch_logs(), query_logs(), clear_logs()
+• Hält zusätzlich einen kleinen In-Memory-Cache (self.entries) für
+  schnelle Ad-hoc-Abfragen, ohne die DB anzufragen.
 """
 
 from __future__ import annotations
@@ -18,59 +20,53 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from core.config.config_loader import config_loader
 from core.logging.models.log_entry import LogEntry
 
 # --------------------------------------------------------------------------- #
-# Konstanten & Pfade                                                          #
+#  Konstanten & Pfade                                                         #
 # --------------------------------------------------------------------------- #
 
-DB_PATH = Path(os.getcwd()) / "databases" / "logging.db"
+LOG_DB_PATH: Path = config_loader.get_logging_db_path()  # <root>/databases/logs.db
 
 
 # --------------------------------------------------------------------------- #
-# Singleton-Klasse                                                            #
+#  Singleton-Klasse                                                           #
 # --------------------------------------------------------------------------- #
-
 class Logger:
-    """
-    **Thread-sicherer** Singleton, der alle Log-Operationen kapselt.
-
-    - `log(...)`         – neuen Eintrag hinzufügen
-    - `fetch_logs(...)`  – letzte *n* Einträge holen
-    - `query_logs(...)`  – flexible Filter-Abfrage (GUI & LogController)
-    """
+    """Thread-sicherer Singleton-Logger mit SQLite-Backend."""
 
     _instance: "Logger | None" = None
     _instance_lock = threading.Lock()
 
     # --------------------------------------------------------------------- #
-    # Construction                                                          #
+    #  Singleton-Erzeugung                                                  #
     # --------------------------------------------------------------------- #
-
-    def __new__(cls):
+    def __new__(cls) -> "Logger":  # noqa: D401
         if cls._instance is None:
             with cls._instance_lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False   # type: ignore[attr-defined]
+                    cls._instance._initialized = False  # type: ignore[attr-defined]
         return cls._instance  # type: ignore[return-value]
 
+    # --------------------------------------------------------------------- #
+    #  Initialisierung                                                      #
+    # --------------------------------------------------------------------- #
     def __init__(self) -> None:
         if getattr(self, "_initialized", False):
-            # Bereits initialisiert – Singleton-Verhalten.
-            return
+            return  # bereits initialisiert
 
-        # Initialisierung (wird genau einmal ausgeführt)
         self._initialized = True
         self._lock = threading.Lock()
-        self.db_path: Path = DB_PATH
+        self.db_path: Path = LOG_DB_PATH
         self.entries: list[LogEntry] = []
+
         self._ensure_db()
 
     # --------------------------------------------------------------------- #
-    # Öffentliche API                                                        #
+    #  Öffentliche API                                                      #
     # --------------------------------------------------------------------- #
-
     def log(
         self,
         feature: str,
@@ -83,9 +79,11 @@ class Logger:
         message: Optional[str] = None,
     ) -> None:
         """
-        Füge einen neuen Logeintrag hinzu und persistiere ihn sofort.
+        Fügt einen neuen Logeintrag hinzu und persistiert ihn sofort.
 
-        Alle Parameter außer *feature* und *event* sind optional.
+        Beispiel
+        --------
+        >>> logger.log("Import", "FileParsed", username="alice")
         """
         timestamp = datetime.now(timezone.utc).isoformat()
         entry = LogEntry(
@@ -100,13 +98,12 @@ class Logger:
             log_level=level,
         )
 
-        # In-Memory-Liste nur als Cache für Kleinstanfragen
-        self.entries.append(entry)
-        self._insert_log(entry)
+        self.entries.append(entry)      # lokaler Cache
+        self._insert_log(entry)         # DB-Persistenz
 
     def fetch_logs(self, limit: int = 100) -> List[LogEntry]:
         """
-        Hole die *zuletzt* geschriebenen Logeinträge (DESCending sortiert).
+        Liefert die *letzten* ``limit`` Logeinträge in DESC-Reihenfolge.
         """
         with sqlite3.connect(str(self.db_path)) as conn:
             c = conn.cursor()
@@ -134,18 +131,7 @@ class Logger:
         limit: int = 1_000,
     ) -> List[LogEntry]:
         """
-        Flexibel Logs filtern.
-
-        **Keyword-only-Parameter** (Absicht: bessere Lesbarkeit):
-
-        - ``user_id`` / ``username`` – Benutzerfilter
-        - ``feature`` – Feature-Name (z. B. ``"Import"``)
-        - ``event`` – Feineres Event innerhalb eines Features
-        - ``reference_id`` – Freies Textfeld für Geschäftsobjekt-IDs
-        - ``level`` – Log-Level (``"INFO"``, ``"WARNING"`` …)
-        - ``start_time`` – ISO-8601 Timestamp *>=*
-        - ``end_time`` – ISO-8601 Timestamp *<=*
-        - ``limit`` – maximale Rückgabeanzahl (Default = 1000)
+        Flexible Filter-Abfrage – alle Parameter sind optional.
         """
         with sqlite3.connect(str(self.db_path)) as conn:
             c = conn.cursor()
@@ -153,35 +139,28 @@ class Logger:
             query = "SELECT * FROM logs WHERE 1=1"
             params: list[object] = []
 
-            # Dynamisch WHERE-Klausel erweitern
+            # Dynamische WHERE-Klausel
             if user_id is not None:
                 query += " AND user_id = ?"
                 params.append(user_id)
-
             if username is not None:
                 query += " AND username = ?"
                 params.append(username)
-
             if feature is not None:
                 query += " AND feature = ?"
                 params.append(feature)
-
             if event is not None:
                 query += " AND event = ?"
                 params.append(event)
-
             if reference_id is not None:
                 query += " AND reference_id = ?"
                 params.append(reference_id)
-
             if level is not None:
                 query += " AND log_level = ?"
                 params.append(level)
-
             if start_time is not None:
                 query += " AND timestamp >= ?"
                 params.append(start_time)
-
             if end_time is not None:
                 query += " AND timestamp <= ?"
                 params.append(end_time)
@@ -199,20 +178,17 @@ class Logger:
 
     def clear_logs(self) -> None:
         """
-        **Entwickler-Hilfsmethode:** Löscht *alle* Einträge (irreversibel).
+        **Entwickler-Hilfsmethode:** Löscht *alle* Logeinträge (irreversibel).
         """
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.cursor().execute("DELETE FROM logs")
             conn.commit()
 
     # --------------------------------------------------------------------- #
-    # Interne Helfer                                                        #
+    #  Interne Helfer                                                       #
     # --------------------------------------------------------------------- #
-
     def _ensure_db(self) -> None:
-        """
-        Erstellt die SQLite-Tabelle, falls sie noch nicht existiert.
-        """
+        """Erstellt die Tabelle *logs*, falls sie fehlt."""
         os.makedirs(self.db_path.parent, exist_ok=True)
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.execute(
@@ -233,9 +209,7 @@ class Logger:
             conn.commit()
 
     def _insert_log(self, entry: LogEntry) -> None:
-        """
-        Persistiert einen einzelnen Logeintrag atomar.
-        """
+        """Persistiert einen Logeintrag atomar in der DB."""
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.execute(
                 """
@@ -259,7 +233,6 @@ class Logger:
 
 
 # --------------------------------------------------------------------------- #
-# Globale Singleton-Instanz (Import-freundlich)                               #
+#  Globale Singleton-Instanz                                                 #
 # --------------------------------------------------------------------------- #
-
-logger = Logger()
+logger: Logger = Logger()

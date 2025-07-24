@@ -1,12 +1,12 @@
 """
-settings_view.py
+core/settings/gui/settings_view.py
+==================================
 
-Zeigt alle SETTINGS_SCHEMA-Definitionen:
- • für jedes registrierte Modul
- • plus feste „System-Schemas“ (z. B. core.i18n → App-Sprache)
+Root GUI view grouping all settings tabs.
 
-Enthält für Admins einen Button „Dict ergänzen / Fill Dict“,
-um den Übersetzungs-Editor (fill_dictionary_view.py) zu öffnen.
+• Dynamically assembles notebook tabs based on SETTINGS_SCHEMA discovered in
+  registered modules.
+• Adds an extra *Config* tab for ADMIN users.
 """
 
 from __future__ import annotations
@@ -21,54 +21,66 @@ from core.settings.logic.settings_manager import SettingsManager
 from core.common.module_registry import load_registry
 from core.i18n.translation_manager import T
 from core.models.user import UserRole
+from core.config.gui.config_settings_view import ConfigSettingsTab
 
 
 class SettingsView(ttk.Frame):
-    # ------------------------------------------------------------------ #
-    # Konstruktion                                                       #
-    # ------------------------------------------------------------------ #
+    """Root view that groups together *all* settings tabs.
+
+    The notebook populates itself dynamically based on
+    ``SETTINGS_SCHEMA`` definitions found in registered modules.  If the current
+    user holds the role :pydata:`~core.models.user.UserRole.ADMIN`, an additional
+    *Config* tab (managed by :class:`ConfigSettingsTab`) will be appended.
+    """
+
     def __init__(self, parent):
         super().__init__(parent)
 
         self.sm: SettingsManager = AppContext.settings_manager
-        self._is_admin = (
-            AppContext.current_user
+        self._is_admin: bool = (
+            AppContext.current_user is not None
             and AppContext.current_user.role == UserRole.ADMIN
         )
+        self._fields: List[Tuple[Dict, tk.Variable]] = []
 
-        self._fields: List[Tuple[Dict, tk.Variable]] = []   # (meta, var)
-
+        # Notebook with module-specific tabs
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=6, pady=6)
+        self._nb = nb
+        nb.bind("<<NotebookTabChanged>>", self._on_tab_change)
 
-        # ---------- 1) Registry-Module --------------------------------
+        # Dynamically add tabs from module registry
         for mod in load_registry().values():
             self._add_tab_for_module(nb, mod.id, mod.module, mod.label)
 
-        # ---------- 2) System-Schemas ohne GUI-Modul ------------------
+        # App-wide (i18n) settings
         self._add_tab_for_module(nb, "app", "core.i18n", T("app_settings"))
 
-        # ---------- Buttons unten -------------------------------------
+        # Config tab for admins
+        if self._is_admin:
+            cfg_tab = ConfigSettingsTab(nb)
+            nb.add(cfg_tab, text=T("config"))
+
+        # Buttons
         btn_row = ttk.Frame(self)
         btn_row.pack(pady=(4, 6))
 
-        ttk.Button(
-            btn_row,
-            text=T("save"),
-            command=self._save_all,
-        ).pack(side="left", padx=4)
+        self._save_btn = ttk.Button(btn_row, text=T("save"), command=self._save_all)
+        self._save_btn.pack(side="left", padx=4)
 
-        # Admin-spezifischer Button für den Dictionary-Editor
         if self._is_admin:
-            ttk.Button(
+            self._dict_btn = ttk.Button(
                 btn_row,
-                text=T("main_dictionary"),          # de: Dict ergänzen / en: Fill Dict
+                text=T("main_dictionary"),  # de: Dict ergänzen / en: Fill Dict
                 command=self._open_dict_editor,
-            ).pack(side="left", padx=4)
+            )
+            self._dict_btn.pack(side="left", padx=4)
+        else:
+            self._dict_btn = None
 
-    # ------------------------------------------------------------------ #
-    # Tab-Erzeugung                                                      #
-    # ------------------------------------------------------------------ #
+    # --------------------------------------------------------------------- #
+    #  Tab building helpers
+    # --------------------------------------------------------------------- #
     def _add_tab_for_module(self, nb: ttk.Notebook, mod_id: str,
                             mod_module: str, label: str) -> None:
         schema = self._discover_schema(mod_module)
@@ -84,19 +96,19 @@ class SettingsView(ttk.Frame):
         for row, meta in enumerate(schema):
             scope = meta.get("scope", "both")
             if scope == "global" and not self._is_admin:
-                continue                      # globale Settings verstecken
+                continue
 
             ttk.Label(tab, text=meta["label"]).grid(
                 row=row, column=0, sticky="w", padx=(4, 12), pady=4
             )
 
-            # aktuellen Wert laden
             val = self.sm.get(
                 module_id, meta["key"],
                 user_specific=(scope != "global"),
                 default=meta.get("default"),
             )
 
+            # Select widget type
             var: tk.Variable
             if meta["type"] == "bool":
                 var = tk.BooleanVar(value=bool(val))
@@ -109,7 +121,7 @@ class SettingsView(ttk.Frame):
                     textvariable=var,
                     width=max(len(o) for o in meta["options"]) + 2,
                 )
-            else:                              # "str"
+            else:
                 var = tk.StringVar(value=str(val))
                 widget = ttk.Entry(tab, textvariable=var, width=24)
 
@@ -118,13 +130,14 @@ class SettingsView(ttk.Frame):
             if scope == "global" and not self._is_admin:
                 widget.state(["disabled"])
 
+            # Store meta information for later save
             meta["_module"] = module_id
             meta["_scope"] = scope
             self._fields.append((meta, var))
 
-    # ------------------------------------------------------------------ #
-    # Apply-Button                                                      #
-    # ------------------------------------------------------------------ #
+    # --------------------------------------------------------------------- #
+    #  Actions
+    # --------------------------------------------------------------------- #
     def _save_all(self):
         try:
             for meta, var in self._fields:
@@ -135,14 +148,11 @@ class SettingsView(ttk.Frame):
                     var.get(),
                     user_specific=(scope != "global"),
                 )
-            AppContext.update_language()   # Sprache sofort anwenden
+            AppContext.update_language()
             messagebox.showinfo(T("success"), T("profile_saved"), parent=self)
         except Exception as exc:
             messagebox.showerror("Save error", str(exc), parent=self)
 
-    # ------------------------------------------------------------------ #
-    # Dictionary-Editor                                                  #
-    # ------------------------------------------------------------------ #
     def _open_dict_editor(self):
         try:
             from core.i18n.fill_dictionary_view import FillDictionaryView
@@ -150,14 +160,31 @@ class SettingsView(ttk.Frame):
         except Exception as exc:
             messagebox.showerror("Error", str(exc), parent=self)
 
-    # ------------------------------------------------------------------ #
-    # Helpers                                                           #
-    # ------------------------------------------------------------------ #
+    # --------------------------------------------------------------------- #
+    #  Helpers
+    # --------------------------------------------------------------------- #
     @staticmethod
     def _discover_schema(module_path: str) -> list[dict] | None:
-        """Importiert *module_path* und gibt dessen SETTINGS_SCHEMA zurück."""
         try:
-            m = importlib.import_module(module_path)
-            return getattr(m, "SETTINGS_SCHEMA", None)
+            module = importlib.import_module(module_path)
+            return getattr(module, "SETTINGS_SCHEMA", None)
         except ModuleNotFoundError:
             return None
+
+    def _on_tab_change(self, _event):
+        sel_tab = self._nb.select()
+        sel_widget = self._nb.nametowidget(sel_tab)
+        from core.config.gui.config_settings_view import ConfigSettingsTab
+
+        show = not isinstance(sel_widget, ConfigSettingsTab)
+
+        if self._save_btn:
+            self._save_btn.pack_forget()
+        if self._dict_btn:
+            self._dict_btn.pack_forget()
+
+        if show:
+            if self._save_btn:
+                self._save_btn.pack(side="left", padx=4)
+            if self._dict_btn and self._is_admin:
+                self._dict_btn.pack(side="left", padx=4)

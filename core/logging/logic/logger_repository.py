@@ -1,25 +1,29 @@
-"""
-logger_repository.py
-
-Verwaltet die SQLite-Datenbank für die persistenten Logeinträge.
-
-- Erstellt die Tabelle, falls noch nicht vorhanden.
-- Bietet Methoden zum Einfügen, Abfragen und Löschen von Logs.
-"""
-
 import sqlite3
 from pathlib import Path
+
 from core.logging.models.log_entry import LogEntry
+from core.config.config_loader import config_loader
+logs_db_path = config_loader.get_logging_db_path()
 
 class LoggerRepository:
-    def __init__(self, db_path: Path):
-        self.db_path = db_path
+    def __init__(self):
+        # Ableiten aus der Haupt-DB (aber eigene Datei)
+        #self.db_path = db_path.parent / "logs.db"
+
+        # Optional: Debug-Ausgabe nur wenn aktiviert
+        from core.config.config_loader import config_loader
+       # if config_loader.get_bool("General", "debug_db_paths", False):
+        print(f"[DEBUG] Logger DB ➡ {logs_db_path}")
+
         self._conn = None
         self._ensure_db()
 
+
+
+
     def _connect(self):
         if self._conn is None:
-            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn = sqlite3.connect(str(logs_db_path))
             self._conn.row_factory = sqlite3.Row
 
     def _ensure_db(self):

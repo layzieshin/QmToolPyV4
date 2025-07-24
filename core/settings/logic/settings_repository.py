@@ -25,13 +25,12 @@ from typing import Any, Dict, Optional
 from core.config.config_loader import config_loader
 
 
+
 class SettingsRepository:
     """CRUD helper for the settings table."""
-
+    db_path = config_loader.get_qm_db_path()
     def __init__(self) -> None:
-        db_path = Path(config_loader.get_config_value("Database", "qm_tool"))
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path = db_path
+
         self._ensure_table()
 
     # ---------------------------- CRUD -------------------------------- #

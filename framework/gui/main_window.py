@@ -7,7 +7,9 @@ AppContext für geteilte Services & Login-Status.
 """
 
 from __future__ import annotations
-
+from tkinter import messagebox
+from core.config.config_loader import config_loader
+from core.config.gui.config_settings_view import ConfigSettingsTab
 import inspect
 import tkinter as tk
 from tkinter import Frame, Label, Button, X, LEFT, RIGHT, DISABLED, NORMAL
@@ -17,6 +19,15 @@ from framework.gui.login_view import LoginView
 from core.common.app_context import AppContext
 from core.common.module_registry import load_registry, ModuleDescriptor
 
+try:
+    _ = config_loader            # Zugriff erzwingt _mandatory_check()
+except RuntimeError as exc:
+    # Hauptfenster ist noch nicht da? -> Stand‑alone Dialog
+    root = tk.Tk()
+    root.withdraw()              # kein großes Fenster
+    messagebox.showinfo("Erstkonfiguration", str(exc), parent=root)
+    ConfigSettingsTab(root, modal=True)   # modal=True imctor -> waits
+    root.destroy()
 
 class MainWindow(tk.Tk):
     """Hauptfenster der Anwendung mit dynamischem Button-Aufbau."""

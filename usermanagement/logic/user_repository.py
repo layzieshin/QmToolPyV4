@@ -27,12 +27,7 @@ class UserRepository:
     # Construction                                                       #
     # ------------------------------------------------------------------ #
     def __init__(self) -> None:
-        raw_path = config_loader.get_config_value("Database", "qm_tool")
-        if raw_path is None:
-            raise RuntimeError("config.ini: section [Database] key 'qm_tool' missing")
-
-        self.db_path = Path(raw_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = config_loader.get_qm_db_path()
         self._ensure_table()
 
     # ------------------------------------------------------------------ #

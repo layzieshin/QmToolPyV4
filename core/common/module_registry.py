@@ -13,8 +13,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Type
-
-REGISTRY_PATH = Path(__file__).resolve().parents[2] / "core" / "config" / "modules.json"
+from core.config.config_loader import MODULES_JSON_PATH, LABELS_TSV_PATH
+REGISTRY_PATH = MODULES_JSON_PATH
 
 
 @dataclass

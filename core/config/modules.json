@@ -4,7 +4,7 @@
     "label": "Logs",
     "module": "core.logging.gui.log_view",
     "class": "LogView",
-    "requires_login": true
+    "requires_login": false
   }
   ,
   {
@@ -12,7 +12,7 @@
     "label": "User Management",
     "module": "usermanagement.gui.user_view",
     "class": "UserManagementView",
-    "requires_login": true
+    "requires_login": false
   }
   ,
   {

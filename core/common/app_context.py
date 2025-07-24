@@ -15,10 +15,10 @@ Global runtime singletons & service-registry for QMToolPy.
 from __future__ import annotations
 
 from pathlib import Path
-
+from core.config.config_loader import MODULES_JSON_PATH, LABELS_TSV_PATH
 from core.i18n.translation_manager import translations
 root = Path(__file__).resolve().parents[2]      # Projekt-Stamm finden
-labels_file = root / "translations" / "labels.tsv"
+labels_file = LABELS_TSV_PATH
 
 if labels_file.exists():
     translations.load_file(labels_file)

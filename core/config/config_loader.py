@@ -1,170 +1,161 @@
 """
-config_loader.py
+core/config/config_loader.py
+============================
 
-Zentrales Modul zum Laden, Schreiben und Initialisieren der Konfigurationsdatei config.ini.
+Zentraler Konfigurations-Loader (Singleton).
 
-- Lädt die config.ini aus dem config-Verzeichnis (unterhalb des Projektwurzelverzeichnisses).
-- Legt eine Standard-Konfigurationsdatei an, falls keine existiert.
-- Bietet Methoden zum sicheren Lesen, Schreiben und Speichern von Konfigurationseinträgen.
-- Unterstützt boolsche und numerische Werte mit komfortablen Helfermethoden.
-- Ermöglicht dynamisches Setzen von Default-Werten beim erstmaligen Zugriff.
+• Sucht das Projekt-Root dynamisch (Verzeichnis mit »core«-Ordner).
+• Legt *config.ini* bei Bedarf automatisch unter  <root>/core/config  an.
+• Liefert Pfade zu qm_tool.db & logs.db (liegen unter  <root>/databases).
+• Stellt Getter für App-Name & Version bereit (Read-Only).
+• Keine Schreib-API – die INI wird bewusst manuell gepflegt.
+
+Diese Datei hält sich an unsere Projekt-Konventionen:
+    – Single Responsibility
+    – Klare Docstrings + Kommentare
+    – Keine externen Abhängigkeiten außer stdlib
 """
 
-from pathlib import Path
+from __future__ import annotations
+
 import configparser
+from pathlib import Path
+from threading import RLock
 
-# Pfad zum aktuellen Skript und Projektwurzel (ein Verzeichnis oberhalb des aktuellen)
-CURRENT_FILE = Path(__file__).resolve()
-PROJECT_ROOT = CURRENT_FILE.parents[1]
 
-# Pfad zum config-Ordner und der config.ini
-CONFIG_DIR = PROJECT_ROOT / "config"
-CONFIG_PATH = CONFIG_DIR / "config.ini"
+# --------------------------------------------------------------------------- #
+#  Root- und Pfadermittlung
+# --------------------------------------------------------------------------- #
+def _find_project_root() -> Path:
+    """
+    Geht von diesem File nach oben, bis ein Ordner *core* gefunden wird.
+    Das ist unser Projekt-Root.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "core").is_dir():
+            return parent
+    # Fallback: ein Verzeichnis oberhalb (sollte quasi nie passieren)
+    return here.parent
 
-# Vordefinierte Standardwerte für die Konfigurationsdatei
-DEFAULT_CONFIG = {
+
+PROJECT_ROOT = _find_project_root()                        # <root>
+CONFIG_DIR = PROJECT_ROOT / "core" / "config"              # <root>/core/config
+INI_PATH = CONFIG_DIR / "config.ini"                       # <root>/core/config/config.ini
+DATABASE_DIR = PROJECT_ROOT / "databases"                  # <root>/databases
+
+
+# --------------------------------------------------------------------------- #
+#  Default-Inhalte für eine neu erzeugte config.ini
+# --------------------------------------------------------------------------- #
+_DEFAULT_INI_CONTENT = {
     "Database": {
-        "qm_tool": str((PROJECT_ROOT / "databases" / "qm-tool.db").as_posix()),
-        "logging": str((PROJECT_ROOT / "databases" / "logging.db").as_posix())
+        "qm_tool": str((DATABASE_DIR / "qm-tool.db").as_posix()),
+        "logging": str((DATABASE_DIR / "logs.db").as_posix()),
     },
     "General": {
-        "app_name": "QM-Tool",
-        "version": "2.0"
+        "app_name": "",
+        "version": "",
     },
-    "Features": {
-        "enable_document_signer": "true",
-        "enable_workflow_manager": "true"
-    }
+    "Files": {
+        "modules_json": str((PROJECT_ROOT / "core" / "config" / "modules.json").as_posix()),
+        "labels_tsv": str((PROJECT_ROOT / "core" / "config" / "labels.tsv").as_posix()),
+    },
 }
 
 
+# --------------------------------------------------------------------------- #
+#  Interne Helfer
+# --------------------------------------------------------------------------- #
+def _ensure_ini_exists() -> None:
+    """
+    Stellt sicher, dass CONFIG_DIR & config.ini vorhanden sind.
+    Wird automatisch beim ersten Zugriff auf den Singleton aufgerufen.
+    """
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not INI_PATH.exists():
+        parser = configparser.ConfigParser()
+        parser.read_dict(_DEFAULT_INI_CONTENT)
+        with INI_PATH.open("w", encoding="utf-8") as f:
+            parser.write(f)
+
+
+# --------------------------------------------------------------------------- #
+#  ConfigLoader-Singleton
+# --------------------------------------------------------------------------- #
 class ConfigLoader:
-    """
-    Singleton-Klasse zum zentralen Management der config.ini.
+    """Thread-sicherer Singleton zum Laden der config.ini."""
 
-    - Stellt Methoden zur Verfügung, um Konfigurationswerte sicher auszulesen und zu setzen.
-    - Schreibt neue oder geänderte Werte bei Bedarf zurück in die Datei.
-    - Stellt sicher, dass die config.ini beim ersten Start mit sinnvollen Defaults existiert.
-    """
+    _instance: "ConfigLoader | None" = None
+    _lock = RLock()
 
-    def __init__(self, config_path=CONFIG_PATH):
-        """
-        Initialisiert den ConfigLoader.
-        Lädt bestehende config.ini oder legt eine mit Default-Werten an.
-        """
-        self.config_path = config_path
-        self.config = configparser.ConfigParser()
-        self._ensure_config_exists()
-        self._load_config()
+    # ------------------------------------------------------------------- #
+    #  Erzeugung
+    # ------------------------------------------------------------------- #
+    def __new__(cls) -> "ConfigLoader":
+        with cls._lock:
+            if cls._instance is None:
+                _ensure_ini_exists()
+                cls._instance = super().__new__(cls)
+                cls._instance._load_config()
+            return cls._instance
 
-    def _ensure_config_exists(self):
-        """
-        Prüft, ob die config.ini existiert.
-        Falls nicht, wird die Datei mit DEFAULT_CONFIG und das Verzeichnis angelegt.
-        """
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        if not self.config_path.exists():
-            # Standard-Konfigurationsdatei schreiben
-            for section, values in DEFAULT_CONFIG.items():
-                self.config[section] = values
-            with self.config_path.open("w", encoding="utf-8") as configfile:
-                self.config.write(configfile)
+    # ------------------------------------------------------------------- #
+    #  Init-Helpers
+    # ------------------------------------------------------------------- #
+    def _load_config(self) -> None:
+        """Liest die INI in einen ConfigParser ein."""
+        self._config = configparser.ConfigParser()
+        self._config.read(INI_PATH, encoding="utf-8")
 
-    def _load_config(self):
-        """
-        Lädt die Konfigurationswerte aus der config.ini in das interne Parser-Objekt.
-        """
-        self.config.read(self.config_path, encoding="utf-8")
+    # ------------------------------------------------------------------- #
+    #  Öffentliche Getter
+    # ------------------------------------------------------------------- #
+    def get_qm_db_path(self) -> Path:
+        """Pfad zur Haupt­datenbank (qm_tool.db)."""
+        return Path(
+            self._config.get(
+                "Database", "qm_tool", fallback=_DEFAULT_INI_CONTENT["Database"]["qm_tool"]
+            )
+        ).expanduser()
 
-    def get_config_value(self, section: str, key: str, fallback=None) -> str | None:
-        """
-        Gibt den Wert eines Schlüssels aus einer Sektion zurück.
-        Falls der Schlüssel oder die Sektion nicht existiert, wird 'fallback' zurückgegeben.
+    def get_logging_db_path(self) -> Path:
+        """Pfad zur Logging-Datenbank (logs.db)."""
+        return Path(
+            self._config.get(
+                "Database", "logging", fallback=_DEFAULT_INI_CONTENT["Database"]["logging"]
+            )
+        ).expanduser()
 
-        :param section: Name der Sektion
-        :param key: Schlüsselname
-        :param fallback: Rückgabewert, wenn key nicht vorhanden
-        :return: Wert als String oder fallback
-        """
-        return self.config.get(section, key, fallback=fallback)
+    def get_app_name(self) -> str:
+        """Anwendungs-Name (optional, leer möglich)."""
+        return self._config.get(
+            "General", "app_name", fallback=_DEFAULT_INI_CONTENT["General"]["app_name"]
+        )
 
-    def get_bool(self, section: str, key: str, fallback: bool = False) -> bool:
-        """
-        Spezielles Auslesen von Booleschen Werten aus der Konfig.
-        Gibt den booleschen Wert zurück oder fallback, falls nicht gefunden oder Fehler.
+    def get_version(self) -> str:
+        """Versions­nummer (optional, leer möglich)."""
+        return self._config.get(
+            "General", "version", fallback=_DEFAULT_INI_CONTENT["General"]["version"]
+        )
 
-        :param section: Name der Sektion
-        :param key: Schlüsselname
-        :param fallback: Rückgabewert falls nicht vorhanden
-        :return: Boolean-Wert
-        """
-        try:
-            return self.config.getboolean(section, key)
-        except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
-            return fallback
+    def get_modules_json_path(self) -> Path:
+        return Path(self._config.get(
+            "Files", "modules_json", fallback=_DEFAULT_INI_CONTENT["Files"]["modules_json"]
+        )).expanduser()
 
-    def get_int(self, section: str, key: str, fallback: int = 0) -> int:
-        """
-        Spezielles Auslesen von Integer-Werten aus der Konfig.
-        Gibt den int-Wert zurück oder fallback, falls nicht gefunden oder Fehler.
-
-        :param section: Name der Sektion
-        :param key: Schlüsselname
-        :param fallback: Rückgabewert falls nicht vorhanden
-        :return: Integer-Wert
-        """
-        try:
-            return self.config.getint(section, key)
-        except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
-            return fallback
-
-    def get_or_set_default(self, section: str, key: str, default) -> str:
-        """
-        Gibt den Wert zurück oder setzt ihn auf default, wenn nicht vorhanden.
-        Schreibt neue Werte direkt zurück in die Datei.
-
-        :param section: Name der Sektion
-        :param key: Schlüsselname
-        :param default: Wert, der gesetzt wird falls key fehlt
-        :return: Wert als String
-        """
-        if not self.config.has_section(section):
-            self.config.add_section(section)
-
-        if not self.config.has_option(section, key):
-            self.config.set(section, key, str(default))
-            self.save_config()
-            return str(default)
-        else:
-            return self.config.get(section, key)
-
-    def set_config_value(self, section: str, key: str, value) -> None:
-        """
-        Setzt einen Wert in der Konfiguration (im Speicher).
-        Die Änderung wird erst mit save_config() dauerhaft.
-
-        :param section: Name der Sektion (wird ggf. neu angelegt)
-        :param key: Schlüsselname
-        :param value: Neuer Wert (wird als String gespeichert)
-        """
-        if not self.config.has_section(section):
-            self.config.add_section(section)
-        self.config.set(section, key, str(value))
-
-    def save_config(self) -> None:
-        """
-        Schreibt die aktuelle Konfiguration in die config.ini-Datei.
-        """
-        with self.config_path.open("w", encoding="utf-8") as configfile:
-            self.config.write(configfile)
-
-    def reload(self) -> None:
-        """
-        Lädt die Konfiguration neu von der config.ini.
-        Nützlich, wenn externe Änderungen an der Datei vorgenommen wurden.
-        """
-        self._load_config()
+    def get_labels_tsv_path(self) -> Path:
+        return Path(self._config.get(
+            "Files", "labels_tsv", fallback=_DEFAULT_INI_CONTENT["Files"]["labels_tsv"]
+        )).expanduser()
 
 
-# Globale Instanz des ConfigLoaders zur Nutzung im gesamten Projekt
-config_loader = ConfigLoader()
+# --------------------------------------------------------------------------- #
+#  Globale Instanz für bequemen Zugriff
+# --------------------------------------------------------------------------- #
+config_loader: ConfigLoader = ConfigLoader()  # pylint: disable=invalid-name
+QM_DB_PATH: Path = config_loader.get_qm_db_path()
+LOG_DB_PATH: Path = config_loader.get_logging_db_path()
+MODULES_JSON_PATH = config_loader.get_modules_json_path()
+LABELS_TSV_PATH   = config_loader.get_labels_tsv_path()

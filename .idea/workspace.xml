@@ -5,11 +5,27 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250712_3">
-      <change beforePath="$PROJECT_DIR$/.idea/csv-editor.xml" beforeDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/config/bootstrap.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/config/config_loader.old.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/config/config_loader.old2.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/config/config_repository.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/config/gui/config_settings_view.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/framework/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/databases/logging.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/module_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/config.ini" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/config_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config_loader.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/modules.json" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/modules.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/i18n/databases/logging.db" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/gui/databases/logging.db" beforeDir="false" afterPath="$PROJECT_DIR$/core/databases/logging.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger_repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/settings/gui/settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/settings_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/settings/logic/settings_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/logic/settings_repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/framework/gui/databases/logging.db" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/framework/gui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/main_window.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/logic/user_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/translations/labels.tsv" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/labels.tsv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usermanagement/logic/user_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/logic/user_repository.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -61,6 +77,7 @@
   </component>
   <component name="PropertiesComponent">{
   &quot;keyToString&quot;: {
+    &quot;Python.config_settings_view.executor&quot;: &quot;Run&quot;,
     &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
     &quot;Python.fill_dictionary_view.executor&quot;: &quot;Run&quot;,
     &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
@@ -84,13 +101,36 @@
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV5\core\config" />
+      <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV5\core\databases" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\logging\logic" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\logging" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\helpers" />
-      <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\config" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.main_window">
+  <component name="RunManager" selected="Python.main">
+    <configuration name="config_settings_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="QMToolPyV4" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/core/config/gui" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/config/gui/config_settings_view.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="fill_dictionary_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
@@ -105,28 +145,6 @@
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="fix_roles" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="QMToolPyV4" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/fix_roles.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -157,6 +175,28 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="QMToolPyV4" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="main_window" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
@@ -179,35 +219,13 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="user_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="QMToolPyV4" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/usermanagement/gui" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/usermanagement/gui/user_view.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.main" />
         <item itemvalue="Python.main_window" />
-        <item itemvalue="Python.fill_dictionary_view" />
-        <item itemvalue="Python.fix_roles" />
-        <item itemvalue="Python.user_view" />
         <item itemvalue="Python.log_view" />
+        <item itemvalue="Python.config_settings_view" />
+        <item itemvalue="Python.fill_dictionary_view" />
       </list>
     </recent_temporary>
   </component>
