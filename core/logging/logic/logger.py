@@ -2,13 +2,8 @@
 core/logging/logic/logger.py
 ============================
 
-Thread-sicherer Singleton-Logger.
-
-• Persistiert Logeinträge in der separaten Logging-Datenbank *logs.db*
-  (Pfad wird zentral vom ConfigLoader geliefert).
-• Bietet einfache API: log(), fetch_logs(), query_logs(), clear_logs()
-• Hält zusätzlich einen kleinen In-Memory-Cache (self.entries) für
-  schnelle Ad-hoc-Abfragen, ohne die DB anzufragen.
+Thread-sicherer Singleton-Logger mit SQLite-Backend und
+Auto-Fill des Benutzernamens, falls nicht explizit angegeben.
 """
 
 from __future__ import annotations
@@ -24,24 +19,20 @@ from core.config.config_loader import config_loader
 from core.logging.models.log_entry import LogEntry
 
 # --------------------------------------------------------------------------- #
-#  Konstanten & Pfade                                                         #
+#  Pfad zur Logging-Datenbank                                                 #
 # --------------------------------------------------------------------------- #
-
-LOG_DB_PATH: Path = config_loader.get_logging_db_path()  # <root>/databases/logs.db
+LOG_DB_PATH: Path = config_loader.get_logging_db_path()
 
 
 # --------------------------------------------------------------------------- #
 #  Singleton-Klasse                                                           #
 # --------------------------------------------------------------------------- #
 class Logger:
-    """Thread-sicherer Singleton-Logger mit SQLite-Backend."""
+    """Thread-sicherer Singleton-Logger mit Auto-Username."""
 
     _instance: "Logger | None" = None
     _instance_lock = threading.Lock()
 
-    # --------------------------------------------------------------------- #
-    #  Singleton-Erzeugung                                                  #
-    # --------------------------------------------------------------------- #
     def __new__(cls) -> "Logger":  # noqa: D401
         if cls._instance is None:
             with cls._instance_lock:
@@ -50,23 +41,19 @@ class Logger:
                     cls._instance._initialized = False  # type: ignore[attr-defined]
         return cls._instance  # type: ignore[return-value]
 
-    # --------------------------------------------------------------------- #
-    #  Initialisierung                                                      #
-    # --------------------------------------------------------------------- #
     def __init__(self) -> None:
         if getattr(self, "_initialized", False):
-            return  # bereits initialisiert
-
+            return
         self._initialized = True
+
         self._lock = threading.Lock()
         self.db_path: Path = LOG_DB_PATH
         self.entries: list[LogEntry] = []
-
         self._ensure_db()
 
-    # --------------------------------------------------------------------- #
-    #  Öffentliche API                                                      #
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------------------------ #
+    #  Öffentliche API: log                                              #
+    # ------------------------------------------------------------------ #
     def log(
         self,
         feature: str,
@@ -79,18 +66,27 @@ class Logger:
         message: Optional[str] = None,
     ) -> None:
         """
-        Fügt einen neuen Logeintrag hinzu und persistiert ihn sofort.
+        Persistiert einen Logeintrag.
 
-        Beispiel
-        --------
-        >>> logger.log("Import", "FileParsed", username="alice")
+        Auto-Username: Wird *username* weggelassen, versucht der Logger
+        `AppContext.current_user.username` zu verwenden. Gelingt das nicht,
+        wird "unknown" gespeichert.
         """
+        if username is None:
+            try:
+                # Lazy Import, um Zirkularität zu vermeiden
+                from core.common.app_context import AppContext  # noqa: WPS433
+                if AppContext.current_user:
+                    username = AppContext.current_user.username
+            except Exception:  # pragma: no cover
+                pass
+
         timestamp = datetime.now(timezone.utc).isoformat()
         entry = LogEntry(
             id=None,
             timestamp=timestamp,
             user_id=user_id,
-            username=username,
+            username=username or "unknown",
             feature=feature,
             event=event,
             reference_id=reference_id,
@@ -98,18 +94,17 @@ class Logger:
             log_level=level,
         )
 
-        self.entries.append(entry)      # lokaler Cache
-        self._insert_log(entry)         # DB-Persistenz
+        self.entries.append(entry)
+        self._insert_log(entry)
 
+    # ------------------------------------------------------------------ #
+    #  Fetch / Query / Clear                                             #
+    # ------------------------------------------------------------------ #
     def fetch_logs(self, limit: int = 100) -> List[LogEntry]:
-        """
-        Liefert die *letzten* ``limit`` Logeinträge in DESC-Reihenfolge.
-        """
         with sqlite3.connect(str(self.db_path)) as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?", (limit,)
             )
             rows = c.fetchall()
             return [
@@ -130,16 +125,12 @@ class Logger:
         end_time: Optional[str] = None,
         limit: int = 1_000,
     ) -> List[LogEntry]:
-        """
-        Flexible Filter-Abfrage – alle Parameter sind optional.
-        """
         with sqlite3.connect(str(self.db_path)) as conn:
             c = conn.cursor()
 
             query = "SELECT * FROM logs WHERE 1=1"
             params: list[object] = []
 
-            # Dynamische WHERE-Klausel
             if user_id is not None:
                 query += " AND user_id = ?"
                 params.append(user_id)
@@ -177,18 +168,14 @@ class Logger:
             ]
 
     def clear_logs(self) -> None:
-        """
-        **Entwickler-Hilfsmethode:** Löscht *alle* Logeinträge (irreversibel).
-        """
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.cursor().execute("DELETE FROM logs")
             conn.commit()
 
-    # --------------------------------------------------------------------- #
-    #  Interne Helfer                                                       #
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------------------------ #
+    #  Interne Helfer                                                    #
+    # ------------------------------------------------------------------ #
     def _ensure_db(self) -> None:
-        """Erstellt die Tabelle *logs*, falls sie fehlt."""
         os.makedirs(self.db_path.parent, exist_ok=True)
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.execute(
@@ -209,7 +196,6 @@ class Logger:
             conn.commit()
 
     def _insert_log(self, entry: LogEntry) -> None:
-        """Persistiert einen Logeintrag atomar in der DB."""
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.execute(
                 """
@@ -233,6 +219,6 @@ class Logger:
 
 
 # --------------------------------------------------------------------------- #
-#  Globale Singleton-Instanz                                                 #
+#  Globale Instanz                                                            #
 # --------------------------------------------------------------------------- #
 logger: Logger = Logger()

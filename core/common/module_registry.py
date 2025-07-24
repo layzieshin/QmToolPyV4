@@ -1,48 +1,34 @@
-# core/common/module_registry.py
 """
-Dynamic module registry helper.
+core/common/module_registry.py
+==============================
 
-Loads module descriptors from JSON (config/modules.json) and
-instantiates the requested view classes.
+Caching-Loader für aktive Module.
+
+• sortiert jetzt nach *sort_order*
 """
 
 from __future__ import annotations
 
-import importlib
-import json
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, List, Type
-from core.config.config_loader import MODULES_JSON_PATH, LABELS_TSV_PATH
-REGISTRY_PATH = MODULES_JSON_PATH
+from typing import Dict
+
+from core.common.module_repository import ModuleRepository
+from core.common.module_descriptor import ModuleDescriptor
+from core.logging.logic.logger import logger
+
+_CACHE: Dict[str, ModuleDescriptor] | None = None
 
 
-@dataclass
-class ModuleDescriptor:
-    id: str
-    label: str
-    module: str
-    class_name: str
-    requires_login: bool
+def load_registry(role: str | None = None) -> Dict[str, ModuleDescriptor]:
+    global _CACHE
+    if _CACHE is None:
+        repo = ModuleRepository()
+        # nach sort_order sortieren
+        _CACHE = {d.id: d for d in sorted(repo.enabled_modules(), key=lambda d: d.sort_order)}
 
-    def load_class(self) -> Type:
-        """Dynamically import the GUI class."""
-        mod = importlib.import_module(self.module)
-        return getattr(mod, self.class_name)
+    return {mid: desc for mid, desc in _CACHE.items() if desc.allowed_in_menu(role)}
 
 
-def load_registry() -> Dict[str, ModuleDescriptor]:
-    """Return all modules keyed by their id."""
-    with open(REGISTRY_PATH, encoding="utf-8") as fh:
-        raw: List[dict] = json.load(fh)
-
-    return {
-        item["id"]: ModuleDescriptor(
-            id=item["id"],
-            label=item["label"],
-            module=item["module"],
-            class_name=item["class"],
-            requires_login=item.get("requires_login", False),
-        )
-        for item in raw
-    }
+def invalidate_registry_cache() -> None:
+    global _CACHE
+    _CACHE = None
+    logger.log("ModuleRegistry", "CacheInvalidated")
