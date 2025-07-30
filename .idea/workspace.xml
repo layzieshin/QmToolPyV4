@@ -5,15 +5,27 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250724_1">
-      <change afterPath="$PROJECT_DIR$/core/common/module_descriptor.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/common/module_repository.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/settings/gui/modules_config_tab.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/EmptyFeature/gui/modul_settings_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/EmptyFeature/gui/modul_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/EmptyFeature/gui/settings_schema.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/EmptyFeature/models/roles.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/gui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/gui/clockwork_settings_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/gui/clockwork_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/gui/settings_schema.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/logic/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/models/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/models/roles.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/QMToolPyV4.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/QMToolPyV4.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/module_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config/modules.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/logging/logic/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/logging/logic/logger.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/settings/gui/settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/settings_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/framework/gui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/framework/gui/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/module_descriptor.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_descriptor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/module_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/settings/gui/modules_config_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/modules_config_tab.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/settings/logic/settings_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/logic/settings_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/settings/logic/settings_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/logic/settings_repository.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -63,28 +75,30 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.config_settings_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
-    &quot;Python.fill_dictionary_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_controller.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main_window.executor&quot;: &quot;Run&quot;,
-    &quot;Python.user_view.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/nebul/Nextcloud/Projekte/QMToolPyV4/core&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.config_settings_view.executor": "Run",
+    "Python.create_init_files.executor": "Run",
+    "Python.fill_dictionary_view.executor": "Run",
+    "Python.fix_roles.executor": "Run",
+    "Python.log_controller.executor": "Run",
+    "Python.log_view.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.main_window.executor": "Run",
+    "Python.user_view.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "master",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4",
+    "run.code.analysis.last.selected.profile": "pProject Default",
+    "settings.editor.selected.configurable": "promo.database"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\nebul\Nextcloud\Projekte\QmToolPyV4" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core" />
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4" />
     </key>
@@ -210,8 +224,8 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.main" />
-        <item itemvalue="Python.main_window" />
         <item itemvalue="Python.log_view" />
+        <item itemvalue="Python.main_window" />
         <item itemvalue="Python.config_settings_view" />
         <item itemvalue="Python.fill_dictionary_view" />
       </list>
@@ -413,5 +427,16 @@
     <MESSAGE value="20250712_3" />
     <MESSAGE value="20250724_1" />
     <option name="LAST_COMMIT_MESSAGE" value="20250724_1" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/usermanagement/logic/user_repository.py</url>
+          <line>15</line>
+          <option name="timeStamp" value="2" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

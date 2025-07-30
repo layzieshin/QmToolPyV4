@@ -2,9 +2,10 @@
 core/common/module_descriptor.py
 ================================
 
-Dataclass für Modul-Metadaten.
-Enthält nun eine robuste Rollen-Normalisierung, sodass die
-Aufrufer beliebige Enum- oder String-Objekte übergeben können.
+Dataclass + Helper für Modul-Metadaten.
+Enthält:
+• version   – für Update-/Overwrite-Vergleiche
+• robuste Rollen-Normalisierung
 """
 
 from __future__ import annotations
@@ -20,10 +21,12 @@ from core.logging.logic.logger import logger
 
 @dataclass(slots=True)
 class ModuleDescriptor:
+    # --- Felder wie in der DB-Tabelle ----------------------------------
     id: str
     label: str
     module_path: str
     class_name: str
+    version: str               #  ⇦  NEU
     enabled: int
     is_core: int
     sort_order: int
@@ -33,7 +36,7 @@ class ModuleDescriptor:
     permissions: str | None
 
     # ------------------------------------------------------------------ #
-    #  Interne Helfer                                                    #
+    #  Rollen-Hilfsfunktionen                                            #
     # ------------------------------------------------------------------ #
     @staticmethod
     def _json_to_list(txt: str) -> list[str]:
@@ -44,11 +47,9 @@ class ModuleDescriptor:
 
     @staticmethod
     def _role_to_str(role) -> str | None:
-        """Konvertiert Enum/String/None in lower-case-String oder None."""
         if role is None:
             return None
         if isinstance(role, Enum):
-            # Enum‐Mitglied – erst value (falls str) sonst name
             raw = role.value if isinstance(role.value, str) else role.name
             return str(raw).lower()
         return str(role).lower()
@@ -58,17 +59,13 @@ class ModuleDescriptor:
     # ------------------------------------------------------------------ #
     def allowed_in_menu(self, role) -> bool:
         allowed = [r.lower() for r in self._json_to_list(self.visible_for)]
-        role_str = self._role_to_str(role)
-        if role_str is None:
-            return False          # vor Login nichts anzeigen
-        return "*" in allowed or (role_str in allowed)
+        rs = self._role_to_str(role)
+        return rs is not None and ("*" in allowed or rs in allowed)
 
     def allowed_in_settings(self, role) -> bool:
         allowed = [r.lower() for r in self._json_to_list(self.settings_for)]
-        role_str = self._role_to_str(role)
-        if role_str is None:
-            return False
-        return "*" in allowed or (role_str in allowed)
+        rs = self._role_to_str(role)
+        return rs is not None and ("*" in allowed or rs in allowed)
 
     # ------------------------------------------------------------------ #
     #  DB-Mapping                                                        #
@@ -83,6 +80,7 @@ class ModuleDescriptor:
             self.label,
             self.module_path,
             self.class_name,
+            self.version,            #  NEU
             self.enabled,
             self.is_core,
             self.sort_order,
