@@ -7,6 +7,7 @@ DTO + Loader-Hilfen für Module (Meta-JSON basiert).
 • from_meta_json(path): liest/validiert Meta und erzeugt Descriptor
 • settings_class (optional): vollqualifizierte Settings-Tab-Klasse
 • visible_for / settings_for als JSON-Strings in DB
+• Lizenz-Felder: license_required, license_tag (optional)
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ class ModuleDescriptor:
     permissions: Optional[str] = None
     settings_class: Optional[str] = None
     meta_path: Optional[str] = None
+    license_required: int = 0
+    license_tag: Optional[str] = None
 
     # ---------------- Convenience ---------------- #
     @property
@@ -102,6 +105,8 @@ class ModuleDescriptor:
             permissions=row["permissions"],
             settings_class=row["settings_class"] if "settings_class" in row.keys() else None,
             meta_path=row["meta_path"] if "meta_path" in row.keys() else None,
+            license_required=row["license_required"] if "license_required" in row.keys() else 0,
+            license_tag=row["license_tag"] if "license_tag" in row.keys() else None,
         )
 
     @classmethod
@@ -128,6 +133,10 @@ class ModuleDescriptor:
             if settings_class and "." not in settings_class:
                 raise ValueError("meta.json: 'settings_class' must be fully qualified (pkg.mod.Class)")
 
+        lic = data.get("license", {})
+        license_required = int(bool(lic.get("required", False)))
+        license_tag = str(lic.get("tag")).strip() if lic.get("tag") else None
+
         return cls(
             id=str(data["id"]).strip(),
             label=str(data["label"]).strip(),
@@ -143,4 +152,6 @@ class ModuleDescriptor:
             permissions=json.dumps(data.get("permissions")) if data.get("permissions") is not None else None,
             settings_class=settings_class,
             meta_path=str(meta_file.resolve().as_posix()),
+            license_required=license_required,
+            license_tag=license_tag,
         )

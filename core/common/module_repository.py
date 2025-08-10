@@ -50,6 +50,10 @@ class ModuleRepository:
             self.conn.execute("ALTER TABLE modules ADD COLUMN settings_class TEXT")
         if "meta_path" not in cols:
             self.conn.execute("ALTER TABLE modules ADD COLUMN meta_path TEXT")
+        if "license_required" not in cols:
+            self.conn.execute("ALTER TABLE modules ADD COLUMN license_required INTEGER NOT NULL DEFAULT 0")
+        if "license_tag" not in cols:
+            self.conn.execute("ALTER TABLE modules ADD COLUMN license_tag TEXT")
         self.conn.commit()
 
     # ---------------- CRUD ------------------- #
@@ -60,8 +64,8 @@ class ModuleRepository:
                 INSERT INTO modules (
                     id, label, module_path, class_name, version, enabled, is_core,
                     sort_order, visible_for, settings_for, requires_login, permissions,
-                    settings_class, meta_path
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    settings_class, meta_path, license_required, license_tag
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     label=excluded.label,
                     module_path=excluded.module_path,
@@ -75,7 +79,9 @@ class ModuleRepository:
                     requires_login=excluded.requires_login,
                     permissions=excluded.permissions,
                     settings_class=excluded.settings_class,
-                    meta_path=excluded.meta_path
+                    meta_path=excluded.meta_path,
+                    license_required=excluded.license_required,
+                    license_tag=excluded.license_tag
                 """,
                 (
                     desc.id,
@@ -92,6 +98,8 @@ class ModuleRepository:
                     desc.permissions,
                     desc.settings_class,
                     desc.meta_path,
+                    desc.license_required,
+                    desc.license_tag,
                 ),
             )
 

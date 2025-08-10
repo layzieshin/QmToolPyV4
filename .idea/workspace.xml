@@ -4,19 +4,19 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250724_1">
-      <change afterPath="$PROJECT_DIR$/clockwork/meta.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/common/module_auto_discovery.py" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250810_1">
+      <change afterPath="$PROJECT_DIR$/core/licensing/logic/license_manager.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/licensing/logic/license_repository.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/licensing/models/license_status.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tools/module_meta_migrator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/clockwork/gui/clockwork_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/gui/clockwork_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/clockwork/gui/settings_schema.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/module_auto_discovery.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_auto_discovery.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/common/module_descriptor.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_descriptor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/common/module_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_registry.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/common/module_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_repository.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/i18n/translation_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/i18n/translation_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/license/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/licensing/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/settings/gui/modules_config_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/modules_config_tab.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/settings/gui/settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/settings_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/settings/logic/settings_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/logic/settings_repository.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -406,7 +406,15 @@
       <option name="project" value="LOCAL" />
       <updated>1753915964463</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="20250810_1">
+      <option name="closed" value="true" />
+      <created>1754839046076</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1754839046076</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -425,7 +433,8 @@
     <MESSAGE value="20250712_2" />
     <MESSAGE value="20250712_3" />
     <MESSAGE value="20250724_1" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250724_1" />
+    <MESSAGE value="20250810_1" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250810_1" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

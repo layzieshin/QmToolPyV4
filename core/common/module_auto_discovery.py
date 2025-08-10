@@ -6,10 +6,7 @@ Auto-Discovery für Module via `meta.json`.
 
 • Durchsucht definierte Wurzel-Verzeichnisse rekursiv nach `meta.json`.
 • Ignoriert typische Build-/Tooling-Ordner.
-• Validiert Meta-Format minimal (id, label, version, main_class).
-• Liefert Liste gefundener meta.json-Dateien (Paths) in stabiler Reihenfolge.
-
-Wird von ModuleRepository/ModuleRegistry verwendet.
+• Gibt eine deterministisch sortierte Liste gefundener Dateien zurück.
 """
 
 from __future__ import annotations
@@ -19,11 +16,9 @@ from typing import Iterable, List
 
 from core.logging.logic.logger import logger
 
-# Standardmäßig: Projekt-Root (…/ <root> /), abgeleitet von core/common/
-HERE = Path(__file__).resolve().parent           # …/core/common
-PROJECT_ROOT = HERE.parents[2]                   # …/<root>
+HERE = Path(__file__).resolve().parent           # .../core/common
+PROJECT_ROOT = HERE.parents[2]                   # .../<root>
 
-# Verzeichnisse, die beim Scan ignoriert werden
 _IGNORE_DIRS = {
     ".git", ".idea", ".vscode", "__pycache__", "node_modules",
     "build", "dist", ".venv", "venv", ".mypy_cache", ".pytest_cache",
@@ -32,13 +27,15 @@ _IGNORE_DIRS = {
 def default_roots() -> List[Path]:
     """
     Liefert Default-Root-Verzeichnisse für den Scan.
-    Erweitere hier ggf. um weitere Modul-Wurzeln.
+    Erweitere hier ggf. um weitere Modul-Wurzeln (z.B. aus ConfigLoader).
     """
     return [PROJECT_ROOT]
 
-def _should_skip_dir(path: Path) -> bool:
-    name = path.name.lower()
-    return name in _IGNORE_DIRS
+def _in_ignored_dir(p: Path) -> bool:
+    for parent in p.parents:
+        if parent.name in _IGNORE_DIRS:
+            return True
+    return False
 
 def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
     """
@@ -51,11 +48,10 @@ def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
     for root in roots:
         if not root.exists():
             continue
-        for p in root.rglob("meta.json"):
-            # Skip in ignorierten Ordnern
-            if any(_should_skip_dir(parent) for parent in p.parents):
+        for meta in root.rglob("meta.json"):
+            if _in_ignored_dir(meta):
                 continue
-            found.add(p.resolve())
+            found.add(meta.resolve())
 
     result = sorted(found)
     logger.log("ModuleAutoDiscovery", "Scan", message=f"{len(result)} meta.json found")

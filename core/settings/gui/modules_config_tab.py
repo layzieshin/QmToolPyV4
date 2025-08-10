@@ -7,6 +7,7 @@ Admin-Tab zur Modulverwaltung:
 • Versionsvergleich + Overwrite
 • Sichtbarkeit / Sortierung / Enable
 • Scan-Button: Auto-Discovery on demand
+• Anzeige Lizenzpflicht
 """
 
 from __future__ import annotations
@@ -28,10 +29,9 @@ ROLES = ["Admin", "QMB", "User"]
 
 
 class _AddDialog(tk.Toplevel):
-    # … (unverändert aus deiner letzten Version; falls du sie nicht hast, sag Bescheid)
-    # Für Kürze lasse ich den zuvor gelieferten _AddDialog code gleich – er liest meta.json,
-    # zeigt eine Preview und ruft repo.upsert(desc).
-    # ---- KOPIERE HIER DEINEN _AddDialog AUS DER LETZTEN VERSION EIN ----
+    """
+    Dialog zum Hinzufügen via meta.json oder Ordner.
+    """
     def __init__(self, parent: tk.Widget, repo: ModuleRepository):
         super().__init__(parent)
         self.title("Add Module from meta.json")
@@ -48,7 +48,7 @@ class _AddDialog(tk.Toplevel):
         path_entry.grid(row=1, column=0, sticky="we", padx=(0, 6), pady=(4, 8))
         ttk.Button(frm, text="Browse…", command=self._select).grid(row=1, column=1, sticky="e")
 
-        self._summary = tk.Text(frm, width=60, height=7, state="disabled")
+        self._summary = tk.Text(frm, width=60, height=9, state="disabled")
         self._summary.grid(row=2, column=0, columnspan=2, pady=(8, 0))
 
         btns = ttk.Frame(frm)
@@ -102,6 +102,8 @@ class _AddDialog(tk.Toplevel):
             "sort_order": desc.sort_order,
             "visible_for": desc.visible_list,
             "settings_for": desc.settings_list,
+            "license_required": bool(desc.license_required),
+            "license_tag": desc.license_tag or "-",
         }
         self._summary.config(state="normal")
         self._summary.delete("1.0", "end")
@@ -167,23 +169,25 @@ class _RowWidgets:
         self.var_sort = tk.IntVar(value=desc.sort_order)
         ttk.Spinbox(parent, from_=1, to=999, textvariable=self.var_sort, width=5).grid(row=row, column=2)
 
-        roles = ["Admin", "QMB", "User"]
-        self.var_vis = {r: tk.BooleanVar(value=r in desc.visible_list) for r in roles}
-        self.var_set = {r: tk.BooleanVar(value=r in desc.settings_list) for r in roles}
+        self.var_vis = {r: tk.BooleanVar(value=r in desc.visible_list) for r in ROLES}
+        self.var_set = {r: tk.BooleanVar(value=r in desc.settings_list) for r in ROLES}
 
-        for col, role in enumerate(roles, start=3):
+        for col, role in enumerate(ROLES, start=3):
             ttk.Checkbutton(parent, variable=self.var_vis[role]).grid(row=row, column=col)
-        for col, role in enumerate(roles, start=6):
+        for col, role in enumerate(ROLES, start=6):
             ttk.Checkbutton(parent, variable=self.var_set[role]).grid(row=row, column=col)
+
+        # Lizenz-Hinweis (read-only Anzeige)
+        lic = "Yes" if desc.license_required else "No"
+        ttk.Label(parent, text=f"License: {lic}").grid(row=row, column=9, padx=6)
 
         if desc.is_core:
             self.var_enabled.set(True)
             parent.grid_slaves(row=row, column=0)[0].state(["disabled"])
 
     def to_descriptor(self) -> ModuleDescriptor:
-        roles = ["Admin", "QMB", "User"]
-        vis = [r for r in roles if self.var_vis[r].get()]
-        stg = [r for r in roles if self.var_set[r].get()]
+        vis = [r for r, v in self.var_vis.items() if v.get()]
+        stg = [r for r, v in self.var_set.items() if v.get()]
         d = self.desc
         return ModuleDescriptor(
             id=d.id,
@@ -200,6 +204,8 @@ class _RowWidgets:
             permissions=d.permissions,
             settings_class=d.settings_class,
             meta_path=d.meta_path,
+            license_required=d.license_required,
+            license_tag=d.license_tag,
         )
 
 
@@ -218,12 +224,10 @@ class ModulesConfigTab(ttk.Frame):
         canvas.create_window((0, 0), window=inner, anchor="nw")
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
-        ttk.Label(inner, text="").grid(row=0, column=0, columnspan=3)
-        ttk.Label(inner, text="Tab visible for").grid(row=0, column=3, columnspan=3)
-        ttk.Label(inner, text="Settings visible for").grid(row=0, column=6, columnspan=3)
-
-        for col, text in enumerate(["", "Label", "Sort", "Admin", "QMB", "User", "Admin", "QMB", "User"]):
-            ttk.Label(inner, text=text, style="Heading.TLabel").grid(row=1, column=col, padx=4, pady=4)
+        # Header
+        headers = ["", "Label", "Sort", "Admin", "QMB", "User", "Admin", "QMB", "User", "License"]
+        for col, text in enumerate(headers):
+            ttk.Label(inner, text=text, style="Heading.TLabel").grid(row=0, column=col, padx=4, pady=4)
 
         self._inner = inner
         self._reload_rows()
@@ -237,10 +241,12 @@ class ModulesConfigTab(ttk.Frame):
 
     def _reload_rows(self) -> None:
         for w in self._inner.grid_slaves():
-            if int(w.grid_info()["row"]) >= 2:
-                w.destroy()
+            w.destroy()
+        headers = ["", "Label", "Sort", "Admin", "QMB", "User", "Admin", "QMB", "User", "License"]
+        for col, text in enumerate(headers):
+            ttk.Label(self._inner, text=text, style="Heading.TLabel").grid(row=0, column=col, padx=4, pady=4)
         self._rows.clear()
-        for idx, desc in enumerate(self.repo.all_modules(), start=2):
+        for idx, desc in enumerate(self.repo.all_modules(), start=1):
             self._rows.append(_RowWidgets(self._inner, idx, desc))
 
     def _open_add(self) -> None:
@@ -255,6 +261,7 @@ class ModulesConfigTab(ttk.Frame):
         messagebox.showinfo("Scan", f"{count} module(s) discovered/updated.", parent=self)
 
     def _save(self) -> None:
+        # Validierung: Klassen importierbar?
         invalid = []
         for r in self._rows:
             d = r.to_descriptor()

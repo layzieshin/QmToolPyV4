@@ -5,7 +5,7 @@ core/common/module_registry.py
 Registry-Cache & Class-Loader.
 
 • Startet mit Auto-Discovery (scan meta.json) – einmal pro Prozess.
-• Lädt aktivierte Module aus DB, filtert nach Rolle.
+• Lädt aktivierte Module aus DB, filtert nach Rolle & Lizenz.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from typing import Dict, Optional
 from core.common.module_descriptor import ModuleDescriptor
 from core.common.module_repository import ModuleRepository
 from core.common.module_auto_discovery import default_roots
+from core.licensing.logic.license_manager import license_manager
 from core.logging.logic.logger import logger
 from core.models.user import UserRole
 
@@ -31,7 +32,18 @@ def load_registry(role: Optional[UserRole | str] = None) -> Dict[str, ModuleDesc
         repo.discover_and_register(default_roots())
         # 2) DB lesen
         items = repo.all_modules(enabled_only=True)
-        _CACHE = {d.id: d for d in items}
+
+        # 3) Lizenz-Filter: nur lizensierte Module, falls Lizenz Pflicht
+        filtered: Dict[str, ModuleDescriptor] = {}
+        for d in items:
+            if d.license_required:
+                ok = license_manager.is_module_licensed(d.id, d.version, d.license_tag)
+                if not ok:
+                    logger.log("ModuleRegistry", "LicenseBlocked", message=d.id)
+                    continue
+            filtered[d.id] = d
+
+        _CACHE = filtered
         _LOADED = True
         logger.log("ModuleRegistry", "CacheBuilt", message=f"{len(_CACHE)} entries")
 
