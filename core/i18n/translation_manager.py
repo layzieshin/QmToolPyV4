@@ -74,5 +74,5 @@ translations = TranslationManager()
 def T(label: str) -> str:
     """Global verwendbare Übersetzungsfunktion mit AppContext-Verknüpfung."""
     from core.common.app_context import AppContext  # noqa: WPS433
-    lang = AppContext.settings_manager.get("app", "language", user_specific=True, default="de")
+    lang = AppContext.settings_manager.get("app", "language", user_specific=True, fallback="de")
     return translations.t(label, lang)

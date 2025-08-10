@@ -1,5 +1,6 @@
 """
 Clockwork – zeigt aktuelle Zeit in gewählter Zeitzone.
+(keine Schema-Datei mehr → eigens gestalteter Settings-Tab wird angezeigt)
 """
 
 from __future__ import annotations
@@ -13,12 +14,10 @@ from core.common.app_context import AppContext
 MODULE_META = {
     "id": "clockwork",
     "label": "Clockwork",
+    "module_path": "clockwork.gui.clockwork_view",
     "class": "ClockworkView",
-    "version": "1.0.1",
-    "has_settings_view": True,      # ⇦  Settings-GUI wird importiert
-    "sort_order": 350,
-    "visible_for": ["Admin", "QMB", "User"],
-    "settings_for": ["Admin", "User"],
+    "version": "1.0.3",
+    "has_settings_view": True,
 }
 
 TIMEZONES = {
@@ -28,23 +27,25 @@ TIMEZONES = {
     "Australia/Sydney": "Sydney",
 }
 
-# Settings-Schema für generische Dialog-Variante
-from .settings_schema import SETTINGS_SCHEMA  # noqa: F401
-
 
 class ClockworkView(ttk.Frame):
     """Simple digital clock."""
 
-    def __init__(self, parent: tk.Widget, **_kwargs):
+    def __init__(self, parent: tk.Widget, **_):
         super().__init__(parent)
         self._lbl = ttk.Label(self, font=("Consolas", 42), padding=20)
         self._lbl.pack()
+
         self.sm = AppContext.settings_manager
         self._tz = self._get_tz()
         self._tick()
 
+    # ------------------------------------------------------------------ #
     def _get_tz(self):
-        tz_name = self.sm.get("clockwork", "timezone", "Europe/Berlin", user_specific=True)
+        tz_name = self.sm.get(
+            "clockwork", "timezone",
+            fallback="Europe/Berlin", user_specific=True
+        )
         try:
             return ZoneInfo(tz_name)
         except ZoneInfoNotFoundError:

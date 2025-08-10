@@ -88,10 +88,8 @@ class SettingsRepository:
 
     # ------------------------- HARDR E B U I L D --------------------- #
     def _hard_rebuild(self) -> None:
-        """Erstellt settings_new, kopiert Daten spalten-agnostisch, tauscht Tabellen."""
+        """Rebuild für alle denkbaren Alt-Schemata: section, namespace oder gar nichts."""
         logger.log("SettingsRepo", "HardRebuild", message="start")
-        cur = self.conn.execute("PRAGMA table_info(settings)")
-        legacy_cols = [r["name"] for r in cur.fetchall()]            # z. B. ['section','key','value']
 
         self.conn.execute(
             """
@@ -105,28 +103,26 @@ class SettingsRepository:
             """
         )
 
-        # Spalten-Mapping bauen
-        select_cols = []
-        if "section" in legacy_cols:        # Ur-alt
-            select_cols.append("section AS namespace")
-        elif "namespace" in legacy_cols:
-            select_cols.append("namespace")
-        else:
-            select_cols.append("'' AS namespace")
-        select_cols += [                   # key & value gibt es in jedem Schema
-            "key", "value",
-        ]
-        if "user_id" in legacy_cols:
-            select_cols.append("user_id")
-        else:
-            select_cols.append("NULL AS user_id")
+        cur = self.conn.execute("PRAGMA table_info(settings)")
+        legacy_cols = {r["name"] for r in cur.fetchall()}
 
-        self.conn.execute(
-            f"""
-            INSERT INTO settings_new(namespace,key,value,user_id)
-            SELECT {', '.join(select_cols)} FROM settings
-            """
-        )
+        if "section" in legacy_cols:
+            # GANZ alt
+            select = "SELECT section AS namespace, key, value, NULL AS user_id FROM settings GROUP BY section, key"
+        elif "namespace" in legacy_cols:
+            select = "SELECT namespace, key, value, COALESCE(user_id,NULL) AS user_id FROM settings GROUP BY namespace, key, user_id"
+        elif "key" in legacy_cols and "value" in legacy_cols:
+            # Nur key, value – wir nehmen "app" als Standard-Namespace
+            select = "SELECT 'app' AS namespace, key, value, NULL AS user_id FROM settings GROUP BY key"
+        else:
+            # Nichts passt, Tabelle einfach löschen
+            self.conn.execute("DROP TABLE settings")
+            self.conn.execute("ALTER TABLE settings_new RENAME TO settings")
+            self.conn.commit()
+            logger.log("SettingsRepo", "HardRebuild", message="reset blank")
+            return
+
+        self.conn.execute(f"INSERT OR REPLACE INTO settings_new(namespace,key,value,user_id) {select}")
         self.conn.execute("DROP TABLE settings")
         self.conn.execute("ALTER TABLE settings_new RENAME TO settings")
         self.conn.commit()
