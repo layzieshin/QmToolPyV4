@@ -1,0 +1,53 @@
+key	de-DE	en-US
+core_signature.title	Unterschrift	PDF Signature
+core_signature.info	Wähle ein PDF und platziere Deine Unterschrift.	Select a PDF and place your signature.
+core_signature.pick	PDF auswählen	Choose PDF
+core_signature.done	Signierte Datei erstellt:	Signed file created:
+core_signature.capture.title	Unterschrift erstellen	Create Signature
+core_signature.import.title	Signaturbild importieren	Import signature image
+core_signature.import.loaded	Bild geladen (wird gespeichert).	Image loaded (will be stored).
+core_signature.stroke_width	Strichstärke	Stroke width
+core_signature.no_user	Kein Benutzer angemeldet.	No logged-in user.
+core_signature.saved	Unterschrift gespeichert.	Signature saved.
+core_signature.settings.title	Signatur-Einstellungen	Signature Settings
+core_signature.embed_name	Name in Unterschrift einbetten	Embed user name in signature image
+core_signature.embed_date	Datum in Unterschrift einbetten	Embed date in signature image
+core_signature.name_pos	Position Name	Name position
+core_signature.date_pos	Position Datum	Date position
+core_signature.date_format	Datumsformat (strftime)	Date format (strftime)
+core_signature.naming_mode	Benennung der Ausgabedatei	Output naming
+core_signature.external_id	Externe Strategie-ID	External strategy ID
+core_signature.offsets.title	Label-Abstände	Label Offsets
+core_signature.offsets.name_above	Abstand Name über Signatur (pt)	Name offset above (pt)
+core_signature.offsets.name_below	Abstand Name unter Signatur (pt)	Name offset below (pt)
+core_signature.offsets.date_above	Abstand Datum über Signatur (pt)	Date offset above (pt)
+core_signature.offsets.date_below	Abstand Datum unter Signatur (pt)	Date offset below (pt)
+core_signature.offsets.x_offset	Horizontale Verschiebung (pt)	Horizontal offset (pt)
+core_signature.password.title	Passwortbestätigung	Password confirmation
+core_signature.password.enter	Bitte Passwort eingeben:	Please enter password:
+core_signature.password.wrong	Passwort ungültig.	Void password.
+core_signature.password.required	Passwort erforderlich.	Password required.
+core_signature.sign.place_title	Unterschrift platzieren	Place Signature
+core_signature.sign.page	Seite	Page
+core_signature.sign.width	Breite (pt)	Width (pt)
+core_signature.sign.confirm	Platzieren & Signieren	Place & Sign
+core_signature.sign.name_dir	Richtung Name	Name direction
+core_signature.sign.date_dir	Richtung Datum	Date direction
+core_signature.sign.offsets_hint	Offsets wirken relativ zu Ober-/Unterkante der Signatur.	Offsets are relative to signature top/bottom.
+core_signature.nosig.title	Keine Unterschrift vorhanden	No signature on file
+core_signature.nosig.text	Möchtest Du jetzt eine Unterschrift aufnehmen?	Do you want to create a signature now?
+core_signature.overwrite.title	Unterschrift überschreiben?	Overwrite signature?
+core_signature.overwrite.text	Es ist bereits eine Unterschrift gespeichert. Überschreiben?	A signature already exists. Overwrite?
+core_signature.admin.policy_title	Passwort-Policy (Admin)	Password policy (Admin)
+core_signature.admin.always	immer nötig	always required
+core_signature.admin.never	nie nötig	never required
+core_signature.admin.user	nutzerabhängig	user-specific
+core_signature.user.require_pwd	Beim Signieren Passwort abfragen	Ask password on signing
+common.clear	Leeren	Clear
+common.import	Importieren	Import
+common.cancel	Abbrechen	Cancel
+common.save	Speichern	Save
+common.saved	Gespeichert	Saved
+common.choose_file	Datei wählen	Choose file
+common.done	Fertig	Done
+common.error	Fehler	Error

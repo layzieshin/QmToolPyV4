@@ -1,7 +1,7 @@
 {
   "id": "clockwork",
   "label": "Clockwork",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "main_class": "clockwork.gui.clockwork_view.ClockworkView",
   "settings_class": "clockwork.gui.clockwork_settings_view.ClockworkSettingsTab",
   "visible_for": ["Admin", "QMB", "User"],

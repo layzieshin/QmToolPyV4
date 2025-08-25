@@ -4,19 +4,41 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250810_1">
-      <change afterPath="$PROJECT_DIR$/core/licensing/logic/license_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/licensing/logic/license_repository.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/licensing/models/license_status.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tools/module_meta_migrator.py" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250810_2">
+      <change afterPath="$PROJECT_DIR$/clockwork/gui/clock_widget.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/gui/settings_widget.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/logic/clock_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/logic/clockwork_settings_repository.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/clockwork/models/clockwork_settings.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/gui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/gui/password_prompt_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/gui/placement_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/gui/settings_schema.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/gui/signature_capture_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/gui/signature_settings_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/gui/signature_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/label.tsv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/logic/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/logic/encryption.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/logic/naming_strategy.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/logic/pdf_signer.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/logic/signature_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/meta.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/models/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/models/label_offsets.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/models/signature_config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/models/signature_enums.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/signature/models/signature_placement.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tools/smoke_import_signature.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/usermanagement/logic/auth_bridge.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/module_auto_discovery.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_auto_discovery.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/module_descriptor.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_descriptor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/module_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/module_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_repository.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/license/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/licensing/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/settings/gui/modules_config_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/modules_config_tab.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/settings/gui/settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/settings/gui/settings_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVELOPERGUIDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/DEVELOPERGUIDE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/clockwork/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/clockwork/gui/clockwork_settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/gui/clockwork_settings_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/clockwork/gui/clockwork_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/gui/clockwork_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/clockwork/meta.json" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/meta.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -66,27 +88,31 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.config_settings_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
-    &quot;Python.fill_dictionary_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_controller.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main_window.executor&quot;: &quot;Run&quot;,
-    &quot;Python.user_view.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;promo.database&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.config_settings_view.executor": "Run",
+    "Python.create_init_files.executor": "Run",
+    "Python.fill_dictionary_view.executor": "Run",
+    "Python.fix_roles.executor": "Run",
+    "Python.log_controller.executor": "Run",
+    "Python.log_view.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.main_window.executor": "Run",
+    "Python.pdf_signer.executor": "Run",
+    "Python.signature_view.executor": "Run",
+    "Python.smoke_import_signature.executor": "Run",
+    "Python.user_view.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "master",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4",
+    "run.code.analysis.last.selected.profile": "pProject Default",
+    "settings.editor.selected.configurable": "promo.database"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QmToolPyV4" />
@@ -102,50 +128,6 @@
     </key>
   </component>
   <component name="RunManager" selected="Python.main">
-    <configuration name="config_settings_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="QMToolPyV4" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/core/config/gui" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/config/gui/config_settings_view.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="fill_dictionary_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="QMToolPyV4" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/core/i18n" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/i18n/fill_dictionary_view.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
     <configuration name="log_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
@@ -190,7 +172,7 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="main_window" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="pdf_signer" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -199,11 +181,55 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/framework/gui" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/../QMToolPy/PDFSigner/logic" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/../QMToolPy/PDFSigner/logic/pdf_signer.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="signature_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="QMToolPyV4" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/signature/gui" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/framework/gui/main_window.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/signature/gui/signature_view.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="smoke_import_signature" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="QMToolPyV4" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tools" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/tools/smoke_import_signature.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -215,17 +241,17 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.main" />
+        <item itemvalue="Python.smoke_import_signature" />
+        <item itemvalue="Python.signature_view" />
+        <item itemvalue="Python.pdf_signer" />
         <item itemvalue="Python.log_view" />
-        <item itemvalue="Python.main_window" />
-        <item itemvalue="Python.config_settings_view" />
-        <item itemvalue="Python.fill_dictionary_view" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-4c141bd692a7-e2d783800521-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-251.26927.90" />
+        <option value="bundled-python-sdk-d9fa9deec7cb-d902c0275401-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-252.23892.515" />
       </set>
     </attachedChunks>
   </component>
@@ -414,7 +440,15 @@
       <option name="project" value="LOCAL" />
       <updated>1754839046076</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="20250810_2">
+      <option name="closed" value="true" />
+      <created>1754858184633</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1754858184633</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -434,7 +468,8 @@
     <MESSAGE value="20250712_3" />
     <MESSAGE value="20250724_1" />
     <MESSAGE value="20250810_1" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250810_1" />
+    <MESSAGE value="20250810_2" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250810_2" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -446,7 +481,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/clockwork/gui/clockwork_view.py</url>
-          <line>28</line>
+          <line>32</line>
           <option name="timeStamp" value="3" />
         </line-breakpoint>
       </breakpoints>
