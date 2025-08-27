@@ -1,18 +1,21 @@
+# signature/models/signature_enums.py
 from __future__ import annotations
 from enum import Enum
 
+
 class LabelPosition(str, Enum):
-    """Placement of a label relative to the signature image."""
+    """Placement of a label relative to the signature block."""
     ABOVE = "above"
     BELOW = "below"
+    OFF   = "off"     # NEW: do not render this label
+
 
 class OutputNamingMode(str, Enum):
-    """How the output PDF file name is chosen."""
-    DEFAULT_SUFFIX = "default_suffix"          # <file>_signed.pdf
-    EXTERNAL_STRATEGY = "external_strategy"    # via external registry
+    DEFAULT_SUFFIX = "default_suffix"
+    EXTERNAL_STRATEGY = "external_strategy"
+
 
 class AdminPasswordPolicy(str, Enum):
-    """Global admin override for password requirement."""
     ALWAYS = "always"
     NEVER = "never"
     USER_SPECIFIC = "user_specific"

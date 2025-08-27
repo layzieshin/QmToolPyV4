@@ -31,7 +31,7 @@ def _hex_to_rgb(hexstr: str) -> Tuple[int, int, int]:
 
 
 class SignatureService:
-    """Zentrale Logik zum Signieren (AppContext nur lazy innerhalb der Methoden)."""
+    """Core signing logic. AppContext is only imported lazily inside methods."""
 
     @staticmethod
     def _ctx():
@@ -57,11 +57,43 @@ class SignatureService:
         self._base_dir = base_dir
         self._sm.set(_FEATURE_ID, "data_dir", str(base_dir))
 
-    # ------------------------ Config ---------------------------
+    # ---------------- intern: persist helper ----------------
+    def _persist_settings(self) -> None:
+        for meth in ("persist", "save", "flush"):
+            fn = getattr(self._sm, meth, None)
+            if callable(fn):
+                try:
+                    fn()
+                    break
+                except Exception:
+                    pass
+
+    # ---------------- Admin: global defaults ----------------
+    def load_global_offset_defaults(self) -> LabelOffsets:
+        g = lambda k, d: self._sm.get(_FEATURE_ID, f"g_{k}", d)
+        return LabelOffsets(
+            name_above=float(g("name_above", 6.0)),
+            name_below=float(g("name_below", 12.0)),
+            date_above=float(g("date_above", 18.0)),
+            date_below=float(g("date_below", 24.0)),
+            x_offset=float(g("x_offset", 0.0)),
+        )
+
+    def save_global_offset_defaults(self, offsets: LabelOffsets) -> None:
+        self._sm.set(_FEATURE_ID, "g_name_above", float(offsets.name_above))
+        self._sm.set(_FEATURE_ID, "g_name_below", float(offsets.name_below))
+        self._sm.set(_FEATURE_ID, "g_date_above", float(offsets.date_above))
+        self._sm.set(_FEATURE_ID, "g_date_below", float(offsets.date_below))
+        self._sm.set(_FEATURE_ID, "g_x_offset", float(offsets.x_offset))
+        self._persist_settings()
+
+    # ---------------- User config ---------------------------
     def load_config(self) -> SignatureConfig:
         ctx = self._ctx()
         user = getattr(ctx, "current_user", None) if ctx else None
         uid = getattr(user, "id", None)
+
+        gdef = self.load_global_offset_defaults()
 
         def get_user(k: str, d):
             if uid:
@@ -72,19 +104,26 @@ class SignatureService:
             return self._sm.get(_FEATURE_ID, k, d)
 
         off = LabelOffsets(
-            name_above=float(get_user("name_above", 6.0)),
-            name_below=float(get_user("name_below", 12.0)),
-            date_above=float(get_user("date_above", 18.0)),
-            date_below=float(get_user("date_below", 24.0)),
-            x_offset=float(get_user("x_offset", 0.0)),
+            name_above=float(get_user("name_above", gdef.name_above)),
+            name_below=float(get_user("name_below", gdef.name_below)),
+            date_above=float(get_user("date_above", gdef.date_above)),
+            date_below=float(get_user("date_below", gdef.date_below)),
+            x_offset=float(get_user("x_offset", gdef.x_offset)),
         )
+
+        # Accept "off" if previously saved
+        def _lp(val: str, default: LabelPosition) -> LabelPosition:
+            try:
+                return LabelPosition(val)
+            except Exception:
+                return default
 
         return SignatureConfig(
             stroke_width=int(get_user("stroke_width", 3)),
             embed_name=bool(get_user("embed_name", True)),
             embed_date=bool(get_user("embed_date", True)),
-            name_position=LabelPosition(get_user("name_position", "above")),
-            date_position=LabelPosition(get_user("date_position", "below")),
+            name_position=_lp(get_user("name_position", "above"), LabelPosition.ABOVE),
+            date_position=_lp(get_user("date_position", "below"), LabelPosition.BELOW),
             date_format=str(get_user("date_format", "%Y-%m-%d %H:%M")),
             label_offsets=off,
             label_color=str(get_user("label_color", "#000000")),
@@ -113,11 +152,11 @@ class SignatureService:
         set_user("name_position", cfg.name_position.value)
         set_user("date_position", cfg.date_position.value)
         set_user("date_format", cfg.date_format)
-        set_user("name_above", cfg.label_offsets.name_above)
-        set_user("name_below", cfg.label_offsets.name_below)
-        set_user("date_above", cfg.label_offsets.date_above)
-        set_user("date_below", cfg.label_offsets.date_below)
-        set_user("x_offset", cfg.label_offsets.x_offset)
+        set_user("name_above", float(cfg.label_offsets.name_above))
+        set_user("name_below", float(cfg.label_offsets.name_below))
+        set_user("date_above", float(cfg.label_offsets.date_above))
+        set_user("date_below", float(cfg.label_offsets.date_below))
+        set_user("x_offset", float(cfg.label_offsets.x_offset))
         set_user("label_color", cfg.label_color)
         set_user("name_font_size", int(cfg.name_font_size))
         set_user("date_font_size", int(cfg.date_font_size))
@@ -126,8 +165,9 @@ class SignatureService:
         set_user("user_pwd_required", cfg.user_pwd_required)
 
         self._sm.set(_FEATURE_ID, "admin_password_policy", cfg.admin_password_policy.value)
+        self._persist_settings()
 
-    # -------------------- Password policy & verification ---------------------
+    # ---------------- Password policy -----------------------
     def is_password_required(self) -> bool:
         cfg = self.load_config()
         if cfg.admin_password_policy == AdminPasswordPolicy.ALWAYS:
@@ -203,13 +243,14 @@ class SignatureService:
 
         return False
 
-    # -------------------- Encrypted user signature store ---------------------
+    # ---------------- Encrypted signature store -------------
     def _sig_path(self, user_id: str) -> Path:
         return self._base_dir / f"{user_id}.sig"
 
     def save_user_signature_png(self, user_id: str, png_bytes: bytes) -> None:
         token = encrypt_bytes(self._sm, png_bytes)
         self._sig_path(user_id).write_bytes(token)
+        self._persist_settings()
 
     def load_user_signature_png(self, user_id: str) -> Optional[bytes]:
         p = self._sig_path(user_id)
@@ -218,14 +259,14 @@ class SignatureService:
         return decrypt_bytes(self._sm, p.read_bytes())
 
     def delete_user_signature(self, user_id: str) -> bool:
-        """NEU: gespeicherte User-Signatur löschen (falls vorhanden)."""
         p = self._sig_path(user_id)
         if p.exists():
             p.unlink()
+            self._persist_settings()
             return True
         return False
 
-    # ---------------------- Canvas strokes to PNG ----------------------------
+    # ---------------- Canvas strokes -> PNG -----------------
     def render_png_from_strokes(self, strokes: list[list[tuple[int, int]]],
                                 size: tuple[int, int], stroke_width: int,
                                 name_text: Optional[str] = None, date_text: Optional[str] = None,
@@ -239,7 +280,7 @@ class SignatureService:
                 drw.line(poly, fill=(0, 0, 0, 255), width=stroke_width, joint="curve")
         buf = io.BytesIO(); img.save(buf, format="PNG"); return buf.getvalue()
 
-    # ------------------------------ Signing ----------------------------------
+    # ----------------------------- Signing ------------------
     def _audit(self, payload: dict) -> None:
         payload["ts_utc"] = datetime.now(timezone.utc).isoformat()
         try:
@@ -286,9 +327,13 @@ class SignatureService:
         name_fs = max(6, int(override_font_sizes[0])) if override_font_sizes else max(6, int(cfg.name_font_size))
         date_fs = max(6, int(override_font_sizes[1])) if override_font_sizes else max(6, int(cfg.date_font_size))
 
+        # Respect OFF: if OFF, do not pass text (PdfSigner skips None)
+        name_text = (display_name if cfg.embed_name and display_name and name_pos != LabelPosition.OFF else None)
+        date_text = (datetime.now().strftime(cfg.date_format) if cfg.embed_date and date_pos != LabelPosition.OFF else None)
+
         labels = RenderLabels(
-            name_text=(display_name if cfg.embed_name and display_name else None),
-            date_text=(datetime.now().strftime(cfg.date_format) if cfg.embed_date else None),
+            name_text=name_text,
+            date_text=date_text,
             name_pos=name_pos,
             date_pos=date_pos,
             date_format=cfg.date_format,
@@ -320,6 +365,11 @@ class SignatureService:
             "name_position": name_pos.value, "date_position": date_pos.value,
             "date_format": cfg.date_format, "label_color": cfg.label_color,
             "name_font_size": name_fs, "date_font_size": date_fs,
+            "label_offsets": {
+                "name_above": labels.offsets.name_above, "name_below": labels.offsets.name_below,
+                "date_above": labels.offsets.date_above, "date_below": labels.offsets.date_below,
+                "x_offset": labels.offsets.x_offset
+            },
             "signature_sha256": hashlib.sha256(sig).hexdigest(),
             "reason": reason,
         })

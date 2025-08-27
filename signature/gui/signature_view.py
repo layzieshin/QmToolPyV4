@@ -1,98 +1,160 @@
 from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+
 from core.common.app_context import AppContext, T
-from core.settings.logic.settings_manager import SettingsManager
 from ..logic.signature_service import SignatureService
 from ..models.signature_placement import SignaturePlacement
+from ..models.signature_enums import LabelPosition
 from .placement_dialog import PlacementDialog
 from .password_prompt_dialog import PasswordPromptDialog
 from .signature_capture_dialog import SignatureCaptureDialog
 
+
 class SignatureView(ttk.Frame):
-    def __init__(self, parent: tk.Misc, *,
-                 settings_manager: SettingsManager = None,
-                 sm: SettingsManager = None, logger=None, password_verifier=None) -> None:
-        super().__init__(parent)
+    """
+    Haupt-View zum Signieren:
+      • PDF auswählen
+      • Platzieren (Live-Preview-Dialog)
+      • Signieren
+
+    Robuste Guards:
+      - self._pdf_path existiert immer (StringVar)
+      - Passwort-Policy wird beachtet
+      - Kein Crash, wenn keine Signatur gespeichert ist: Abfrage zum Aufzeichnen
+    """
+
+    def __init__(self, parent, *, settings_manager=None, sm=None, **kwargs):
+        super().__init__(parent, **kwargs)
         self._sm = settings_manager or sm
-        self._service = SignatureService(settings_manager=self._sm, logger=logger, password_verifier=password_verifier)
+        self._service = SignatureService(settings_manager=self._sm)
+        self._pdf_path = tk.StringVar(value="")  # <-- fehlte vorher
+        self._make_ui()
 
-        self.columnconfigure(0, weight=1)
-        ttk.Label(self, text=T("core_signature.title") or "PDF Signature",
-                  font=("Segoe UI", 16, "bold")).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 6))
-        ttk.Label(self, text=T("core_signature.info") or "Select a PDF and place your signature.")\
-            .grid(row=1, column=0, sticky="w", padx=12, pady=(0, 8))
-        ttk.Button(self, text=T("common.choose_file") or "Choose PDF…", command=self._choose)\
-            .grid(row=2, column=0, sticky="w", padx=12, pady=(0, 12))
+    # ------------------------------------------------------------------ UI
+    def _make_ui(self) -> None:
+        row = ttk.Frame(self)
+        row.grid(row=0, column=0, sticky="ew", padx=12, pady=10)
+        row.columnconfigure(0, weight=1)
 
-    def _ensure_signature(self) -> bool:
-        user = getattr(AppContext, "current_user", None)
-        uid = getattr(user, "id", None)
-        if not uid:
-            messagebox.showerror(title=T("common.error") or "Error",
-                                 message=T("core_signature.no_user") or "No logged-in user.", parent=self)
-            return False
-        if self._service.load_user_signature_png(uid) is None:
-            if messagebox.askyesno(title=T("core_signature.nosig.title") or "No signature on file",
-                                   message=T("core_signature.nosig.text") or "Do you want to create a signature now?",
-                                   parent=self):
-                dlg = SignatureCaptureDialog(self, service=self._service); self.wait_window(dlg)
-                return self._service.load_user_signature_png(uid) is not None
-            else:
-                return False
-        return True
+        ttk.Entry(row, textvariable=self._pdf_path).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(row, text=T("core_signature.sign.browse") or "Choose PDF…",
+                   command=self._browse).grid(row=0, column=1, sticky="e")
+        ttk.Button(row, text=T("core_signature.sign.open_capture") or "Create signature…",
+                   command=self._capture_if_needed).grid(row=0, column=2, padx=(6, 0))
 
-    def _choose(self):
-        path = filedialog.askopenfilename(parent=self, title=T("core_signature.pick") or "Choose PDF",
-                                          filetypes=[("PDF", "*.pdf")])
-        if not path: return
-        if not self._ensure_signature(): return
+        ttk.Button(self, text=T("core_signature.sign.place_btn") or "Place & Sign",
+                   command=self._choose).grid(row=1, column=0, sticky="e", padx=12, pady=(0, 12))
 
+    def _browse(self) -> None:
+        p = filedialog.askopenfilename(parent=self,
+                                       filetypes=[("PDF", "*.pdf")],
+                                       title=T("core_signature.sign.choose_pdf") or "Choose PDF")
+        if p:
+            self._pdf_path.set(p)
+
+    def _capture_if_needed(self) -> None:
+        """Erlaubt manuell eine Signatur zu erstellen/zu ersetzen."""
+        dlg = SignatureCaptureDialog(self, service=self._service)
+        self.wait_window(dlg)
+
+    # ------------------------------------------------------------------ Signing flow
+    def _choose(self) -> None:
+        """
+        Öffnet den Platzierungsdialog und signiert danach die PDF.
+        Seit dem Update liefert der Dialog 4 Werte:
+          (placement, (name_pos, date_pos), offsets, (name_fs, date_fs))
+        Für Rückwärtskompatibilität akzeptieren wir auch 3 Werte.
+        """
+        if not self._pdf_path.get():
+            messagebox.showinfo(T("common.info") or "Info",
+                                T("core_signature.sign.choose_pdf_first") or "Please choose a PDF first.",
+                                parent=self)
+            return
+
+        # Prüfe, ob eine Signatur gespeichert ist, sonst freundlich fragen
+        uid = getattr(AppContext.current_user, "id", None)
+        sig = self._service.load_user_signature_png(uid) if uid else None
+        if not sig:
+            if not messagebox.askyesno(
+                T("common.question") or "Question",
+                T("core_signature.sign.no_sig_q") or "No signature stored. Create one now?",
+                parent=self,
+            ):
+                return
+            self._capture_if_needed()
+            sig = self._service.load_user_signature_png(uid)
+            if not sig:
+                # User hat abgebrochen
+                return
+
+        # Platzierung
         cfg = self._service.load_config()
-        default_place = SignaturePlacement()
-        user = getattr(AppContext, "current_user", None)
-        uid = getattr(user, "id", None)
-        full_name = (getattr(user, "full_name", None) or getattr(user, "name", None) or getattr(user, "username", None))
-        sig_png = self._service.load_user_signature_png(uid) if uid else None
+        full_name = (getattr(AppContext.current_user, "full_name", None)
+                     or getattr(AppContext.current_user, "name", None)
+                     or getattr(AppContext.current_user, "username", None) or "")
 
-        pd = PlacementDialog(self,
-            pdf_path=path,
-            default_placement=default_place,
+        dlg = PlacementDialog(
+            self,
+            pdf_path=self._pdf_path.get(),
+            default_placement=SignaturePlacement(page_index=0, x=72.0, y=72.0, target_width=max(120.0, 180.0)),
             default_name_pos=cfg.name_position,
             default_date_pos=cfg.date_position,
             default_offsets=cfg.label_offsets,
-            signature_png=sig_png,
+            signature_png=sig,
             show_name=bool(cfg.embed_name),
             show_date=bool(cfg.embed_date),
             label_name_text=full_name,
             date_format=cfg.date_format,
             label_color_hex=cfg.label_color,
+            name_font_size=cfg.name_font_size,
+            date_font_size=cfg.date_font_size,
         )
-        self.wait_window(pd)
-        if not pd.result: return
-        placement, (name_pos, date_pos), offsets = pd.result
+        self.wait_window(dlg)
+        if not dlg.result:
+            return
 
+        # robust auspacken (3 oder 4 Rückgabewerte)
+        font_sizes = (cfg.name_font_size, cfg.date_font_size)
+        try:
+            if len(dlg.result) == 4:
+                placement, (name_pos, date_pos), offsets, font_sizes = dlg.result
+            else:
+                placement, (name_pos, date_pos), offsets = dlg.result
+        except Exception:
+            placement, (name_pos, date_pos), offsets = dlg.result[:3]
+
+        # Passwort-Policy
+        pwd = None
         if self._service.is_password_required():
             attempts = 0
             while attempts < 3:
-                dlg = PasswordPromptDialog(self); self.wait_window(dlg)
-                if not dlg.password:
-                    messagebox.showerror(title=T("common.error") or "Error",
-                                         message=T("core_signature.password.required") or "Password required.", parent=self)
+                pd = PasswordPromptDialog(self)
+                self.wait_window(pd)
+                if not pd.password:
                     return
-                if self._service.verify_password(uid, dlg.password): break
+                if self._service.verify_password(uid, pd.password):
+                    pwd = pd.password
+                    break
                 attempts += 1
                 messagebox.showerror(title=T("common.error") or "Error",
-                                     message=T("core_signature.password.wrong") or "Wrong password.", parent=self)
-            if attempts >= 3: return
+                                     message=T("core_signature.password.wrong") or "Wrong password.",
+                                     parent=self)
+            if attempts >= 3:
+                return
 
+        # Signieren
         try:
             out = self._service.sign_pdf(
-                input_path=path, placement=placement, reason="manual",
+                input_path=self._pdf_path.get(),
+                placement=placement,
                 enforce_label_positions=(name_pos, date_pos),
-                override_label_offsets=offsets
+                override_label_offsets=offsets,
+                override_font_sizes=font_sizes,
+                reason="manual",
             )
-            messagebox.showinfo(title=T("common.done") or "Done",
-                                message=(T("core_signature.done") or "Signed file created:\n") + out, parent=self)
+            messagebox.showinfo(T("common.done") or "Done",
+                                (T("core_signature.done") or "Signed file created:\n") + out,
+                                parent=self)
         except Exception as ex:
-            messagebox.showerror(title=T("common.error") or "Error", message=str(ex), parent=self)
+            messagebox.showerror(T("common.error") or "Error", str(ex), parent=self)
