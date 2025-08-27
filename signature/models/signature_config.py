@@ -1,3 +1,4 @@
+# signature/models/signature_config.py
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
@@ -7,10 +8,11 @@ from .label_offsets import LabelOffsets
 @dataclass
 class SignatureConfig:
     """
-    User-scope configuration persisted via SettingsManager under feature id 'core_signature'.
-    Note: admin_password_policy is global (non user-specific).
+    Persisted (user-scoped) configuration under feature id 'core_signature'.
+    Hinweis:
+      - admin_password_policy ist global (nicht user-spezifisch).
     """
-    # Drawing / labels
+    # Zeichen-/Label-Optionen
     stroke_width: int = 3
     embed_name: bool = True
     embed_date: bool = True
@@ -19,13 +21,15 @@ class SignatureConfig:
     date_format: str = "%Y-%m-%d %H:%M"
     label_offsets: LabelOffsets = field(default_factory=LabelOffsets)
 
-    # NEW: color for name/date labels (hex)
-    label_color: str = "#000000"  # default: black
+    # NEU: Farbe & Schriftgrößen (werden in Vorschau + finalem PDF genutzt)
+    label_color: str = "#000000"   # Hex (#000 / #000000)
+    name_font_size: int = 12       # pt
+    date_font_size: int = 12       # pt
 
-    # Output naming
+    # Ausgabe-Benennung
     naming_mode: OutputNamingMode = OutputNamingMode.DEFAULT_SUFFIX
     external_strategy_id: Optional[str] = None
 
-    # Security
+    # Sicherheit / Policy
     user_pwd_required: bool = True
     admin_password_policy: AdminPasswordPolicy = AdminPasswordPolicy.USER_SPECIFIC

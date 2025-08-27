@@ -14,6 +14,7 @@ from core.i18n.translation_manager import translations
 from core.logging.logic.log_controller import LogController
 from core.settings.logic.settings_manager import settings_manager  # Instanz!
 from usermanagement.logic.user_manager import UserManager
+from core.common.signature_api import SignatureAPI  # NEW
 
 # ------------------------------------------------------------------ #
 #  Übersetzungsdatei einmalig laden                                  #
@@ -79,3 +80,5 @@ def T(label: str) -> str:
 
 # Initiale Sprache setzen
 AppContext.update_language()
+# Attach global signature API for all modules
+AppContext.signature = SignatureAPI()  # type: ignore[attr-defined]

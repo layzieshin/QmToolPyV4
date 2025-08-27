@@ -7,11 +7,11 @@ class UserSettingsView(Frame):
     """
     Zeigt die Benutzereinstellungen des aktuellen Users an.
     """
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, *, settings_manager=None, sm=None, **kwargs):
         super().__init__(parent)
         self.controller = controller
         user = controller.user_manager.get_logged_in_user()
-
+        self._sm = settings_manager or sm
         Label(self, text="Benutzereinstellungen", font=("Arial", 18, "bold")).pack(pady=20)
 
         if user:

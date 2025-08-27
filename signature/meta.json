@@ -1,12 +1,12 @@
 {
   "id": "core_signature",
   "label": "signature",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "main_class": "signature.gui.signature_view.SignatureView",
   "settings_class": "signature.gui.signature_settings_view.SignatureSettingsView",
   "visible_for": ["Admin", "QMB", "User"],
   "settings_for": ["Admin", "User"],
   "is_core": true,
   "sort_order": 120,
-  "requires_login": true
+  "requires_login": false
 }

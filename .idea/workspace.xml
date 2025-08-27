@@ -4,41 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250810_2">
-      <change afterPath="$PROJECT_DIR$/clockwork/gui/clock_widget.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/clockwork/gui/settings_widget.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/clockwork/logic/clock_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/clockwork/logic/clockwork_settings_repository.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/clockwork/models/clockwork_settings.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/gui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/gui/password_prompt_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/gui/placement_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/gui/settings_schema.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/gui/signature_capture_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/gui/signature_settings_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/gui/signature_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/label.tsv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/logic/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/logic/encryption.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/logic/naming_strategy.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/logic/pdf_signer.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/logic/signature_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/meta.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/models/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/models/label_offsets.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/models/signature_config.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/models/signature_enums.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/signature/models/signature_placement.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tools/smoke_import_signature.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/usermanagement/logic/auth_bridge.py" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250826_1 implement signature">
+      <change afterPath="$PROJECT_DIR$/core/common/signature_api.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/DEVELOPERGUIDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/DEVELOPERGUIDE.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/clockwork/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/clockwork/gui/clockwork_settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/gui/clockwork_settings_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/clockwork/gui/clockwork_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/gui/clockwork_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/clockwork/meta.json" beforeDir="false" afterPath="$PROJECT_DIR$/clockwork/meta.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/gui/placement_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/gui/placement_dialog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/gui/signature_settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/gui/signature_settings_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/logic/pdf_signer.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/logic/pdf_signer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/logic/signature_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/logic/signature_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/meta.json" beforeDir="false" afterPath="$PROJECT_DIR$/signature/meta.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/models/signature_config.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/models/signature_config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usermanagement/gui/user_settings_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/usermanagement/gui/user_settings_view.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -88,31 +64,31 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.config_settings_view.executor": "Run",
-    "Python.create_init_files.executor": "Run",
-    "Python.fill_dictionary_view.executor": "Run",
-    "Python.fix_roles.executor": "Run",
-    "Python.log_controller.executor": "Run",
-    "Python.log_view.executor": "Run",
-    "Python.main.executor": "Run",
-    "Python.main_window.executor": "Run",
-    "Python.pdf_signer.executor": "Run",
-    "Python.signature_view.executor": "Run",
-    "Python.smoke_import_signature.executor": "Run",
-    "Python.user_view.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "master",
-    "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4",
-    "run.code.analysis.last.selected.profile": "pProject Default",
-    "settings.editor.selected.configurable": "promo.database"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.config_settings_view.executor&quot;: &quot;Run&quot;,
+    &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
+    &quot;Python.fill_dictionary_view.executor&quot;: &quot;Run&quot;,
+    &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
+    &quot;Python.log_controller.executor&quot;: &quot;Run&quot;,
+    &quot;Python.log_view.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main_window.executor&quot;: &quot;Run&quot;,
+    &quot;Python.pdf_signer.executor&quot;: &quot;Run&quot;,
+    &quot;Python.signature_view.executor&quot;: &quot;Run&quot;,
+    &quot;Python.smoke_import_signature.executor&quot;: &quot;Run&quot;,
+    &quot;Python.user_view.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;promo.database&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QmToolPyV4" />
@@ -448,7 +424,15 @@
       <option name="project" value="LOCAL" />
       <updated>1754858184633</updated>
     </task>
-    <option name="localTasksCounter" value="24" />
+    <task id="LOCAL-00024" summary="20250826_1 implement signature">
+      <option name="closed" value="true" />
+      <created>1756163166264</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1756163166264</updated>
+    </task>
+    <option name="localTasksCounter" value="25" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -469,7 +453,8 @@
     <MESSAGE value="20250724_1" />
     <MESSAGE value="20250810_1" />
     <MESSAGE value="20250810_2" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250810_2" />
+    <MESSAGE value="20250826_1 implement signature" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250826_1 implement signature" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
