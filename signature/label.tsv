@@ -1,4 +1,4 @@
-key	de-DE	en-US
+key	de	en
 core_signature.title	Unterschrift	PDF Signature
 core_signature.info	Wähle ein PDF und platziere Deine Unterschrift.	Select a PDF and place your signature.
 core_signature.pick	PDF auswählen	Choose PDF
@@ -43,11 +43,3 @@ core_signature.admin.always	immer nötig	always required
 core_signature.admin.never	nie nötig	never required
 core_signature.admin.user	nutzerabhängig	user-specific
 core_signature.user.require_pwd	Beim Signieren Passwort abfragen	Ask password on signing
-common.clear	Leeren	Clear
-common.import	Importieren	Import
-common.cancel	Abbrechen	Cancel
-common.save	Speichern	Save
-common.saved	Gespeichert	Saved
-common.choose_file	Datei wählen	Choose file
-common.done	Fertig	Done
-common.error	Fehler	Error

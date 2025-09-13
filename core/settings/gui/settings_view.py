@@ -58,5 +58,5 @@ class SettingsView(ttk.Frame):
 
         # Admin tabs
         if self._is_admin:
-            self._nb.add(ConfigSettingsTab(self._nb), text=T("config"))
+            self._nb.add(ConfigSettingsTab(self._nb), text=T("core.config"))
             self._nb.add(ModulesConfigTab(self._nb), text="Module Mgmt")
