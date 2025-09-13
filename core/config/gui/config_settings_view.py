@@ -184,7 +184,7 @@ class ConfigSettingsTab(ttk.Frame):
     def _save_to_ini(self) -> None:
         ok, msg = self._validate()
         if not ok:
-            messagebox.showerror(T("Invalid configuration"), msg)
+            messagebox.showerror(T("core.invalid_configuration"), msg)
             logger.log("Config", "SaveFailed", username=_current_username(), message=msg)
             return
 
@@ -201,7 +201,7 @@ class ConfigSettingsTab(ttk.Frame):
 
         self._backup_to_db(silent=True)
         AppContext.update_language()                     # Sprache ggf. neu laden
-        messagebox.showinfo(T("Saved"), T("Configuration updated."))
+        messagebox.showinfo(T("core.saved"), T("core.configuration_updated"))
         logger.log("Config", "SaveToINI", username=_current_username())
 
     # -------- Backup-Helpers ---------- #

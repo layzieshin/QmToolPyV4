@@ -28,7 +28,7 @@ class FillDictionaryView(tk.Toplevel):
 
     def __init__(self, parent: tk.Widget):
         super().__init__(parent)
-        self.title(T("main_dictionary"))          # „Dict ergänzen“ / „Fill Dict“
+        self.title(T("core.main_dictionary"))          # „Dict ergänzen“ / „Fill Dict“
         self.geometry("900x500")
         self.transient(parent)
         self.grab_set()
@@ -51,8 +51,8 @@ class FillDictionaryView(tk.Toplevel):
 
         # Buttons
         btn_row = ttk.Frame(self); btn_row.pack(pady=6)
-        ttk.Button(btn_row, text=T("save"), command=self._save).pack(side="left", padx=5)
-        ttk.Button(btn_row, text=T("cancel"), command=self.destroy).pack(side="left", padx=5)
+        ttk.Button(btn_row, text=T("core.save"), command=self._save).pack(side="left", padx=5)
+        ttk.Button(btn_row, text=T("core.cancel"), command=self.destroy).pack(side="left", padx=5)
 
         self._load_data()
 

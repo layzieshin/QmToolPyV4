@@ -65,17 +65,17 @@ class UserManagementView(Frame):
     # ------------------------------------------------------------------ #
     def _build_login_view(self):
         self._clear()
-        Label(self, text=T("login"), font=("Arial", 16)).pack(pady=10)
+        Label(self, text=T("core.login"), font=("Arial", 16)).pack(pady=10)
 
         self.username_entry = Entry(self)
         self.username_entry.pack(pady=5)
-        self.username_entry.insert(0, T("username"))
+        self.username_entry.insert(0, T("core.username"))
 
         self.password_entry = Entry(self, show="*")
         self.password_entry.pack(pady=5)
-        self.password_entry.insert(0, T("password"))
+        self.password_entry.insert(0, T("core.password"))
 
-        Button(self, text=T("login"), command=self._handle_login).pack(pady=10)
+        Button(self, text=T("core.login"), command=self._handle_login).pack(pady=10)
 
         # Erst-Admin anlegen, wenn DB leer
         if not self.user_manager.get_all_users():
@@ -89,17 +89,17 @@ class UserManagementView(Frame):
 
         if user:
             self.active_user = user
-            self.set_status(f"{T('login')} {T('success')}")
+            self.set_status(f"{T('core.login')} {T('core.success')}")
             if self.on_login_success:
                 self.on_login_success()
             self._build_main_view()
         else:
-            self.set_status(T("current_password_wrong"))
-            messagebox.showerror(T("error"), T("current_password_wrong"))
+            self.set_status(T("core.current_password_wrong"))
+            messagebox.showerror(T("core.error"), T("core.current_password_wrong"))
 
     def _handle_logout(self):
         self.user_manager.logout()
-        self.set_status(T("logout"))
+        self.set_status(T("core.logout"))
         if self.on_logout:
             self.on_logout()
         self.active_user = None
@@ -118,26 +118,26 @@ class UserManagementView(Frame):
 
         # Profil
         pf = Frame(nb); self._build_profile_tab(pf)
-        nb.add(pf, text=T("profile_tab"))
+        nb.add(pf, text=T("core.profile_tab"))
 
         # Passwort
         pw = Frame(nb); self._build_password_tab(pw)
-        nb.add(pw, text=T("change_password"))
+        nb.add(pw, text=T("core.change_password"))
 
         # Platzhalter
-        sig = Frame(nb); Label(sig, text=T("sign_pdf")).pack()
-        nb.add(sig, text=T("sign_pdf"))
+        sig = Frame(nb); Label(sig, text=T("core.sign_pdf")).pack()
+        nb.add(sig, text=T("core.sign_pdf"))
 
         # Admin
         if self.active_user.role == UserRole.ADMIN:
             adm = Frame(nb); self._build_admin_panel(adm)
-            nb.add(adm, text=T("user_management"))
+            nb.add(adm, text=T("core.user_management"))
 
     # ------------------------------------------------------------------ #
     # Profil-Tab                                                         #
     # ------------------------------------------------------------------ #
     def _build_profile_tab(self, frame: Frame):
-        Label(frame, text=T("profile_title"), font=("Arial", 14, "bold")).pack(pady=8)
+        Label(frame, text=T("core.profile_title"), font=("Arial", 14, "bold")).pack(pady=8)
         tbl = Frame(frame); tbl.pack(padx=10, pady=8)
 
         self.profile_entries: Dict[str, tk.StringVar] = {}
@@ -149,12 +149,12 @@ class UserManagementView(Frame):
             self.profile_entries[fld] = var
         tbl.grid_columnconfigure(1, weight=1)
 
-        Button(frame, text=T("save_profile"), command=self._save_profile).pack(pady=10)
+        Button(frame, text=T("core.save_profile"), command=self._save_profile).pack(pady=10)
 
     def _save_profile(self):
         updates = {f: v.get() for f, v in self.profile_entries.items()}
         ok = self.user_manager.update_user_profile(self.active_user.username, updates)
-        self.set_status(T("profile_saved") if ok else T("profile_save_failed"))
+        self.set_status(T("core.profile_saved") if ok else T("core.profile_save_failed"))
         if ok:
             for f, v in updates.items():
                 setattr(self.active_user, f, v)
@@ -163,44 +163,44 @@ class UserManagementView(Frame):
     # Passwort-Tab                                                       #
     # ------------------------------------------------------------------ #
     def _build_password_tab(self, frame: Frame):
-        Label(frame, text=T("change_password"), font=("Arial", 14, "bold")).pack(pady=10)
+        Label(frame, text=T("core.change_password"), font=("Arial", 14, "bold")).pack(pady=10)
         form = Frame(frame); form.pack(pady=10)
 
-        Label(form, text=T("current_password")).grid(row=0, column=0, sticky="w")
+        Label(form, text=T("core.current_password")).grid(row=0, column=0, sticky="w")
         old_e = Entry(form, show="*"); old_e.grid(row=0, column=1, pady=2)
 
-        Label(form, text=T("new_password")).grid(row=1, column=0, sticky="w")
+        Label(form, text=T("core.new_password")).grid(row=1, column=0, sticky="w")
         new_e = Entry(form, show="*"); new_e.grid(row=1, column=1, pady=2)
 
-        Label(form, text=T("repeat_new_password")).grid(row=2, column=0, sticky="w")
+        Label(form, text=T("core.repeat_new_password")).grid(row=2, column=0, sticky="w")
         rep_e = Entry(form, show="*"); rep_e.grid(row=2, column=1, pady=2)
 
         def do_change():
             old, new, rep = old_e.get(), new_e.get(), rep_e.get()
             if not all((old, new, rep)):
-                self.set_status(T("all_fields_required"))
-                messagebox.showerror(T("error"), T("all_fields_required"))
+                self.set_status(T("core.all_fields_required"))
+                messagebox.showerror(T("core.error"), T("core.all_fields_required"))
                 return
             if new != rep:
-                self.set_status(T("passwords_no_match"))
-                messagebox.showerror(T("error"), T("passwords_no_match"))
+                self.set_status(T("core.passwords_no_match"))
+                messagebox.showerror(T("core.error"), T("core.passwords_no_match"))
                 return
             ok = self.user_manager.change_password(self.active_user.username, old, new)
             if ok:
-                self.set_status(T("password_changed"))
-                messagebox.showinfo(T("success"), T("password_changed"))
+                self.set_status(T("core.password_changed"))
+                messagebox.showinfo(T("core.success"), T("core.password_changed"))
             else:
-                self.set_status(T("current_password_wrong"))
-                messagebox.showerror(T("error"), T("current_password_wrong"))
+                self.set_status(T("core.current_password_wrong"))
+                messagebox.showerror(T("core.error"), T("core.current_password_wrong"))
             old_e.delete(0, "end"); new_e.delete(0, "end"); rep_e.delete(0, "end")
 
-        Button(frame, text=T("change_password_btn"), command=do_change).pack(pady=10)
+        Button(frame, text=T("core.change_password_btn"), command=do_change).pack(pady=10)
 
     # ------------------------------------------------------------------ #
     # Admin-Panel                                                        #
     # ------------------------------------------------------------------ #
     def _build_admin_panel(self, frame: Frame):
-        Label(frame, text=T("user_management"), font=("Arial", 14, "bold")).pack(pady=(10, 4))
+        Label(frame, text=T("core.user_management"), font=("Arial", 14, "bold")).pack(pady=(10, 4))
 
         cols = ["username", "email", "role", "full_name", "phone", "department", "job_title"]
         tree = ttk.Treeview(frame, columns=cols, show="headings")
@@ -211,9 +211,9 @@ class UserManagementView(Frame):
         self.admin_user_tree = tree
 
         btn_row = Frame(frame); btn_row.pack(pady=4)
-        Button(btn_row, text=T("edit"), command=self._popup_edit_user).pack(side="left", padx=5)
-        Button(btn_row, text=T("delete"), command=self._delete_selected_user).pack(side="left", padx=5)
-        Button(btn_row, text=T("add"), command=self._popup_create_user).pack(side="left", padx=5)
+        Button(btn_row, text=T("core.edit"), command=self._popup_edit_user).pack(side="left", padx=5)
+        Button(btn_row, text=T("core.delete"), command=self._delete_selected_user).pack(side="left", padx=5)
+        Button(btn_row, text=T("core.add"), command=self._popup_create_user).pack(side="left", padx=5)
 
         self._refresh_user_list()
 
@@ -234,8 +234,8 @@ class UserManagementView(Frame):
     def _popup_edit_user(self):
         sel = self.admin_user_tree.focus()
         if not sel:
-            self.set_status(T("update_failed"))
-            messagebox.showerror(T("error"), T("update_failed"))
+            self.set_status(T("core.update_failed"))
+            messagebox.showerror(T("core.error"), T("core.update_failed"))
             return
 
         username = self.admin_user_tree.item(sel)["values"][0]
@@ -263,14 +263,14 @@ class UserManagementView(Frame):
             upd = {f: ents[f].get() for f in fields}
             ok = self.user_manager.update_user_profile(username, upd)
             self._refresh_user_list(); pop.destroy()
-            self.set_status(T("profile_saved") if ok else T("profile_save_failed"))
+            self.set_status(T("core.profile_saved") if ok else T("core.profile_save_failed"))
 
-        Button(pop, text=T("save"), command=save) \
+        Button(pop, text=T("core.save"), command=save) \
             .grid(row=len(fields), column=0, columnspan=2, pady=10)
     # ---------- Popup: CREATE USER ------------------------------------ #
     def _popup_create_user(self):
         pop = tk.Toplevel(self);
-        pop.title(T("user_management"))
+        pop.title(T("core.user_management"))
         pop.grab_set();
         pop.resizable(False, False)
 
@@ -299,32 +299,32 @@ class UserManagementView(Frame):
                     for f in fields}
 
             if not data["username"] or not data["password"] or not data["email"]:
-                self.set_status(T("all_fields_required"))
-                messagebox.showerror(T("error"), T("all_fields_required"))
+                self.set_status(T("core.all_fields_required"))
+                messagebox.showerror(T("core.error"), T("core.all_fields_required"))
                 return
 
             ok = self.user_manager.register_full(data)
             self._refresh_user_list();
             pop.destroy()
-            self.set_status(T("profile_saved") if ok else T("profile_save_failed"))
+            self.set_status(T("core.profile_saved") if ok else T("core.profile_save_failed"))
 
-        Button(pop, text=T("save"), command=save) \
+        Button(pop, text=T("core.save"), command=save) \
             .grid(row=len(fields), column=0, columnspan=2, pady=10)
 
     def _delete_selected_user(self):
         sel = self.admin_user_tree.focus()
         if not sel:
-            self.set_status(T("update_failed"))
-            messagebox.showerror(T("error"), T("update_failed"))
+            self.set_status(T("core.update_failed"))
+            messagebox.showerror(T("core.error"), T("core.update_failed"))
             return
 
         username = self.admin_user_tree.item(sel)["values"][0]
         if username == self.active_user.username:
             self.set_status("Cannot delete your own account.")
-            messagebox.showerror(T("error"), "Cannot delete your own account.")
+            messagebox.showerror(T("core.error"), "Cannot delete your own account.")
             return
 
-        if messagebox.askyesno(T("delete"), f"{T('delete')} {username}?"):
+        if messagebox.askyesno(T("core.delete"), f"{T('core.delete')} {username}?"):
             ok = self.user_manager.delete_user(username)
             self._refresh_user_list()
-            self.set_status(T("profile_saved") if ok else T("profile_save_failed"))
+            self.set_status(T("core.profile_saved") if ok else T("core.profile_save_failed"))

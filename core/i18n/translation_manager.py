@@ -16,30 +16,40 @@ class TranslationManager:
         self.file_path: Path | None = None     # <— neu
         self._missing_keys_logged = set()
 
-    def load_file(self, file_path: Path):
-        """Lädt und analysiert die Übersetzungsdatei."""
-        self.file_path = file_path.resolve()    # <— merken
-        with open(file_path, encoding="utf-8") as f:
-            reader = csv.reader(f, delimiter="\t")
-            header = next(reader)
-            langs = header[1:]
-            for lang in langs:
-                self.translations.setdefault(lang, {})
+    def load_files(self, file_paths: list[Path]) -> None:
+        """Lädt und analysiert mehrere Übersetzungsdateien."""
+        self.translations = {}
+        self.coverage = {}
+        self.file_path = None
+        all_labels: set[str] = set()
 
-            row_count = 0
-            for row in reader:
-                if not row:
-                    continue
-                row_count += 1
-                label = row[0]
-                for i, lang in enumerate(langs):
-                    text = row[i + 1] if i + 1 < len(row) else ""
-                    self.translations[lang][label] = text
+        for file_path in file_paths:
+            if self.file_path is None:
+                self.file_path = file_path.resolve()
+            with open(file_path, encoding="utf-8") as f:
+                reader = csv.reader(f, delimiter="\t")
+                header = next(reader)
+                langs = header[1:]
+                for lang in langs:
+                    self.translations.setdefault(lang, {})
 
-            # Coverage berechnen
-            for lang in langs:
-                translated = sum(bool(v) for v in self.translations[lang].values())
-                self.coverage[lang] = translated / row_count if row_count else 1.0
+                for row in reader:
+                    if not row:
+                        continue
+                    label = row[0]
+                    all_labels.add(label)
+                    for i, lang in enumerate(langs):
+                        text = row[i + 1] if i + 1 < len(row) else ""
+                        self.translations[lang][label] = text
+
+        row_count = len(all_labels)
+        for lang in self.translations:
+            translated = sum(bool(v) for v in self.translations[lang].values())
+            self.coverage[lang] = translated / row_count if row_count else 1.0
+
+    def load_file(self, file_path: Path) -> None:
+        """Kompatibilitätsmethode für Einzeldateien."""
+        self.load_files([file_path])
 
     def available_languages(self) -> list[str]:
         """Gibt alle geladenen Sprachen zurück."""

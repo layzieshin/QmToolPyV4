@@ -19,8 +19,11 @@ from usermanagement.logic.user_manager import UserManager
 root = Path(__file__).resolve().parents[2]
 labels_file = LABELS_TSV_PATH
 
-if labels_file.exists():
-    translations.load_file(labels_file)
+label_files = [labels_file]
+label_files += list(root.glob("**/label.tsv"))
+
+if label_files:
+    translations.load_files(label_files)
 else:
     translations.translations = {"de": {}, "en": {}}
 
