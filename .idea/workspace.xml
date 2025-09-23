@@ -4,45 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250902_1 signature works/polished">
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.agent.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.ask.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.ask2agent.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.edit.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/common/module_catalog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/dev_check_configloader.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/_compat.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/assign_roles_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/change_note_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/comments_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/metadata_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/tasks_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/i18n.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/main_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/gui/settings_view.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/audit_log.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/doc_convert.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/id_generator.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/pdf_tools.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/permissions.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/rbac_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/repository.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/word_tools.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/logic/workflow_engine.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/meta.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/models/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/documents/models/document_models.py" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250923_1 docs works/polished">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/module_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config/config.ini" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config/config_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config_loader.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config/config_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config/defaults.ini" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/defaults.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/signature/logic/encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/logic/encryption.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/signature/logic/signature_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/logic/signature_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/documents/gui/main_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/main_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/documents/logic/repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/logic/repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/documents/logic/word_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/logic/word_tools.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -488,7 +454,15 @@
       <option name="project" value="LOCAL" />
       <updated>1756849680909</updated>
     </task>
-    <option name="localTasksCounter" value="28" />
+    <task id="LOCAL-00028" summary="20250923_1 docs works/polished">
+      <option name="closed" value="true" />
+      <created>1758666172100</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1758666172100</updated>
+    </task>
+    <option name="localTasksCounter" value="29" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -513,7 +487,8 @@
     <MESSAGE value="20250827_1 signature works" />
     <MESSAGE value="20250827_3 signature works/polished" />
     <MESSAGE value="20250902_1 signature works/polished" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250902_1 signature works/polished" />
+    <MESSAGE value="20250923_1 docs works/polished" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250923_1 docs works/polished" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

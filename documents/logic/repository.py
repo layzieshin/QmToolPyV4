@@ -4,8 +4,16 @@ Repository with:
 - per-document assignees
 - DOCX comments ingest
 - PDF conversion helpers
-- signatures recording (via AppContext.signature() – kein PNG-Dialog nötig)
+- signatures recording (via AppContext.signature() – no PNG dialog)
 - read receipts (who read which version)
+
+This module coordinates SQLite metadata and on-disk file storage for the
+Document Control feature. It supports versioning, audit trails, workflow
+assignments, and integration with an external signature service via
+AppContext.signature().place_and_sign().
+
+Note: This file is a self-contained snapshot for final delivery and may
+need adjustments to integrate with your existing project structure.
 """
 
 from __future__ import annotations
@@ -17,8 +25,9 @@ from dataclasses import asdict
 from datetime import datetime, timedelta
 from typing import Optional, TypedDict, List, Dict, Any
 
-# AppContext nur benutzen, nicht verändern
 try:
+    # AppContext is used only to invoke the signature API; if unavailable,
+    # the fallback logic still logs the signature event without stamping.
     from core.common.app_context import AppContext
 except Exception:
     class AppContext:
@@ -44,6 +53,12 @@ class RepoConfig(TypedDict):
 
 
 class DocumentsRepository:
+    """
+    Coordinates SQLite metadata and on-disk file storage. Supports versioning,
+    workflow role assignments, extracted comments, signature stamping via
+    AppContext.signature(), and read receipts.
+    """
+
     def __init__(self, cfg: RepoConfig) -> None:
         self._cfg = cfg
         os.makedirs(cfg["root_path"], exist_ok=True)
@@ -55,9 +70,11 @@ class DocumentsRepository:
         self._idg = IdGenerator(self._conn, cfg["id_prefix"], cfg["id_pattern"])
         self._ensure_schema()
 
-    # ---- Schema --------------------------------------------------------------
+    # Schema ----------------------------------------------------------------
     def _ensure_schema(self) -> None:
-        self._conn.executescript("""
+        """Ensure that all required tables exist."""
+        self._conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS documents (
                 doc_id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -103,17 +120,15 @@ class DocumentsRepository:
                 FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
             );
 
-            -- Workflow-Zuordnung (mehrere je Rolle zulässig)
             CREATE TABLE IF NOT EXISTS doc_roles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id TEXT NOT NULL,
-                role TEXT NOT NULL,               -- AUTHOR | REVIEWER | APPROVER
+                role TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 UNIQUE(doc_id, role, user_id),
                 FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
             );
 
-            -- Aus DOCX extrahierte Kommentare
             CREATE TABLE IF NOT EXISTS doc_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id TEXT NOT NULL,
@@ -124,7 +139,6 @@ class DocumentsRepository:
                 FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
             );
 
-            -- Lesebestätigungen
             CREATE TABLE IF NOT EXISTS read_receipts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id TEXT NOT NULL,
@@ -134,9 +148,10 @@ class DocumentsRepository:
                 UNIQUE(doc_id, version_label, user_id),
                 FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
             );
-        """)
+            """
+        )
 
-    # ---- Utilities -----------------------------------------------------------
+    # Helpers ---------------------------------------------------------------
     def _now(self) -> datetime:
         return datetime.utcnow()
 
@@ -153,9 +168,10 @@ class DocumentsRepository:
         shutil.copyfile(src, dst)
         return dst
 
-    # ---- Status mapping (robust) --------------------------------------------
+    # Status mapping --------------------------------------------------------
     @staticmethod
     def _status_to_enum(val: Any) -> DocumentStatus:
+        """Convert stored status string into DocumentStatus enum."""
         if isinstance(val, DocumentStatus):
             return val
         s = str(val or "").strip()
@@ -166,13 +182,12 @@ class DocumentsRepository:
             return DocumentStatus[key]
         except Exception:
             pass
-        # Fallback: alte Werte ('draft', 'in_review', ...)
         for st in DocumentStatus:
             if str(st.value).lower() == s.lower():
                 return st
         raise ValueError(f"Unknown status: {val}")
 
-    # ---- Filename ID/TITLE parsing ------------------------------------------
+    # File name parsing ------------------------------------------------------
     @staticmethod
     def _parse_id_title_from_filename(path: str) -> tuple[Optional[str], Optional[str]]:
         name = os.path.splitext(os.path.basename(path))[0]
@@ -196,10 +211,18 @@ class DocumentsRepository:
                 return cand
             i += 1
 
-    # ---- CRUD ----------------------------------------------------------------
-    def create_from_file(self, *, title: str | None, doc_type: str, user_id: str | None,
-                         src_file: str, area: str | None = None, process: str | None = None,
-                         change_note: str | None = None) -> DocumentRecord:
+    # CRUD ------------------------------------------------------------------
+    def create_from_file(
+        self,
+        *,
+        title: str | None,
+        doc_type: str,
+        user_id: str | None,
+        src_file: str,
+        area: str | None = None,
+        process: str | None = None,
+        change_note: str | None = None,
+    ) -> DocumentRecord:
         parsed_id, parsed_title = self._parse_id_title_from_filename(src_file)
         doc_id = self._ensure_unique_doc_id(parsed_id)
         now = self._now()
@@ -208,8 +231,7 @@ class DocumentsRepository:
         final_title = (parsed_title or title or os.path.splitext(os.path.basename(src_file))[0]).strip()
 
         fpath = self._store_file(src_file, self._ver_dir(doc_id, ver_label))
-
-        # Initiale Metadaten & Kommentare
+        # If DOCX: set metadata and ingest comments
         if fpath.lower().endswith(".docx"):
             try:
                 set_core_properties(fpath, props={
@@ -221,26 +243,51 @@ class DocumentsRepository:
                 self._ingest_comments(doc_id, ver_label, comments)
             except Exception:
                 pass
-
         next_review_dt = now + timedelta(days=30 * int(self._cfg["review_months"]))
-
-        self._conn.execute("""
+        self._conn.execute(
+            """
             INSERT INTO documents (doc_id,title,doc_type,status,version_major,version_minor,current_file_path,
                                    area,process,valid_from,next_review,created_by,created_at,updated_at,change_note)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (doc_id, final_title, doc_type, DocumentStatus.DRAFT.name, version_major, version_minor, fpath,
-              area, process, now.isoformat(timespec="seconds"), next_review_dt.isoformat(timespec="seconds"),
-              user_id, now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds"), change_note))
-        self._conn.execute("""
+            """,
+            (
+                doc_id,
+                final_title,
+                doc_type,
+                DocumentStatus.DRAFT.name,
+                version_major,
+                version_minor,
+                fpath,
+                area,
+                process,
+                now.isoformat(timespec="seconds"),
+                next_review_dt.isoformat(timespec="seconds"),
+                user_id,
+                now.isoformat(timespec="seconds"),
+                now.isoformat(timespec="seconds"),
+                change_note,
+            ),
+        )
+        self._conn.execute(
+            """
             INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
             VALUES (?,?,?,?,?,?)
-        """, (doc_id, ver_label, fpath, now.isoformat(timespec="seconds"), user_id or "", change_note))
+            """,
+            (doc_id, ver_label, fpath, now.isoformat(timespec="seconds"), user_id or "", change_note),
+        )
         self._audit.write(doc_id, "create", user_id, {"title": final_title, "doc_type": doc_type})
         self._conn.commit()
         return self.get(doc_id)
 
-    def create_from_template(self, *, template_path: str, target_id: Optional[str],
-                             title: str, doc_type: str, user_id: str | None) -> DocumentRecord:
+    def create_from_template(
+        self,
+        *,
+        template_path: str,
+        target_id: Optional[str],
+        title: str,
+        doc_type: str,
+        user_id: str | None,
+    ) -> DocumentRecord:
         doc_id = self._ensure_unique_doc_id(target_id)
         now = self._now()
         version_major, version_minor = 1, 0
@@ -248,28 +295,47 @@ class DocumentsRepository:
         out_dir = self._ver_dir(doc_id, ver_label)
         out_name = f"{doc_id}_{title}.docx"
         out_path = os.path.join(out_dir, out_name)
-
-        create_from_template(template_path, out_path, props={
-            "author": user_id or "",
-            "last_modified_by": user_id or "",
-            "title": title,
-            "revision": 1,
-        })
+        create_from_template(
+            template_path,
+            out_path,
+            props={
+                "author": user_id or "",
+                "last_modified_by": user_id or "",
+                "title": title,
+                "revision": 1,
+            },
+        )
         _, comments = extract_core_and_comments(out_path)
         self._ingest_comments(doc_id, ver_label, comments)
-
         next_review_dt = now + timedelta(days=30 * int(self._cfg["review_months"]))
-        self._conn.execute("""
+        self._conn.execute(
+            """
             INSERT INTO documents (doc_id,title,doc_type,status,version_major,version_minor,current_file_path,
                                    valid_from,next_review,created_by,created_at,updated_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        """, (doc_id, title, doc_type, DocumentStatus.DRAFT.name, version_major, version_minor, out_path,
-              now.isoformat(timespec="seconds"), next_review_dt.isoformat(timespec="seconds"),
-              user_id, now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds")))
-        self._conn.execute("""
+            """,
+            (
+                doc_id,
+                title,
+                doc_type,
+                DocumentStatus.DRAFT.name,
+                version_major,
+                version_minor,
+                out_path,
+                now.isoformat(timespec="seconds"),
+                next_review_dt.isoformat(timespec="seconds"),
+                user_id,
+                now.isoformat(timespec="seconds"),
+                now.isoformat(timespec="seconds"),
+            ),
+        )
+        self._conn.execute(
+            """
             INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
             VALUES (?,?,?,?,?,?)
-        """, (doc_id, ver_label, out_path, now.isoformat(timespec="seconds"), user_id or "", None))
+            """,
+            (doc_id, ver_label, out_path, now.isoformat(timespec="seconds"), user_id or "", None),
+        )
         self._audit.write(doc_id, "create_from_template", user_id, {"template": os.path.basename(template_path)})
         self._conn.commit()
         return self.get(doc_id)
@@ -285,11 +351,9 @@ class DocumentsRepository:
         args: list[object] = []
         conds: list[str] = []
         if status:
-            conds.append("UPPER(status)=?")
-            args.append(status.name)
+            conds.append("UPPER(status)=?"); args.append(status.name)
         if text:
-            conds.append("(title LIKE ? OR doc_id LIKE ?)")
-            args.extend([f"%{text}%", f"%{text}%"])
+            conds.append("(title LIKE ? OR doc_id LIKE ?)"); args.extend([f"%{text}%", f"%{text}%"])
         if conds:
             sql += " WHERE " + " AND ".join(conds)
         sql += " ORDER BY updated_at DESC"
@@ -298,16 +362,26 @@ class DocumentsRepository:
 
     def update_metadata(self, doc: DocumentRecord, user_id: str | None) -> None:
         d = asdict(doc)
-        self._conn.execute("""
-            UPDATE documents SET title=?, doc_type=?, area=?, process=?, next_review=?, change_note=?, updated_at=?
-             WHERE doc_id=?
-        """, (d["title"], d["doc_type"], d["area"], d["process"],
-              d["next_review"].isoformat(timespec="seconds") if d["next_review"] else None,
-              d["change_note"], self._now().isoformat(timespec="seconds"), doc.doc_id.value))
+        self._conn.execute(
+            """
+            UPDATE documents SET title=?, doc_type=?, area=?, process=?, next_review=?, change_note=?,
+                                 updated_at=? WHERE doc_id=?
+            """,
+            (
+                d["title"],
+                d["doc_type"],
+                d["area"],
+                d["process"],
+                d["next_review"].isoformat(timespec="seconds") if d["next_review"] else None,
+                d["change_note"],
+                self._now().isoformat(timespec="seconds"),
+                doc.doc_id.value,
+            ),
+        )
         self._audit.write(doc.doc_id.value, "update_metadata", user_id, {"title": d["title"], "doc_type": d["doc_type"]})
         self._conn.commit()
 
-    # ---- Locking -------------------------------------------------------------
+    # Locking ---------------------------------------------------------------
     def check_out(self, doc_id: str, user_id: str) -> bool:
         row = self._conn.execute("SELECT locked_by FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if row and row["locked_by"]:
@@ -318,7 +392,13 @@ class DocumentsRepository:
         self._conn.commit()
         return True
 
-    def check_in(self, doc_id: str, user_id: str, src_file: Optional[str], change_note: Optional[str]) -> DocumentRecord:
+    def check_in(
+        self,
+        doc_id: str,
+        user_id: str,
+        src_file: Optional[str],
+        change_note: Optional[str],
+    ) -> DocumentRecord:
         cur = self._conn.execute("SELECT version_major,version_minor,current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if not cur:
             raise KeyError("Document not found")
@@ -337,36 +417,48 @@ class DocumentsRepository:
                     pass
             new_path = self._store_file(src_file, self._ver_dir(doc_id, f"{maj}.{new_minor}"))
         now = self._now().isoformat(timespec="seconds")
-        self._conn.execute("""
-            UPDATE documents
-               SET version_major=?, version_minor=?, current_file_path=?, locked_by=NULL, locked_at=NULL,
-                   updated_at=?, change_note=?
-             WHERE doc_id=?
-        """, (maj, new_minor, new_path, now, change_note, doc_id))
-        self._conn.execute("""
+        self._conn.execute(
+            """
+            UPDATE documents SET version_major=?, version_minor=?, current_file_path=?, locked_by=NULL, locked_at=NULL,
+                                 updated_at=?, change_note=? WHERE doc_id=?
+            """,
+            (
+                maj,
+                new_minor,
+                new_path,
+                now,
+                change_note,
+                doc_id,
+            ),
+        )
+        new_label = f"{maj}.{new_minor}"
+        self._conn.execute(
+            """
             INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
             VALUES (?,?,?,?,?,?)
-        """, (doc_id, f"{maj}.{new_minor}", new_path, now, user_id, change_note))
-        self._audit.write(doc_id, "check_in", user_id, {"version": f"{maj}.{new_minor}"})
+            """,
+            (doc_id, new_label, new_path, now, user_id, change_note),
+        )
+        self._audit.write(doc_id, "check_in", user_id, {"version": new_label})
         self._conn.commit()
         return self.get(doc_id)
 
-    # ---- Status transitions ---------------------------------------------------
+    # Status transitions ---------------------------------------------------
     def set_status(self, doc_id: str, target: DocumentStatus, user_id: Optional[str], change_note: Optional[str]) -> DocumentRecord:
         now = self._now()
         obsoleted_at = now.isoformat(timespec="seconds") if target == DocumentStatus.OBSOLETE else None
-        self._conn.execute("""
+        self._conn.execute(
+            """
             UPDATE documents SET status=?, updated_at=?, change_note=?, obsoleted_at=? WHERE doc_id=?
-        """, (target.name, now.isoformat(timespec="seconds"), change_note, obsoleted_at, doc_id))
+            """,
+            (target.name, now.isoformat(timespec="seconds"), change_note, obsoleted_at, doc_id),
+        )
         self._audit.write(doc_id, f"status_{target.name}", user_id, {"change_note": change_note})
         self._conn.commit()
         return self.get(doc_id)
 
-    # ---- PDF helpers ---------------------------------------------------------
+    # PDF helpers -----------------------------------------------------------
     def generate_review_pdf(self, doc_id: str) -> Optional[str]:
-        """
-        Convert current file to PDF and set it as active.
-        """
         row = self._conn.execute("SELECT current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if not row or not row["current_file_path"]:
             return None
@@ -389,40 +481,27 @@ class DocumentsRepository:
         out_pdf = os.path.join(os.path.dirname(src), f"{base}_v{ver_label}.pdf")
         return convert_to_pdf(src, out_pdf)
 
-    # ---- Signatures (via SignatureAPI) --------------------------------------
+    # Signature integration -----------------------------------------------
     def _default_placement(self):
-        """
-        Erzeugt ein duck-typed Placement-Objekt für die Signatur:
-        letzte Seite, unten rechts, Zielbreite ~ 180 px/pt (vom Signer interpretiert).
-        """
-        class P:  # duck type für SignaturePlacement
-            page_index = -1     # letzte Seite
-            x = 460             # konservative Standardposition
+        class P:
+            page_index = -1
+            x = 460
             y = 80
             target_width = 180
         return P()
 
-    def record_signature(self, doc_id: str, step: str, user_id: str, reason: Optional[str],
-                         signature_png: Optional[bytes]) -> None:
-        """
-        Persist signature event. Bevorzugt das Signaturmodul:
-        - Wenn PDF aktiv: AppContext.signature().sign_pdf(...) stempelt interaktiv/konfiguriert.
-        - Ansonsten (oder falls API nicht verfügbar) wird nur das Event protokolliert.
-        - Falls signature_png übergeben ist, benutzen wir als Fallback stamp_signature().
-        """
+    def record_signature(self, doc_id: str, step: str, user_id: str, reason: Optional[str], signature_png: Optional[bytes]) -> None:
         signed_copy_path = None
-
-        # Versuche primär, über SignatureAPI zu stempeln (kein PNG-Dialog)
+        # Prefer signature API for stamping if current file is PDF
         try:
             cur = self._conn.execute(
                 "SELECT current_file_path, version_major, version_minor FROM documents WHERE doc_id=?",
-                (doc_id,)
+                (doc_id,),
             ).fetchone()
             if cur and cur["current_file_path"] and str(cur["current_file_path"]).lower().endswith(".pdf"):
                 src_pdf = str(cur["current_file_path"])
-                api = AppContext.signature()  # kann UI/Policies enthalten
+                api = AppContext.signature()
                 placement = None
-                # wenn API eine Factory anbietet, nutzen
                 for meth in ("default_placement", "placement_default", "make_default_placement"):
                     if hasattr(api, meth):
                         try:
@@ -432,45 +511,55 @@ class DocumentsRepository:
                             placement = None
                 if placement is None:
                     placement = self._default_placement()
-
-                # robuste Aufrufe (positional/named)
                 try:
-                    signed_copy_path = api.sign_pdf(input_path=src_pdf, placement=placement, reason=reason,
-                                                    use_user_signature=True, raw_signature_png=signature_png)
+                    out = api.sign_pdf(input_path=src_pdf, placement=placement, reason=reason, use_user_signature=True, raw_signature_png=signature_png)
                 except TypeError:
-                    signed_copy_path = api.sign_pdf(src_pdf, placement, reason)  # positional fallback
-
-                # Version bump & setzen
-                if signed_copy_path and os.path.isfile(signed_copy_path):
+                    out = api.sign_pdf(src_pdf, placement, reason)
+                # Normalize output path
+                signed_pdf = None
+                if isinstance(out, str) and os.path.isfile(out):
+                    signed_pdf = out
+                elif isinstance(out, dict):
+                    path = out.get("out") or out.get("path") or out.get("pdf")
+                    if isinstance(path, str) and os.path.isfile(path):
+                        signed_pdf = path
+                elif hasattr(out, "path"):
+                    p = getattr(out, "path")
+                    if isinstance(p, str) and os.path.isfile(p):
+                        signed_pdf = p
+                if not signed_pdf and out and os.path.isfile(src_pdf):
+                    signed_pdf = src_pdf
+                if signed_pdf:
                     maj, minor = int(cur["version_major"]), int(cur["version_minor"]) + 1
                     ver_label = f"{maj}.{minor}"
                     now = self._now().isoformat(timespec="seconds")
                     os.makedirs(self._ver_dir(doc_id, ver_label), exist_ok=True)
-                    # Wenn der Signer bereits in einer Version abgelegt hat, übernehmen wir Pfad; sonst kopieren
-                    if os.path.dirname(signed_copy_path) != self._ver_dir(doc_id, ver_label):
-                        # falls außerhalb: hinein kopieren, um Version konsistent zu halten
-                        target = os.path.join(self._ver_dir(doc_id, ver_label), os.path.basename(signed_copy_path))
-                        shutil.copyfile(signed_copy_path, target)
-                        signed_copy_path = target
-
-                    self._conn.execute("""
+                    target = os.path.join(self._ver_dir(doc_id, ver_label), os.path.basename(signed_pdf))
+                    if os.path.dirname(signed_pdf) != self._ver_dir(doc_id, ver_label):
+                        shutil.copyfile(signed_pdf, target)
+                        signed_pdf = target
+                    self._conn.execute(
+                        """
                         UPDATE documents SET version_major=?, version_minor=?, current_file_path=?, updated_at=?
                          WHERE doc_id=?
-                    """, (maj, minor, signed_copy_path, now, doc_id))
-                    self._conn.execute("""
+                        """,
+                        (maj, minor, signed_pdf, now, doc_id),
+                    )
+                    self._conn.execute(
+                        """
                         INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
                         VALUES (?,?,?,?,?,?)
-                    """, (doc_id, ver_label, signed_copy_path, now, user_id, f"Signature {step}"))
-                    # keine Rückgabe hier; Insert des signature-events erfolgt unten
+                        """,
+                        (doc_id, ver_label, signed_pdf, now, user_id, f"Signature {step}"),
+                    )
+                    signed_copy_path = signed_pdf
         except Exception:
-            # Falls irgendetwas mit der SignatureAPI schief geht, ohne Abbruch fortfahren
             signed_copy_path = None
-
-        # Fallback: PNG stempeln (nur wenn PNG vorhanden und API nicht gegriffen hat)
+        # Fallback: if signature API didn't stamp and a PNG is provided
         if signed_copy_path is None and signature_png:
             cur = self._conn.execute(
                 "SELECT current_file_path, version_major, version_minor FROM documents WHERE doc_id=?",
-                (doc_id,)
+                (doc_id,),
             ).fetchone()
             if cur and cur["current_file_path"] and str(cur["current_file_path"]).lower().endswith(".pdf"):
                 src_pdf = str(cur["current_file_path"])
@@ -482,25 +571,39 @@ class DocumentsRepository:
                 label = f"Signed by {user_id} ({step})"
                 if stamp_signature(src_pdf, out_pdf, signature_png, label=label):
                     now = self._now().isoformat(timespec="seconds")
-                    self._conn.execute("""
+                    self._conn.execute(
+                        """
                         UPDATE documents SET version_major=?, version_minor=?, current_file_path=?, updated_at=?
                          WHERE doc_id=?
-                    """, (maj, minor, out_pdf, now, doc_id))
-                    self._conn.execute("""
+                        """,
+                        (maj, minor, out_pdf, now, doc_id),
+                    )
+                    self._conn.execute(
+                        """
                         INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
                         VALUES (?,?,?,?,?,?)
-                    """, (doc_id, ver_label, out_pdf, now, user_id, f"Signature {step}"))
+                        """,
+                        (doc_id, ver_label, out_pdf, now, user_id, f"Signature {step}"),
+                    )
                     signed_copy_path = out_pdf
-
-        # signature event protokollieren (auch wenn kein Stempel möglich war)
-        self._conn.execute("""
+        self._conn.execute(
+            """
             INSERT INTO signatures(doc_id,step,user_id,reason,signed_at,file_path)
             VALUES (?,?,?,?,?,?)
-        """, (doc_id, step, user_id, reason, self._now().isoformat(timespec="seconds"), signed_copy_path))
+            """,
+            (
+                doc_id,
+                step,
+                user_id,
+                reason,
+                self._now().isoformat(timespec="seconds"),
+                signed_copy_path,
+            ),
+        )
         self._audit.write(doc_id, "signature", user_id, {"step": step})
         self._conn.commit()
 
-    # ---- Controlled Copy -----------------------------------------------------
+    # Controlled copy -------------------------------------------------------
     def make_controlled_copy(self, doc_id: str) -> Optional[str]:
         row = self._conn.execute("SELECT current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if not row or not row["current_file_path"]:
@@ -514,17 +617,41 @@ class DocumentsRepository:
         make_controlled_copy(src, out_pdf, self._cfg["watermark_copy"])
         return out_pdf
 
-    # ---- DOCX Comments ingestion --------------------------------------------
+    def copy_to_destination(self, doc_id: str, dest_dir: str) -> Optional[str]:
+        """Create a watermarked PDF copy in the specified destination if document is published."""
+        row = self._conn.execute(
+            "SELECT current_file_path,status FROM documents WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if not row or row["status"] != DocumentStatus.PUBLISHED.name:
+            return None
+        src = row["current_file_path"]
+        if not (src and src.lower().endswith(".pdf")):
+            return None
+        name = os.path.basename(src)
+        out = os.path.join(dest_dir, name)
+        make_controlled_copy(src, out, self._cfg["watermark_copy"])
+        return out
+
+    # Comments & Reads ------------------------------------------------------
     def _ingest_comments(self, doc_id: str, version_label: str, comments: List[Dict]) -> None:
         if not comments:
             return
         cur = self._conn.cursor()
         for c in comments:
             dt = c.get("date")
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO doc_comments(doc_id,version_label,author,date,text)
                 VALUES (?,?,?,?,?)
-            """, (doc_id, version_label, c.get("author"), dt.isoformat() if dt else None, c.get("text")))
+                """,
+                (
+                    doc_id,
+                    version_label,
+                    c.get("author"),
+                    dt.isoformat() if dt else None,
+                    c.get("text"),
+                ),
+            )
         self._conn.commit()
 
     def list_comments(self, doc_id: str, version_label: Optional[str] = None) -> list[dict]:
@@ -537,24 +664,29 @@ class DocumentsRepository:
         rows = self._conn.execute(sql, tuple(args)).fetchall()
         out: list[dict] = []
         for r in rows:
-            out.append({
-                "author": r["author"],
-                "date": r["date"],
-                "text": r["text"],
-                "version_label": r["version_label"],
-            })
+            out.append(
+                {
+                    "author": r["author"],
+                    "date": r["date"],
+                    "text": r["text"],
+                    "version_label": r["version_label"],
+                }
+            )
         return out
 
-    # ---- Per-document assignees ---------------------------------------------
-    def set_assignees(self, doc_id: str, *, authors: list[str] | None,
-                      reviewers: list[str], approvers: list[str]) -> None:
+    def set_assignees(
+        self, doc_id: str, *, authors: list[str] | None, reviewers: list[str], approvers: list[str]
+    ) -> None:
         cur = self._conn.cursor()
         cur.execute("DELETE FROM doc_roles WHERE doc_id=?", (doc_id,))
-        def ins(role: str, users: list[str] | None):
-            if not users: return
+        def ins(role: str, users: list[str] | None) -> None:
+            if not users:
+                return
             for u in sorted({x.strip() for x in users if str(x).strip()}):
-                cur.execute("INSERT OR IGNORE INTO doc_roles(doc_id,role,user_id) VALUES (?,?,?)",
-                            (doc_id, role.upper(), u))
+                cur.execute(
+                    "INSERT OR IGNORE INTO doc_roles(doc_id,role,user_id) VALUES (?,?,?)",
+                    (doc_id, role.upper(), u),
+                )
         ins("AUTHOR", authors)
         ins("REVIEWER", reviewers)
         ins("APPROVER", approvers)
@@ -570,17 +702,18 @@ class DocumentsRepository:
                 out[rl].append(str(r["user_id"]))
         return out
 
-    # ---- Tasks (für „Workflow fortsetzen“) ----------------------------------
     def list_tasks_for_user(self, user_id: str) -> list[dict]:
         tasks: list[dict] = []
-        rows = self._conn.execute("""
+        rows = self._conn.execute(
+            """
             SELECT d.doc_id, d.title, d.status, d.version_major, d.version_minor, d.created_by
               FROM documents d
              WHERE d.created_by = ?
                 OR EXISTS (SELECT 1 FROM doc_roles r WHERE r.doc_id=d.doc_id AND r.user_id=?)
              ORDER BY d.updated_at DESC
-        """, (user_id, user_id)).fetchall()
-
+            """,
+            (user_id, user_id),
+        ).fetchall()
         for r in rows:
             status = self._status_to_enum(r["status"])
             doc_id = str(r["doc_id"])
@@ -596,36 +729,37 @@ class DocumentsRepository:
                 if user_id in ass.get("APPROVER", []):
                     next_action = "publish"
             if next_action:
-                tasks.append({
-                    "doc_id": doc_id,
-                    "title": str(r["title"]),
-                    "status": status.name,
-                    "version": f"{int(r['version_major'])}.{int(r['version_minor'])}",
-                    "next_action": next_action
-                })
+                tasks.append(
+                    {
+                        "doc_id": doc_id,
+                        "title": str(r["title"]),
+                        "status": status.name,
+                        "version": f"{int(r['version_major'])}.{int(r['version_minor'])}",
+                        "next_action": next_action,
+                    }
+                )
         return tasks
 
-    # ---- Read receipts -------------------------------------------------------
+    # Read receipts --------------------------------------------------------
     def mark_read(self, doc_id: str, user_id: str) -> None:
-        row = self._conn.execute(
-            "SELECT version_major,version_minor FROM documents WHERE doc_id=?", (doc_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT version_major,version_minor FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if not row:
             return
         ver_label = f"{int(row['version_major'])}.{int(row['version_minor'])}"
-        self._conn.execute("""
-            INSERT OR IGNORE INTO read_receipts(doc_id,version_label,user_id,read_at)
-            VALUES (?,?,?,?)
-        """, (doc_id, ver_label, user_id, self._now().isoformat(timespec="seconds")))
+        self._conn.execute(
+            "INSERT OR IGNORE INTO read_receipts(doc_id,version_label,user_id,read_at) VALUES (?,?,?,?)",
+            (doc_id, ver_label, user_id, self._now().isoformat(timespec="seconds")),
+        )
         self._conn.commit()
 
     def list_reads(self, doc_id: str) -> list[dict]:
-        rows = self._conn.execute("""
-            SELECT version_label,user_id,read_at FROM read_receipts WHERE doc_id=? ORDER BY read_at DESC
-        """, (doc_id,)).fetchall()
+        rows = self._conn.execute(
+            "SELECT version_label,user_id,read_at FROM read_receipts WHERE doc_id=? ORDER BY read_at DESC",
+            (doc_id,),
+        ).fetchall()
         return [{"version_label": r["version_label"], "user_id": r["user_id"], "read_at": r["read_at"]} for r in rows]
 
-    # ---- Mapping -------------------------------------------------------------
+    # Mapping ---------------------------------------------------------------
     def _map_record(self, r: dict) -> DocumentRecord:
         def parse_dt(val: Optional[str]):
             if not val:
@@ -651,5 +785,5 @@ class DocumentsRepository:
             norm_refs=(str(r["norm_refs"]).split(",") if r["norm_refs"] else []),
             tags=(str(r["tags"]).split(",") if r["tags"] else []),
             locked_by=str(r["locked_by"]) if r["locked_by"] else None,
-            locked_at=parse_dt(r["locked_at"])
+            locked_at=parse_dt(r["locked_at"]),
         )
