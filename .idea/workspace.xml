@@ -4,10 +4,45 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250827_3 signature works/polished">
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250902_1 signature works/polished">
+      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.agent.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.ask.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.ask2agent.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.edit.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/core/common/module_catalog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/dev_check_configloader.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/_compat.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/assign_roles_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/change_note_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/comments_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/metadata_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/dialogs/tasks_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/i18n.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/main_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/gui/settings_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/audit_log.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/doc_convert.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/id_generator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/pdf_tools.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/permissions.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/rbac_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/repository.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/word_tools.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/logic/workflow_engine.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/meta.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/models/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/documents/models/document_models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/signature_api.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/signature_api.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/module_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/module_registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/config.ini" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/config_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config_loader.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/config_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/config_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/defaults.ini" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/defaults.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/logic/encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/logic/encryption.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signature/logic/signature_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/signature/logic/signature_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -61,6 +96,7 @@
   &quot;keyToString&quot;: {
     &quot;Python.config_settings_view.executor&quot;: &quot;Run&quot;,
     &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
+    &quot;Python.dev_check_configloader.executor&quot;: &quot;Run&quot;,
     &quot;Python.fill_dictionary_view.executor&quot;: &quot;Run&quot;,
     &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
     &quot;Python.log_controller.executor&quot;: &quot;Run&quot;,
@@ -77,7 +113,7 @@
     &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
     &quot;git-widget-placeholder&quot;: &quot;master&quot;,
     &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;I:/Nextcloud/Projekte/QmToolPyV4&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4&quot;,
     &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
     &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;
   },
@@ -100,7 +136,7 @@
     </key>
   </component>
   <component name="RunManager" selected="Python.main">
-    <configuration name="log_view" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="dev_check_configloader" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -109,11 +145,11 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/core/logging/gui" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/logging/gui/log_view.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/dev_check_configloader.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -213,17 +249,17 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.main" />
+        <item itemvalue="Python.dev_check_configloader" />
         <item itemvalue="Python.smoke_import_signature" />
         <item itemvalue="Python.signature_view" />
         <item itemvalue="Python.pdf_signer" />
-        <item itemvalue="Python.log_view" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-d9fa9deec7cb-d902c0275401-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-252.23892.515" />
+        <option value="bundled-python-sdk-8753aad8314d-d902c0275401-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-252.25557.178" />
       </set>
     </attachedChunks>
   </component>
@@ -444,7 +480,15 @@
       <option name="project" value="LOCAL" />
       <updated>1756333653195</updated>
     </task>
-    <option name="localTasksCounter" value="27" />
+    <task id="LOCAL-00027" summary="20250902_1 signature works/polished">
+      <option name="closed" value="true" />
+      <created>1756849680909</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1756849680909</updated>
+    </task>
+    <option name="localTasksCounter" value="28" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -468,7 +512,8 @@
     <MESSAGE value="20250826_1 implement signature" />
     <MESSAGE value="20250827_1 signature works" />
     <MESSAGE value="20250827_3 signature works/polished" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250827_3 signature works/polished" />
+    <MESSAGE value="20250902_1 signature works/polished" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250902_1 signature works/polished" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -482,6 +527,11 @@
           <url>file://$PROJECT_DIR$/clockwork/gui/clockwork_view.py</url>
           <line>32</line>
           <option name="timeStamp" value="3" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/signature/logic/encryption.py</url>
+          <line>62</line>
+          <option name="timeStamp" value="4" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

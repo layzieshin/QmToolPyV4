@@ -1,0 +1,12 @@
+{
+  "id": "documents",
+  "label": "Dokumentenlenkung",
+  "version": "1.0.1",
+  "main_class": "documents.gui.main_view.DocumentsView",
+  "settings_class": "documents.gui.settings_view.DocumentsSettingsTab",
+  "visible_for": ["Admin", "QMB", "Autor", "Pruefer", "Freigeber", "User", "Leser"],
+  "settings_for": ["Admin", "QMB"],
+  "is_core": false,
+  "sort_order": 120,
+  "requires_login": true
+}

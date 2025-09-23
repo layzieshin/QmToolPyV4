@@ -8,18 +8,25 @@ from typing import Any, Optional, Callable, Tuple
 from PIL import Image, ImageDraw
 from core.settings.logic.settings_manager import SettingsManager
 
+# NOTE: models are sibling to "logic", so we must go one package UP:
 from ..models.signature_config import SignatureConfig
 from ..models.signature_enums import LabelPosition, OutputNamingMode, AdminPasswordPolicy
 from ..models.signature_placement import SignaturePlacement
 from ..models.label_offsets import LabelOffsets
+
+# logic-local modules correctly use single-dot relative imports
 from .naming_strategy import DefaultSuffixStrategy, NamingStrategy, NamingContext
 from .encryption import encrypt_bytes, decrypt_bytes
 from .pdf_signer import PdfSigner, RenderLabels
+from cryptography.fernet import InvalidToken
 
 _FEATURE_ID = "core_signature"
 
 
 def _hex_to_rgb(hexstr: str) -> Tuple[int, int, int]:
+    """
+    Convert hex color (#RRGGBB or #RGB) into an RGB tuple for PIL.
+    """
     s = (hexstr or "#000000").strip()
     if not s.startswith("#"):
         s = "#" + s
@@ -31,8 +38,14 @@ def _hex_to_rgb(hexstr: str) -> Tuple[int, int, int]:
 
 
 class SignatureService:
-    """Core signing logic. AppContext is only imported lazily inside methods."""
+    """
+    Core signing logic (no UI). AppContext is imported lazily to avoid hard coupling.
 
+    All settings are read/written through SettingsManager under feature id "core_signature".
+    User-scoped settings are applied when AppContext.current_user is available.
+    """
+
+    # -------- Context --------------------------------------------------------
     @staticmethod
     def _ctx():
         try:
@@ -41,6 +54,7 @@ class SignatureService:
         except Exception:
             return None
 
+    # -------- Construction ---------------------------------------------------
     def __init__(self, *, settings_manager: SettingsManager,
                  logger: Optional[Any] = None,
                  naming_registry: Optional[dict[str, NamingStrategy]] = None,
@@ -52,13 +66,17 @@ class SignatureService:
         if naming_registry:
             self._strategies.update(naming_registry)
 
+        # Persisted base directory for encrypted signature blobs
         base_dir = Path(self._sm.get(_FEATURE_ID, "data_dir", str(Path("data") / "signatures")))
         base_dir.mkdir(parents=True, exist_ok=True)
         self._base_dir = base_dir
-        self._sm.set(_FEATURE_ID, "data_dir", str(base_dir))
+        self._sm.set(_FEATURE_ID, "data_dir", str(base_dir))  # keep canonicalized path
 
-    # ---------------- intern: persist helper ----------------
+    # -------- Internal helpers ----------------------------------------------
     def _persist_settings(self) -> None:
+        """
+        Best-effort flush for diverse SettingsManager implementations.
+        """
         for meth in ("persist", "save", "flush"):
             fn = getattr(self._sm, meth, None)
             if callable(fn):
@@ -68,7 +86,7 @@ class SignatureService:
                 except Exception:
                     pass
 
-    # ---------------- Admin: global defaults ----------------
+    # -------- Admin: global label defaults ----------------------------------
     def load_global_offset_defaults(self) -> LabelOffsets:
         g = lambda k, d: self._sm.get(_FEATURE_ID, f"g_{k}", d)
         return LabelOffsets(
@@ -87,7 +105,7 @@ class SignatureService:
         self._sm.set(_FEATURE_ID, "g_x_offset", float(offsets.x_offset))
         self._persist_settings()
 
-    # ---------------- User config ---------------------------
+    # -------- User-scoped config --------------------------------------------
     def load_config(self) -> SignatureConfig:
         ctx = self._ctx()
         user = getattr(ctx, "current_user", None) if ctx else None
@@ -111,7 +129,7 @@ class SignatureService:
             x_offset=float(get_user("x_offset", gdef.x_offset)),
         )
 
-        # Accept "off" if previously saved
+        # Accept "off" if previously saved (backward compatibility)
         def _lp(val: str, default: LabelPosition) -> LabelPosition:
             try:
                 return LabelPosition(val)
@@ -167,7 +185,7 @@ class SignatureService:
         self._sm.set(_FEATURE_ID, "admin_password_policy", cfg.admin_password_policy.value)
         self._persist_settings()
 
-    # ---------------- Password policy -----------------------
+    # -------- Password policy -----------------------------------------------
     def is_password_required(self) -> bool:
         cfg = self.load_config()
         if cfg.admin_password_policy == AdminPasswordPolicy.ALWAYS:
@@ -177,6 +195,10 @@ class SignatureService:
         return bool(cfg.user_pwd_required)
 
     def verify_password(self, user_id: str, password: str) -> bool:
+        """
+        Try injected verifier, then auth providers exposed by AppContext, then bridge.
+        Returns True as soon as any verifier accepts the credentials.
+        """
         if callable(self._password_verifier):
             try:
                 if bool(self._password_verifier(user_id, password)):
@@ -188,6 +210,7 @@ class SignatureService:
         user = getattr(ctx, "current_user", None) if ctx else None
         uname = getattr(user, "username", None) or getattr(user, "name", None)
 
+        # Try AppContext.auth.verify_password (positional and keyword variants)
         try:
             auth = getattr(ctx, "auth", None) if ctx else None
             if auth and hasattr(auth, "verify_password"):
@@ -211,6 +234,7 @@ class SignatureService:
         except Exception:
             pass
 
+        # Try AppContext.verify_password
         try:
             if ctx and hasattr(ctx, "verify_password"):
                 fn2 = getattr(ctx, "verify_password")
@@ -227,12 +251,13 @@ class SignatureService:
                         except Exception:
                             try:
                                 if uname and bool(fn2(username=uname, password=password)):
-                                    True
+                                    return True  # <= missing 'return' fixed
                             except Exception:
                                 pass
         except Exception:
             pass
 
+        # Try bridge (optional)
         try:
             from usermanagement.logic.auth_bridge import verify_password as bridge_verify
             if bool(bridge_verify(user_id=int(user_id) if user_id is not None else None,
@@ -243,20 +268,48 @@ class SignatureService:
 
         return False
 
-    # ---------------- Encrypted signature store -------------
+    # -------- Encrypted signature store -------------------------------------
     def _sig_path(self, user_id: str) -> Path:
+        """Internal canonical path builder for a user's encrypted signature file."""
         return self._base_dir / f"{user_id}.sig"
 
+    def _user_sig_path(self, user_id: str) -> Path:
+        """
+        Backward-compatible alias for older code paths.
+
+        Some callers used `_user_sig_path(...)`. Keep this thin alias to avoid
+        AttributeError when UI code still calls it.
+        """
+        return self._sig_path(user_id)
+
     def save_user_signature_png(self, user_id: str, png_bytes: bytes) -> None:
+        """
+        Encrypt and persist the user's signature PNG as {base_dir}/{user_id}.sig.
+        """
         token = encrypt_bytes(self._sm, png_bytes)
         self._sig_path(user_id).write_bytes(token)
         self._persist_settings()
 
-    def load_user_signature_png(self, user_id: str) -> Optional[bytes]:
-        p = self._sig_path(user_id)
+    def load_user_signature_png(self, user_id: str) -> bytes | None:
+        """
+        Load and decrypt the user's signature PNG.
+        Returns None if not present OR if decryption fails (graceful degrade).
+        """
+        p = self._user_sig_path(user_id)
         if not p.exists():
             return None
-        return decrypt_bytes(self._sm, p.read_bytes())
+        raw = p.read_bytes()
+        try:
+            return decrypt_bytes(self._sm, raw)
+        except InvalidToken:
+            # treat as "no signature", optionally log
+            try:
+                if self._logger and hasattr(self._logger, "log"):
+                    self._logger.log(feature="SignatureService", event="InvalidToken",
+                                     message=f"Cannot decrypt {p}")
+            except Exception:
+                pass
+            return None
 
     def delete_user_signature(self, user_id: str) -> bool:
         p = self._sig_path(user_id)
@@ -266,22 +319,31 @@ class SignatureService:
             return True
         return False
 
-    # ---------------- Canvas strokes -> PNG -----------------
+    # -------- Canvas strokes -> PNG -----------------------------------------
     def render_png_from_strokes(self, strokes: list[list[tuple[int, int]]],
                                 size: tuple[int, int], stroke_width: int,
                                 name_text: Optional[str] = None, date_text: Optional[str] = None,
                                 name_pos: LabelPosition = LabelPosition.ABOVE,
                                 date_pos: LabelPosition = LabelPosition.BELOW) -> bytes:
+        """
+        Convert freehand strokes (from UI) into a transparent PNG.
+        """
         w, h = size
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         drw = ImageDraw.Draw(img)
         for poly in strokes:
             if len(poly) >= 2:
                 drw.line(poly, fill=(0, 0, 0, 255), width=stroke_width, joint="curve")
-        buf = io.BytesIO(); img.save(buf, format="PNG"); return buf.getvalue()
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
 
-    # ----------------------------- Signing ------------------
+    # -------- Signing --------------------------------------------------------
     def _audit(self, payload: dict) -> None:
+        """
+        Append a JSON line with a signing event to signature_audit.log.
+        Falls back silently if logger is not available.
+        """
         payload["ts_utc"] = datetime.now(timezone.utc).isoformat()
         try:
             if self._logger and hasattr(self._logger, "log"):
@@ -290,7 +352,7 @@ class SignatureService:
                 return
         except Exception:
             pass
-        (self._base_dir / "signature_audit.log").open("a", encoding="utf-8")\
+        (self._base_dir / "signature_audit.log").open("a", encoding="utf-8") \
             .write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     def sign_pdf(self, input_path: str, placement: SignaturePlacement, *,
@@ -299,6 +361,9 @@ class SignatureService:
                  enforce_label_positions: Optional[tuple[LabelPosition, LabelPosition]] = None,
                  override_label_offsets: Optional[LabelOffsets] = None,
                  override_font_sizes: Optional[tuple[int, int]] = None) -> str:
+        """
+        Apply the signature image and optional labels to a PDF and return the output path.
+        """
         ctx = self._ctx()
         user = getattr(ctx, "current_user", None) if ctx else None
         uid = getattr(user, "id", None)
@@ -327,7 +392,7 @@ class SignatureService:
         name_fs = max(6, int(override_font_sizes[0])) if override_font_sizes else max(6, int(cfg.name_font_size))
         date_fs = max(6, int(override_font_sizes[1])) if override_font_sizes else max(6, int(cfg.date_font_size))
 
-        # Respect OFF: if OFF, do not pass text (PdfSigner skips None)
+        # Respect OFF: if OFF, pass None (PdfSigner will skip)
         name_text = (display_name if cfg.embed_name and display_name and name_pos != LabelPosition.OFF else None)
         date_text = (datetime.now().strftime(cfg.date_format) if cfg.embed_date and date_pos != LabelPosition.OFF else None)
 
@@ -343,6 +408,7 @@ class SignatureService:
             date_font_size=date_fs,
         )
 
+        # Output path strategy
         if override_output:
             out_path = override_output
         else:
