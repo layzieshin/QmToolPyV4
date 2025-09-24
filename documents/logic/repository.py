@@ -4,33 +4,32 @@ Repository with:
 - per-document assignees
 - DOCX comments ingest
 - PDF conversion helpers
-- signatures recording (via AppContext.signature() – no PNG dialog)
+- signatures recording (via AppContext.signature() – no PNG dialog required)
 - read receipts (who read which version)
 
 This module coordinates SQLite metadata and on-disk file storage for the
 Document Control feature. It supports versioning, audit trails, workflow
 assignments, and integration with an external signature service via
-AppContext.signature().place_and_sign().
+AppContext.signature().
 
-Note: This file is a self-contained snapshot for final delivery and may
-need adjustments to integrate with your existing project structure.
+Note: Integrate paths/imports if your project structure differs.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sqlite3
-from dataclasses import asdict
 from datetime import datetime, timedelta
+from dataclasses import asdict
 from typing import Optional, TypedDict, List, Dict, Any
 
+# AppContext is optional at import-time; repository remains usable without signature API.
 try:
-    # AppContext is used only to invoke the signature API; if unavailable,
-    # the fallback logic still logs the signature event without stamping.
-    from core.common.app_context import AppContext
+    from core.common.app_context import AppContext  # type: ignore
 except Exception:
-    class AppContext:
+    class AppContext:  # minimal shim to avoid hard dependency
         @staticmethod
         def signature():
             raise RuntimeError("Signature API unavailable")
@@ -59,6 +58,8 @@ class DocumentsRepository:
     AppContext.signature(), and read receipts.
     """
 
+    # ----------------------------- lifecycle --------------------------------
+
     def __init__(self, cfg: RepoConfig) -> None:
         self._cfg = cfg
         os.makedirs(cfg["root_path"], exist_ok=True)
@@ -70,7 +71,6 @@ class DocumentsRepository:
         self._idg = IdGenerator(self._conn, cfg["id_prefix"], cfg["id_pattern"])
         self._ensure_schema()
 
-    # Schema ----------------------------------------------------------------
     def _ensure_schema(self) -> None:
         """Ensure that all required tables exist."""
         self._conn.executescript(
@@ -151,7 +151,8 @@ class DocumentsRepository:
             """
         )
 
-    # Helpers ---------------------------------------------------------------
+    # ----------------------------- helpers ----------------------------------
+
     def _now(self) -> datetime:
         return datetime.utcnow()
 
@@ -168,10 +169,37 @@ class DocumentsRepository:
         shutil.copyfile(src, dst)
         return dst
 
-    # Status mapping --------------------------------------------------------
+    # ---- filename normalization (single source of truth for naming rules) ---
+
+    @staticmethod
+    def _strip_signed_and_version_tokens(name_wo_ext: str) -> str:
+        """
+        Remove all occurrences of '_signed' (case-insensitive) anywhere in the
+        base name and a trailing version pattern like '_v1.2.3'.
+        Collapse duplicate underscores.
+        """
+        n = re.sub(r'(?i)_signed', '', name_wo_ext)
+        n = re.sub(r'_v\d+(?:\.\d+)*$', '', n)
+        n = re.sub(r'__+', '_', n).strip('_')
+        return n
+
+    @staticmethod
+    def _make_signed_filename(base_wo_ext: str, version_label: Optional[str]) -> str:
+        """
+        Build final file name (with .pdf):
+        - Always exactly one '_signed'
+        - If version_label is given -> suffix '_v<version>'
+        Example: base -> base_signed_v1.3.pdf
+        """
+        core = DocumentsRepository._strip_signed_and_version_tokens(base_wo_ext)
+        if version_label:
+            return f"{core}_signed_v{version_label}.pdf"
+        return f"{core}_signed.pdf"
+
+    # ----------------------------- status utils -----------------------------
+
     @staticmethod
     def _status_to_enum(val: Any) -> DocumentStatus:
-        """Convert stored status string into DocumentStatus enum."""
         if isinstance(val, DocumentStatus):
             return val
         s = str(val or "").strip()
@@ -187,7 +215,8 @@ class DocumentsRepository:
                 return st
         raise ValueError(f"Unknown status: {val}")
 
-    # File name parsing ------------------------------------------------------
+    # ----------------------------- id/title parsing -------------------------
+
     @staticmethod
     def _parse_id_title_from_filename(path: str) -> tuple[Optional[str], Optional[str]]:
         name = os.path.splitext(os.path.basename(path))[0]
@@ -211,7 +240,8 @@ class DocumentsRepository:
                 return cand
             i += 1
 
-    # CRUD ------------------------------------------------------------------
+    # ----------------------------- CRUD ------------------------------------
+
     def create_from_file(
         self,
         *,
@@ -243,6 +273,7 @@ class DocumentsRepository:
                 self._ingest_comments(doc_id, ver_label, comments)
             except Exception:
                 pass
+
         next_review_dt = now + timedelta(days=30 * int(self._cfg["review_months"]))
         self._conn.execute(
             """
@@ -298,12 +329,7 @@ class DocumentsRepository:
         create_from_template(
             template_path,
             out_path,
-            props={
-                "author": user_id or "",
-                "last_modified_by": user_id or "",
-                "title": title,
-                "revision": 1,
-            },
+            props={"author": user_id or "", "last_modified_by": user_id or "", "title": title, "revision": 1},
         )
         _, comments = extract_core_and_comments(out_path)
         self._ingest_comments(doc_id, ver_label, comments)
@@ -381,7 +407,8 @@ class DocumentsRepository:
         self._audit.write(doc.doc_id.value, "update_metadata", user_id, {"title": d["title"], "doc_type": d["doc_type"]})
         self._conn.commit()
 
-    # Locking ---------------------------------------------------------------
+    # ----------------------------- check-in/out -----------------------------
+
     def check_out(self, doc_id: str, user_id: str) -> bool:
         row = self._conn.execute("SELECT locked_by FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if row and row["locked_by"]:
@@ -399,12 +426,20 @@ class DocumentsRepository:
         src_file: Optional[str],
         change_note: Optional[str],
     ) -> DocumentRecord:
-        cur = self._conn.execute("SELECT version_major,version_minor,current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+        """
+        Content check-in (new file or metadata-only): bumps minor version.
+        """
+        cur = self._conn.execute(
+            "SELECT version_major,version_minor,current_file_path FROM documents WHERE doc_id=?",
+            (doc_id,),
+        ).fetchone()
         if not cur:
             raise KeyError("Document not found")
+
         maj, minor = int(cur["version_major"]), int(cur["version_minor"])
         new_minor = minor + 1
         new_path = None
+
         if src_file:
             if src_file.lower().endswith(".docx"):
                 try:
@@ -416,20 +451,14 @@ class DocumentsRepository:
                 except Exception:
                     pass
             new_path = self._store_file(src_file, self._ver_dir(doc_id, f"{maj}.{new_minor}"))
+
         now = self._now().isoformat(timespec="seconds")
         self._conn.execute(
             """
             UPDATE documents SET version_major=?, version_minor=?, current_file_path=?, locked_by=NULL, locked_at=NULL,
                                  updated_at=?, change_note=? WHERE doc_id=?
             """,
-            (
-                maj,
-                new_minor,
-                new_path,
-                now,
-                change_note,
-                doc_id,
-            ),
+            (maj, new_minor, new_path, now, change_note, doc_id),
         )
         new_label = f"{maj}.{new_minor}"
         self._conn.execute(
@@ -443,21 +472,21 @@ class DocumentsRepository:
         self._conn.commit()
         return self.get(doc_id)
 
-    # Status transitions ---------------------------------------------------
+    # ----------------------------- status transitions -----------------------
+
     def set_status(self, doc_id: str, target: DocumentStatus, user_id: Optional[str], change_note: Optional[str]) -> DocumentRecord:
         now = self._now()
         obsoleted_at = now.isoformat(timespec="seconds") if target == DocumentStatus.OBSOLETE else None
         self._conn.execute(
-            """
-            UPDATE documents SET status=?, updated_at=?, change_note=?, obsoleted_at=? WHERE doc_id=?
-            """,
+            "UPDATE documents SET status=?, updated_at=?, change_note=?, obsoleted_at=? WHERE doc_id=?",
             (target.name, now.isoformat(timespec="seconds"), change_note, obsoleted_at, doc_id),
         )
         self._audit.write(doc_id, f"status_{target.name}", user_id, {"change_note": change_note})
         self._conn.commit()
         return self.get(doc_id)
 
-    # PDF helpers -----------------------------------------------------------
+    # ----------------------------- PDF helpers ------------------------------
+
     def generate_review_pdf(self, doc_id: str) -> Optional[str]:
         row = self._conn.execute("SELECT current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if not row or not row["current_file_path"]:
@@ -472,7 +501,10 @@ class DocumentsRepository:
         return pdf_path
 
     def export_pdf_with_version_suffix(self, doc_id: str) -> Optional[str]:
-        row = self._conn.execute("SELECT current_file_path,version_major,version_minor FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+        row = self._conn.execute(
+            "SELECT current_file_path,version_major,version_minor FROM documents WHERE doc_id=?",
+            (doc_id,),
+        ).fetchone()
         if not row or not row["current_file_path"]:
             return None
         src = str(row["current_file_path"])
@@ -481,7 +513,8 @@ class DocumentsRepository:
         out_pdf = os.path.join(os.path.dirname(src), f"{base}_v{ver_label}.pdf")
         return convert_to_pdf(src, out_pdf)
 
-    # Signature integration -----------------------------------------------
+    # ----------------------------- signature integration --------------------
+
     def _default_placement(self):
         class P:
             page_index = -1
@@ -490,120 +523,174 @@ class DocumentsRepository:
             target_width = 180
         return P()
 
-    def record_signature(self, doc_id: str, step: str, user_id: str, reason: Optional[str], signature_png: Optional[bytes]) -> None:
-        signed_copy_path = None
-        # Prefer signature API for stamping if current file is PDF
-        try:
-            cur = self._conn.execute(
-                "SELECT current_file_path, version_major, version_minor FROM documents WHERE doc_id=?",
-                (doc_id,),
-            ).fetchone()
-            if cur and cur["current_file_path"] and str(cur["current_file_path"]).lower().endswith(".pdf"):
-                src_pdf = str(cur["current_file_path"])
-                api = AppContext.signature()
-                placement = None
-                for meth in ("default_placement", "placement_default", "make_default_placement"):
-                    if hasattr(api, meth):
-                        try:
-                            placement = getattr(api, meth)()
-                            break
-                        except Exception:
-                            placement = None
-                if placement is None:
-                    placement = self._default_placement()
-                try:
-                    out = api.sign_pdf(input_path=src_pdf, placement=placement, reason=reason, use_user_signature=True, raw_signature_png=signature_png)
-                except TypeError:
-                    out = api.sign_pdf(src_pdf, placement, reason)
-                # Normalize output path
-                signed_pdf = None
-                if isinstance(out, str) and os.path.isfile(out):
-                    signed_pdf = out
-                elif isinstance(out, dict):
-                    path = out.get("out") or out.get("path") or out.get("pdf")
-                    if isinstance(path, str) and os.path.isfile(path):
-                        signed_pdf = path
-                elif hasattr(out, "path"):
-                    p = getattr(out, "path")
-                    if isinstance(p, str) and os.path.isfile(p):
-                        signed_pdf = p
-                if not signed_pdf and out and os.path.isfile(src_pdf):
-                    signed_pdf = src_pdf
-                if signed_pdf:
-                    maj, minor = int(cur["version_major"]), int(cur["version_minor"]) + 1
-                    ver_label = f"{maj}.{minor}"
-                    now = self._now().isoformat(timespec="seconds")
-                    os.makedirs(self._ver_dir(doc_id, ver_label), exist_ok=True)
-                    target = os.path.join(self._ver_dir(doc_id, ver_label), os.path.basename(signed_pdf))
-                    if os.path.dirname(signed_pdf) != self._ver_dir(doc_id, ver_label):
-                        shutil.copyfile(signed_pdf, target)
-                        signed_pdf = target
-                    self._conn.execute(
-                        """
-                        UPDATE documents SET version_major=?, version_minor=?, current_file_path=?, updated_at=?
-                         WHERE doc_id=?
-                        """,
-                        (maj, minor, signed_pdf, now, doc_id),
-                    )
-                    self._conn.execute(
-                        """
-                        INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
-                        VALUES (?,?,?,?,?,?)
-                        """,
-                        (doc_id, ver_label, signed_pdf, now, user_id, f"Signature {step}"),
-                    )
-                    signed_copy_path = signed_pdf
-        except Exception:
-            signed_copy_path = None
-        # Fallback: if signature API didn't stamp and a PNG is provided
-        if signed_copy_path is None and signature_png:
-            cur = self._conn.execute(
-                "SELECT current_file_path, version_major, version_minor FROM documents WHERE doc_id=?",
-                (doc_id,),
-            ).fetchone()
-            if cur and cur["current_file_path"] and str(cur["current_file_path"]).lower().endswith(".pdf"):
-                src_pdf = str(cur["current_file_path"])
-                maj, minor = int(cur["version_major"]), int(cur["version_minor"]) + 1
-                ver_label = f"{maj}.{minor}"
-                out_dir = self._ver_dir(doc_id, ver_label)
-                os.makedirs(out_dir, exist_ok=True)
-                out_pdf = os.path.join(out_dir, os.path.basename(src_pdf))
-                label = f"Signed by {user_id} ({step})"
-                if stamp_signature(src_pdf, out_pdf, signature_png, label=label):
-                    now = self._now().isoformat(timespec="seconds")
-                    self._conn.execute(
-                        """
-                        UPDATE documents SET version_major=?, version_minor=?, current_file_path=?, updated_at=?
-                         WHERE doc_id=?
-                        """,
-                        (maj, minor, out_pdf, now, doc_id),
-                    )
-                    self._conn.execute(
-                        """
-                        INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
-                        VALUES (?,?,?,?,?,?)
-                        """,
-                        (doc_id, ver_label, out_pdf, now, user_id, f"Signature {step}"),
-                    )
-                    signed_copy_path = out_pdf
+    def attach_signed_pdf(self, doc_id: str, signed_pdf: str, step: str, user_id: str, reason: str) -> str:
+        """
+        Attach a (externally) signed PDF to the *current* version without bumping version numbers.
+
+        Naming rules:
+          - exactly one '_signed'
+          - version suffix only for final publish: '_signed_v<maj.min>.pdf'
+
+        Updates 'documents.current_file_path' and the latest 'versions.file_path' for the current version label.
+        Also appends a row to 'signatures' and writes an audit entry.
+
+        Returns: absolute path to the normalized stored PDF.
+        """
+        if not (signed_pdf and os.path.isfile(signed_pdf)):
+            raise FileNotFoundError("Signed PDF not found.")
+
+        cur = self._conn.execute(
+            "SELECT version_major,version_minor FROM documents WHERE doc_id=?",
+            (doc_id,),
+        ).fetchone()
+        if not cur:
+            raise KeyError(f"Document not found: {doc_id}")
+
+        maj, minor = int(cur["version_major"]), int(cur["version_minor"])
+        version_label = f"{maj}.{minor}"
+
+        step_norm = (step or "").strip().lower()
+        use_version_suffix = step_norm in {"publish"}  # only final publish receives version suffix
+
+        base_in = os.path.splitext(os.path.basename(signed_pdf))[0]
+        target_name = self._make_signed_filename(base_in, version_label if use_version_suffix else None)
+
+        out_dir = self._ver_dir(doc_id, version_label)
+        os.makedirs(out_dir, exist_ok=True)
+        target_path = os.path.join(out_dir, target_name)
+
+        if os.path.abspath(signed_pdf) != os.path.abspath(target_path):
+            shutil.copyfile(signed_pdf, target_path)
+
+        now = self._now().isoformat(timespec="seconds")
+        # Update current document pointer
+        self._conn.execute(
+            "UPDATE documents SET current_file_path=?, updated_at=? WHERE doc_id=?",
+            (target_path, now, doc_id),
+        )
+        # Ensure the versions row for this version_label points to the normalized file
+        self._conn.execute(
+            """
+            UPDATE versions
+               SET file_path=?
+             WHERE id = (
+                 SELECT id FROM versions
+                  WHERE doc_id=? AND version_label=?
+                  ORDER BY id DESC
+                  LIMIT 1
+             )
+            """,
+            (target_path, doc_id, version_label),
+        )
+        # Signatures trail
         self._conn.execute(
             """
             INSERT INTO signatures(doc_id,step,user_id,reason,signed_at,file_path)
             VALUES (?,?,?,?,?,?)
             """,
-            (
-                doc_id,
-                step,
-                user_id,
-                reason,
-                self._now().isoformat(timespec="seconds"),
-                signed_copy_path,
-            ),
+            (doc_id, step_norm, user_id or "", reason or "", now, target_path),
         )
-        self._audit.write(doc_id, "signature", user_id, {"step": step})
+        self._audit.write(doc_id, "signature", user_id, {"step": step_norm, "file": os.path.basename(target_path)})
         self._conn.commit()
+        return target_path
 
-    # Controlled copy -------------------------------------------------------
+    def record_signature(
+        self,
+        doc_id: str,
+        step: str,
+        user_id: str,
+        reason: Optional[str],
+        signature_png: Optional[bytes],
+    ) -> None:
+        """
+        Record a signature for allowed workflow steps by stamping the current PDF
+        via the signature API (preferred) or PNG fallback, and attach the result
+        to the *current* version without changing version numbers.
+
+        Allowed steps: submit_review, request_approval, publish
+        - Only 'publish' will get a filename with '_signed_v<maj.min>.pdf'
+        - Other steps get '<name>_signed.pdf'
+        """
+        step_norm = (step or "").strip().lower()
+        allowed = {"submit_review", "request_approval", "publish"}
+        if step_norm not in allowed:
+            # No-op but audit for traceability
+            self._audit.write(doc_id, "signature_skipped", user_id, {"step": step_norm})
+            self._conn.commit()
+            return
+
+        row = self._conn.execute(
+            "SELECT current_file_path FROM documents WHERE doc_id=?",
+            (doc_id,),
+        ).fetchone()
+        if not row:
+            self._audit.write(doc_id, "signature_failed", user_id, {"step": step_norm, "err": "doc_missing"})
+            self._conn.commit()
+            return
+
+        src_pdf = (row["current_file_path"] or "").strip()
+        if not (src_pdf and src_pdf.lower().endswith(".pdf") and os.path.isfile(src_pdf)):
+            self._audit.write(doc_id, "signature_failed", user_id, {"step": step_norm, "err": "no_pdf"})
+            self._conn.commit()
+            return
+
+        # Try external signature API first
+        signed_path: Optional[str] = None
+        try:
+            api = AppContext.signature()
+            # Placement discovery
+            placement = None
+            for meth in ("default_placement", "placement_default", "make_default_placement"):
+                if hasattr(api, meth):
+                    try:
+                        placement = getattr(api, meth)()
+                        break
+                    except Exception:
+                        placement = None
+            if placement is None:
+                placement = self._default_placement()
+            try:
+                out = api.sign_pdf(input_path=src_pdf, placement=placement, reason=reason,
+                                   use_user_signature=True, raw_signature_png=signature_png)
+            except TypeError:
+                # Older API shape
+                out = api.sign_pdf(src_pdf, placement, reason)
+
+            # Normalize result to a path
+            if isinstance(out, str) and os.path.isfile(out):
+                signed_path = out
+            elif isinstance(out, dict):
+                p = out.get("out") or out.get("path") or out.get("pdf")
+                if isinstance(p, str) and os.path.isfile(p):
+                    signed_path = p
+            elif hasattr(out, "path"):
+                p = getattr(out, "path", None)
+                if isinstance(p, str) and os.path.isfile(p):
+                    signed_path = p
+            # Some APIs modify in-place and return a truthy object
+            if not signed_path and out and os.path.isfile(src_pdf):
+                signed_path = src_pdf
+        except Exception:
+            signed_path = None
+
+        # PNG fallback stamping if API failed but a raw signature is available
+        if signed_path is None and signature_png:
+            tmp_dir = os.path.dirname(src_pdf)
+            tmp_out = os.path.join(tmp_dir, os.path.basename(src_pdf))
+            label = f"Signed by {user_id} ({step_norm})" if user_id else f"Signature ({step_norm})"
+            if stamp_signature(src_pdf, tmp_out, signature_png, label=label):
+                signed_path = tmp_out
+
+        if not signed_path:
+            self._audit.write(doc_id, "signature_failed", user_id, {"step": step_norm, "err": "no_output"})
+            self._conn.commit()
+            return
+
+        # Finalize: attach using normalized naming and without version bump
+        self.attach_signed_pdf(doc_id, signed_path, step_norm, user_id or "", reason or "")
+
+    # ----------------------------- controlled copies ------------------------
+
     def make_controlled_copy(self, doc_id: str) -> Optional[str]:
         row = self._conn.execute("SELECT current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if not row or not row["current_file_path"]:
@@ -620,7 +707,8 @@ class DocumentsRepository:
     def copy_to_destination(self, doc_id: str, dest_dir: str) -> Optional[str]:
         """Create a watermarked PDF copy in the specified destination if document is published."""
         row = self._conn.execute(
-            "SELECT current_file_path,status FROM documents WHERE doc_id=?", (doc_id,)
+            "SELECT current_file_path,status FROM documents WHERE doc_id=?",
+            (doc_id,),
         ).fetchone()
         if not row or row["status"] != DocumentStatus.PUBLISHED.name:
             return None
@@ -632,7 +720,8 @@ class DocumentsRepository:
         make_controlled_copy(src, out, self._cfg["watermark_copy"])
         return out
 
-    # Comments & Reads ------------------------------------------------------
+    # ----------------------------- comments & reads -------------------------
+
     def _ingest_comments(self, doc_id: str, version_label: str, comments: List[Dict]) -> None:
         if not comments:
             return
@@ -640,17 +729,8 @@ class DocumentsRepository:
         for c in comments:
             dt = c.get("date")
             cur.execute(
-                """
-                INSERT INTO doc_comments(doc_id,version_label,author,date,text)
-                VALUES (?,?,?,?,?)
-                """,
-                (
-                    doc_id,
-                    version_label,
-                    c.get("author"),
-                    dt.isoformat() if dt else None,
-                    c.get("text"),
-                ),
+                "INSERT INTO doc_comments(doc_id,version_label,author,date,text) VALUES (?,?,?,?,?)",
+                (doc_id, version_label, c.get("author"), dt.isoformat() if dt else None, c.get("text")),
             )
         self._conn.commit()
 
@@ -673,6 +753,8 @@ class DocumentsRepository:
                 }
             )
         return out
+
+    # ----------------------------- assignees / tasks ------------------------
 
     def set_assignees(
         self, doc_id: str, *, authors: list[str] | None, reviewers: list[str], approvers: list[str]
@@ -740,7 +822,8 @@ class DocumentsRepository:
                 )
         return tasks
 
-    # Read receipts --------------------------------------------------------
+    # ----------------------------- read receipts ----------------------------
+
     def mark_read(self, doc_id: str, user_id: str) -> None:
         row = self._conn.execute("SELECT version_major,version_minor FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
         if not row:
@@ -759,7 +842,8 @@ class DocumentsRepository:
         ).fetchall()
         return [{"version_label": r["version_label"], "user_id": r["user_id"], "read_at": r["read_at"]} for r in rows]
 
-    # Mapping ---------------------------------------------------------------
+    # ----------------------------- mapping ----------------------------------
+
     def _map_record(self, r: dict) -> DocumentRecord:
         def parse_dt(val: Optional[str]):
             if not val:

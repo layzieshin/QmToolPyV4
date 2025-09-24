@@ -84,3 +84,34 @@ common.reset	Zurücksetzen	Reset
 common.save	Speichern	Save
 common.saved	Gespeichert	Saved
 common.choose_file	Datei wählen	Choose file
+label	de	en
+documents.changenote.prompt	Bitte beschreiben Sie den Grund/die Änderung:	Please describe the reason/change:
+documents.meta.title	Metadaten bearbeiten	Edit metadata
+documents.meta.lbl.title	Titel	Title
+documents.meta.lbl.type	Typ	Type
+documents.meta.lbl.area	Bereich	Area
+documents.meta.lbl.process	Prozess	Process
+documents.meta.lbl.nextreview	Nächste Prüfung (JJJJ-MM-TT)	Next review (YYYY-MM-DD)
+documents.untitled	Ohne Titel	Untitled
+documents.assign_roles.title	Rollen zuweisen	Assign roles
+documents.assign_roles.col.user	Benutzer	User
+documents.assign_roles.col.selected	Ausgewählt	Selected
+documents.assign_roles.ok	OK	OK
+documents.assign_roles.cancel	Abbrechen	Cancel
+documents.roles.author	Ersteller	Author
+documents.roles.reviewer	Prüfer	Reviewer
+documents.roles.approver	Freigeber	Approver
+documents.comments.title	Kommentare	Comments
+documents.comments.col.version	Version	Version
+documents.comments.col.author	Autor	Author
+documents.comments.col.date	Datum	Date
+documents.comments.col.text	Text	Text
+documents.comments.close	Schließen	Close
+documents.tasks.title	Meine Workflows	My workflows
+documents.tasks.col.doc_id	Dokument-ID	Document ID
+documents.tasks.col.title	Titel	Title
+documents.tasks.col.status	Status	Status
+documents.tasks.col.version	Version	Version
+documents.tasks.col.next_action	Nächste Aktion	Next action
+documents.tasks.col.go	Los	Go
+documents.tasks.close	Schließen	Close

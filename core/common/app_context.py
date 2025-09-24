@@ -17,16 +17,40 @@ from usermanagement.logic.user_manager import UserManager
 #  Load translation file once                                        #
 # ------------------------------------------------------------------ #
 root = Path(__file__).resolve().parents[2]
-labels_file = LABELS_TSV_PATH
 
-label_files = [labels_file]
-label_files += list(root.glob("**/label.tsv"))
+# Central dictionary (e.g. translations/labels.tsv)
+central_file = Path(LABELS_TSV_PATH) if LABELS_TSV_PATH else None
+
+# Gather module dictionaries:
+# - prefer plural 'labels.tsv'
+# - also support legacy singular 'label.tsv'
+module_candidates = list(root.glob("**/labels.tsv"))
+module_candidates += list(root.glob("**/label.tsv"))  # backward-compat
+
+# Build final, existing, de-duplicated file list (central first)
+seen: set[Path] = set()
+label_files: list[Path] = []
+
+def _add(p: Path | None) -> None:
+    if not p:
+        return
+    try:
+        rp = p.resolve()
+    except Exception:
+        return
+    if rp.exists() and rp not in seen:
+        seen.add(rp)
+        label_files.append(rp)
+
+_add(central_file)
+for p in module_candidates:
+    _add(p)
 
 if label_files:
-    translations.load_files(label_files)
+    translations.load_files(label_files)  # merges multiple TSVs. :contentReference[oaicite:1]{index=1}
 else:
+    # empty init to avoid KeyErrors later
     translations.translations = {"de": {}, "en": {}}
-
 
 # ------------------------------------------------------------------ #
 #  Central AppContext                                                #
@@ -37,15 +61,15 @@ class AppContext:
     # ---------- Singleton instances -----------------------------------
     log_controller = LogController()
     user_manager = UserManager()
-    settings_manager = settings_manager         # ← keep instance reference
+    settings_manager = settings_manager  # keep instance reference
 
-    current_user = None                         # type: ignore[assignment]
+    current_user = None  # type: ignore[assignment]
 
     # ---------- Service registry for DI -------------------------------
     services: dict[str, object] = {
-        "log_controller":   log_controller,
-        "controller":       log_controller,     # alias
-        "user_manager":     user_manager,
+        "log_controller": log_controller,
+        "controller": log_controller,  # alias
+        "user_manager": user_manager,
         "settings_manager": settings_manager,
     }
 
@@ -61,8 +85,7 @@ class AppContext:
         Determine active language:
         1) user-specific  2) global  3) fallback 'de'
         """
-        lang = cls.settings_manager.get("app", "language",
-                                        user_specific=True, fallback=None)
+        lang = cls.settings_manager.get("app", "language", user_specific=True, fallback=None)
         if lang is None:
             lang = cls.settings_manager.get("app", "language", fallback="de")
         from core.i18n.locale import locale  # lazy import
@@ -87,9 +110,8 @@ class AppContext:
 #  Translation shortcut                                              #
 # ------------------------------------------------------------------ #
 def T(label: str) -> str:
-    lang = AppContext.settings_manager.get("app", "language",
-                                           user_specific=True, fallback="de")
-    return translations.t(label, lang)
+    lang = AppContext.settings_manager.get("app", "language", user_specific=True, fallback="de")
+    return translations.t(label, lang)  # logs missing keys once. :contentReference[oaicite:2]{index=2}
 
 
 # Initial language

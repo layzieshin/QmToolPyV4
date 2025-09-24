@@ -4,11 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250923_1 docs works/polished">
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250923_2 docs works/polished">
+      <change afterPath="$PROJECT_DIR$/documents/labels.tsv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/labels.tsv" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/labels.tsv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/documents/gui/dialogs/assign_roles_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/dialogs/assign_roles_dialog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/documents/gui/dialogs/comments_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/dialogs/comments_dialog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/documents/gui/dialogs/tasks_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/dialogs/tasks_dialog.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/documents/gui/main_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/main_view.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/documents/logic/doc_convert.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/logic/doc_convert.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/documents/logic/repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/logic/repository.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/documents/logic/word_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/logic/word_tools.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -462,7 +468,15 @@
       <option name="project" value="LOCAL" />
       <updated>1758666172100</updated>
     </task>
-    <option name="localTasksCounter" value="29" />
+    <task id="LOCAL-00029" summary="20250923_2 docs works/polished">
+      <option name="closed" value="true" />
+      <created>1758669045976</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1758669045976</updated>
+    </task>
+    <option name="localTasksCounter" value="30" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -488,7 +502,8 @@
     <MESSAGE value="20250827_3 signature works/polished" />
     <MESSAGE value="20250902_1 signature works/polished" />
     <MESSAGE value="20250923_1 docs works/polished" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250923_1 docs works/polished" />
+    <MESSAGE value="20250923_2 docs works/polished" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250923_2 docs works/polished" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
