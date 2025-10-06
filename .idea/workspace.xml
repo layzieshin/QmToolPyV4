@@ -4,17 +4,30 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250923_2 docs works/polished">
-      <change afterPath="$PROJECT_DIR$/documents/labels.tsv" afterDir="false" />
+    <list default="true" id="aa7d7288-cb69-41a5-a861-0c5945d461dc" name="Changes" comment="20250924_1 docs works/polished">
+      <change afterPath="$PROJECT_DIR$/word_meta/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/gui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/gui/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/gui/modul_settings_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/gui/modul_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/gui/settings_schema.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/logic/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/logic/docx_app_reader.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/logic/docx_comments_reader.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/logic/docx_core_reader.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/logic/docx_custom_reader.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/logic/metadata_api.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/logic/metadata_extractor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/models/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/models/core_properties.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/models/custom_property.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/models/document_metadata.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/models/extended_properties.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/models/review_comment.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/word_meta/models/roles.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/common/app_context.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/common/app_context.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config/labels.tsv" beforeDir="false" afterPath="$PROJECT_DIR$/core/config/labels.tsv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/documents/gui/dialogs/assign_roles_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/dialogs/assign_roles_dialog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/documents/gui/dialogs/comments_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/dialogs/comments_dialog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/documents/gui/dialogs/tasks_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/dialogs/tasks_dialog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/documents/gui/main_view.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/gui/main_view.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/documents/logic/doc_convert.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/logic/doc_convert.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/documents/logic/repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/documents/logic/repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/config_loader.old.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config/config_loader.old2.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -64,35 +77,36 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.config_settings_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.create_init_files.executor&quot;: &quot;Run&quot;,
-    &quot;Python.dev_check_configloader.executor&quot;: &quot;Run&quot;,
-    &quot;Python.fill_dictionary_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.fix_roles.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_controller.executor&quot;: &quot;Run&quot;,
-    &quot;Python.log_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main_window.executor&quot;: &quot;Run&quot;,
-    &quot;Python.pdf_signer.executor&quot;: &quot;Run&quot;,
-    &quot;Python.signature_view.executor&quot;: &quot;Run&quot;,
-    &quot;Python.smoke_import_signature.executor&quot;: &quot;Run&quot;,
-    &quot;Python.user_view.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.config_settings_view.executor": "Run",
+    "Python.create_init_files.executor": "Run",
+    "Python.dev_check_configloader.executor": "Run",
+    "Python.fill_dictionary_view.executor": "Run",
+    "Python.fix_roles.executor": "Run",
+    "Python.log_controller.executor": "Run",
+    "Python.log_view.executor": "Run",
+    "Python.main (1).executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.main_window.executor": "Run",
+    "Python.pdf_signer.executor": "Run",
+    "Python.signature_view.executor": "Run",
+    "Python.smoke_import_signature.executor": "Run",
+    "Python.user_view.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "master",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/nebul/Nextcloud/Projekte/QmToolPyV4",
+    "run.code.analysis.last.selected.profile": "pProject Default",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;stardust.markdown.MarkdownSplitEditorSuppressor:keyList&quot;: []
+  "keyToStringList": {
+    "stardust.markdown.MarkdownSplitEditorSuppressor:keyList": []
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QmToolPyV4" />
@@ -107,7 +121,7 @@
       <recent name="C:\Users\nebul\Nextcloud\Projekte\QMToolPyV4\core\helpers" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.main">
+  <component name="RunManager" selected="Python.main (1)">
     <configuration name="dev_check_configloader" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
@@ -130,6 +144,28 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="main (1)" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="QMToolPyV4" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/word_meta/gui" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/word_meta/gui/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="QMToolPyV4" />
       <option name="ENV_FILES" value="" />
@@ -144,28 +180,6 @@
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="pdf_signer" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="QMToolPyV4" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/../QMToolPy/PDFSigner/logic" />
-      <option name="IS_MODULE_SDK" value="false" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/../QMToolPy/PDFSigner/logic/pdf_signer.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -220,11 +234,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.main (1)" />
         <item itemvalue="Python.main" />
         <item itemvalue="Python.dev_check_configloader" />
         <item itemvalue="Python.smoke_import_signature" />
         <item itemvalue="Python.signature_view" />
-        <item itemvalue="Python.pdf_signer" />
       </list>
     </recent_temporary>
   </component>
@@ -476,7 +490,15 @@
       <option name="project" value="LOCAL" />
       <updated>1758669045976</updated>
     </task>
-    <option name="localTasksCounter" value="30" />
+    <task id="LOCAL-00030" summary="20250924_1 docs works/polished">
+      <option name="closed" value="true" />
+      <created>1758751920424</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1758751920424</updated>
+    </task>
+    <option name="localTasksCounter" value="31" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -503,7 +525,8 @@
     <MESSAGE value="20250902_1 signature works/polished" />
     <MESSAGE value="20250923_1 docs works/polished" />
     <MESSAGE value="20250923_2 docs works/polished" />
-    <option name="LAST_COMMIT_MESSAGE" value="20250923_2 docs works/polished" />
+    <MESSAGE value="20250924_1 docs works/polished" />
+    <option name="LAST_COMMIT_MESSAGE" value="20250924_1 docs works/polished" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
