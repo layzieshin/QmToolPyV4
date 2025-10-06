@@ -1,3 +1,4 @@
+# documents/logic/repository.py
 """
 Repository with:
 - robust status mapping (case-insensitive)
@@ -38,7 +39,10 @@ from documents.models.document_models import DocumentRecord, DocumentStatus, Doc
 from .audit_log import AuditLog
 from .id_generator import IdGenerator
 from .pdf_tools import make_controlled_copy, stamp_signature
-from documents.logic.word_tools import extract_core_and_comments, set_core_properties, create_from_template
+
+# NEU
+from documents.logic.wordmeta_bridge import extract_core_and_comments
+from documents.logic.word_tools import set_core_properties, create_from_template
 from documents.logic.doc_convert import convert_to_pdf
 
 
@@ -736,23 +740,18 @@ class DocumentsRepository:
 
     def list_comments(self, doc_id: str, version_label: Optional[str] = None) -> list[dict]:
         sql = "SELECT author,date,text,version_label FROM doc_comments WHERE doc_id=?"
-        args: list = [doc_id]
+        args = [doc_id]
         if version_label:
             sql += " AND version_label=?"
             args.append(version_label)
         sql += " ORDER BY id ASC"
         rows = self._conn.execute(sql, tuple(args)).fetchall()
-        out: list[dict] = []
-        for r in rows:
-            out.append(
-                {
-                    "author": r["author"],
-                    "date": r["date"],
-                    "text": r["text"],
-                    "version_label": r["version_label"],
-                }
-            )
-        return out
+        out = [{"author": r["author"], "date": r["date"], "text": r["text"], "version_label": r["version_label"]} for r
+               in rows]
+        if out:
+            return out
+
+
 
     # ----------------------------- assignees / tasks ------------------------
 
