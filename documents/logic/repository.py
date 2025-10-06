@@ -738,20 +738,60 @@ class DocumentsRepository:
             )
         self._conn.commit()
 
-    def list_comments(self, doc_id: str, version_label: Optional[str] = None) -> list[dict]:
-        sql = "SELECT author,date,text,version_label FROM doc_comments WHERE doc_id=?"
-        args = [doc_id]
-        if version_label:
-            sql += " AND version_label=?"
-            args.append(version_label)
-        sql += " ORDER BY id ASC"
-        rows = self._conn.execute(sql, tuple(args)).fetchall()
-        out = [{"author": r["author"], "date": r["date"], "text": r["text"], "version_label": r["version_label"]} for r
-               in rows]
-        if out:
+    def list_comments(self, doc_id: str, version_label: str | None = None) -> list[dict]:
+        """
+        Read review comments *live* from the current DOCX and show Word's revision/version.
+        - No DB usage, no persistence.
+        - First column prefers Word 'revision' (r<rev>), then Word 'version', then repo maj.min.
+        - Always returns a list; dates are formatted as 'YYYY-MM-DD HH:MM:SS'.
+        """
+        try:
+            row = self._conn.execute(
+                "SELECT current_file_path, version_major, version_minor FROM documents WHERE doc_id=?",
+                (doc_id,),
+            ).fetchone()
+            if not row:
+                return []
+
+            path = (row["current_file_path"] or "").strip()
+            if not (path and path.lower().endswith(".docx")):
+                return []
+
+            # live extraction via word_meta bridge
+            from documents.logic.wordmeta_bridge import extract_core_and_comments
+            core, comments = extract_core_and_comments(path)
+
+            # determine label for first column (prefer Word 'revision', then Word 'version')
+            label = None
+            rev = core.get("revision")
+            if isinstance(rev, int) and rev > 0:
+                label = f"r{rev}"
+            if not label:
+                ver = core.get("version")
+                if isinstance(ver, str) and ver.strip():
+                    label = ver.strip()
+            if not label:
+                label = f"{int(row['version_major'])}.{int(row['version_minor'])}"  # fallback
+            if version_label:
+                label = version_label  # explicit override, if caller provides
+
+            out: list[dict] = []
+            for c in comments or []:
+                dt = c.get("date")
+                dt_str = ""
+                if hasattr(dt, "strftime"):
+                    dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                elif isinstance(dt, str):
+                    dt_str = dt
+                out.append({
+                    "version_label": label,
+                    "author": str(c.get("author") or ""),
+                    "date": dt_str,
+                    "text": str(c.get("text") or "").strip(),
+                })
             return out
-
-
+        except Exception:
+            return []
 
     # ----------------------------- assignees / tasks ------------------------
 
