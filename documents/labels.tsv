@@ -131,3 +131,69 @@ common.cancel	Abbrechen	Cancel
 common.ok	OK	OK
 common.search	Suchen	Search
 
+key	de	en
+documents.title	Dokumentenlenkung	Document Control
+documents.init_error	Problem bei der Modulinitalisierung: 	Module initialization problem:
+documents.filter.search	Suche	Search
+documents.filter.sort	Sortierung	Sort
+documents.filter.status	Status	Status
+documents.filter.active	Nur aktive Workflows	Active workflows only
+documents.list	Dokumente	Documents
+documents.tab.overview	Übersicht	Overview
+documents.tab.comments	Kommentare	Comments
+documents.col.author	Autor	Author
+documents.col.date	Datum	Date
+documents.col.text	Text	Text
+
+documents.ov.id	Dokument-ID	Document ID
+documents.ov.title	Titel	Title
+documents.ov.type	Typ	Type
+documents.ov.status	Status	Status
+documents.ov.version	Version	Version
+documents.ov.current	Aktuelle Datei	Current File
+
+documents.import	Importieren	Import
+documents.new_from_tpl	Neu aus Vorlage	New from Template
+documents.edit_meta	Metadaten bearbeiten	Edit Metadata
+documents.assign.roles	Zuständigkeiten…	Assign roles…
+
+documents.btn.workflow.start	Workflow starten	Start workflow
+documents.btn.workflow.abort	Workflow abbrechen	Abort workflow
+documents.btn.to_review	Zur Prüfung einreichen	Submit for review
+documents.btn.back_to_draft	Zurück zu Entwurf	Back to draft
+documents.btn.archive	Archivieren	Archive
+documents.btn.open	Öffnen	Open
+documents.btn.copy	Kontrollkopie	Controlled Copy
+
+documents.import.title	Dokument importieren	Import Document
+documents.import.ok	Importiert	Imported
+documents.import.msg	Dokument erstellt: 	Document created:
+
+documents.tpl.missing.title	Keine Vorlagen	No templates
+documents.tpl.missing.msg	Ordner nicht gefunden: 	Folder not found:
+documents.tpl.choose	Vorlage wählen	Choose template
+documents.tpl.created	Dokument erstellt	Document created
+documents.tpl.created.msg	Erstellt aus Vorlage: 	Created from template:
+
+documents.copy.choose_dest	Zielordner wählen	Choose destination
+documents.copy.ok	Kopie erstellt	Copy created
+documents.copy.done	Kopie erstellt in: 	Copy created at:
+
+documents.open.error	Öffnen fehlgeschlagen	Open failed
+
+# Optional: Sortwert-Bezeichnungen (falls ihr sie auch lokalisieren wollt)
+documents.sort.updated_desc	Aktualisiert (neueste zuerst)	Updated (newest first)
+documents.sort.status_order	Status (Workflow-Reihenfolge)	Status (workflow order)
+documents.sort.title_az	Titel (A→Z)	Title (A→Z)
+
+# Gründe/Prompts
+documents.reason.abort	Grund für Abbruch	Reason for abort
+documents.reason.back_to_draft	Grund – Zurück zu Entwurf	Reason – Back to draft
+documents.reason.archive	Grund – Archivieren	Reason – Archive
+
+# Signatur/Signature-API (aus View verwendet)
+core_signature.sign.choose_pdf_first	Bitte zuerst eine PDF auswählen.	Please select a PDF first.
+core_signature.api_missing	Signatur-API fehlt.	Signature API missing.
+documents.sort.updated_desc	Aktualisiert (neueste zuerst)	Updated (newest first)
+documents.sort.status_order	Status (Workflow-Reihenfolge)	Status (workflow order)
+documents.sort.title_az	Titel (A→Z)	Title (A→Z)

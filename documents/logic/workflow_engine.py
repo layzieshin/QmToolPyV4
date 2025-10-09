@@ -1,11 +1,14 @@
+# documents/logic/workflow_engine.py
 """
 Workflow rules & guards for the Documents feature.
 
-- Allowed transitions driven by module roles and current status.
-- Every status change will be signed in the GUI before calling repository.set_status(...)
-- Adds helpers for a simpler CTA flow and back-to-draft operation.
+- Stateless: pure permission/guard logic, no storage or UI here.
+- Uses fixed enums (DocumentStatus) and checks *both* global roles and
+  per-document assigned roles.
+- Keeps the set of transitions small & explicit.
 
-Canonical roles: ADMIN, QMB, AUTHOR, REVIEWER, APPROVER, READER
+Canonical global roles: ADMIN, QMB
+Canonical assigned roles (per document): AUTHOR, REVIEWER, APPROVER
 """
 
 from __future__ import annotations
@@ -13,65 +16,65 @@ from typing import Iterable, Set
 from documents.models.document_models import DocumentStatus
 
 
+def _norm(s: Iterable[str]) -> Set[str]:
+    return {str(x).upper() for x in (s or [])}
+
+
 class WorkflowEngine:
     """Stateless rules engine; repository persists resulting changes."""
 
-    # ---- Guards for standard actions ----------------------------------------
-    def can_edit_metadata(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return (self._has_any(roles, {"ADMIN", "QMB", "AUTHOR"})
-                and status in {DocumentStatus.DRAFT, DocumentStatus.IN_REVIEW})
+    # ----------------- Guards for standard forward actions -------------------
+    def can_submit_review(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
+        r, a = _norm(roles), _norm(assigned)
+        return (status == DocumentStatus.DRAFT) and ({"ADMIN", "QMB"} & r or "AUTHOR" in a)
 
-    def can_check_out(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return self.can_edit_metadata(roles, status)
+    def can_request_approval(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
+        r, a = _norm(roles), _norm(assigned)
+        return (status == DocumentStatus.IN_REVIEW) and ({"ADMIN", "QMB"} & r or "REVIEWER" in a)
 
-    def can_check_in(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return self.can_edit_metadata(roles, status)
+    def can_publish(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
+        r, a = _norm(roles), _norm(assigned)
+        return (status == DocumentStatus.APPROVAL) and ({"ADMIN", "QMB"} & r or "APPROVER" in a)
 
-    def can_submit_review(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return (self._has_any(roles, {"AUTHOR", "ADMIN", "QMB"})
-                and status == DocumentStatus.DRAFT)
+    # ----------------- Backwards / Out-of-band actions ----------------------
+    def can_back_to_draft(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
+        # Rückwärts-Transition aus jedem Schritt außer Entwurf (ohne Signatur, aber mit Begründung).
+        r = _norm(roles)
+        return status != DocumentStatus.DRAFT and ({"ADMIN", "QMB"} & r)
 
-    def can_request_approval(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return (self._has_any(roles, {"REVIEWER", "QMB", "ADMIN"})
-                and status == DocumentStatus.IN_REVIEW)
+    def can_abort_workflow(
+        self,
+        *,
+        roles: Iterable[str],
+        status: DocumentStatus,
+        starter_user_id: str | None,
+        current_user_id: str | None,
+        active: bool,
+    ) -> bool:
+        # Abbrechen darf ADMIN/QMB oder der Starter, nur wenn der Workflow aktiv ist.
+        if not active:
+            return False
+        r = _norm(roles)
+        if {"ADMIN", "QMB"} & r:
+            return True
+        if starter_user_id and current_user_id and str(starter_user_id).strip().lower() == str(current_user_id).strip().lower():
+            return True
+        return False
 
-    def can_publish(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return (self._has_any(roles, {"APPROVER", "QMB", "ADMIN"})
-                and status == DocumentStatus.APPROVAL)
-
-    def can_obsolete(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return self._has_any(roles, {"ADMIN", "QMB"}) and status != DocumentStatus.OBSOLETE
-
-    # ---- New: Back-to-draft from any status (admin/QMB) ---------------------
-    def can_back_to_draft(self, roles: Set[str], status: DocumentStatus) -> bool:
-        return self._has_any(roles, {"ADMIN", "QMB"}) and status != DocumentStatus.DRAFT
-
-    # ---- UX helpers ----------------------------------------------------------
+    # ----------------- UX helpers (CTA texts / routing) ---------------------
     @staticmethod
-    def is_workflow_active(status: DocumentStatus) -> bool:
-        """Active means: not in initial draft anymore."""
-        return status in {DocumentStatus.IN_REVIEW, DocumentStatus.APPROVAL,
-                          DocumentStatus.PUBLISHED, DocumentStatus.OBSOLETE}
-
-    @staticmethod
-    def next_action(roles: Set[str], status: DocumentStatus) -> str | None:
-        """CTA used by 'Workflow starten/fortsetzen' in the GUI."""
-        if status == DocumentStatus.DRAFT and ("AUTHOR" in {r.upper() for r in roles} or
-                                               {"ADMIN", "QMB"} & {r.upper() for r in roles}):
+    def next_action(*, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> str | None:
+        """Suggest CTA id for the 'Next Step' button."""
+        r, a = _norm(roles), _norm(assigned)
+        if status == DocumentStatus.DRAFT and ({"ADMIN", "QMB"} & r or "AUTHOR" in a):
             return "submit_review"
-        if status == DocumentStatus.IN_REVIEW and {"REVIEWER", "QMB", "ADMIN"} & {r.upper() for r in roles}:
+        if status == DocumentStatus.IN_REVIEW and ({"ADMIN", "QMB"} & r or "REVIEWER" in a):
             return "request_approval"
-        if status == DocumentStatus.APPROVAL and {"APPROVER", "QMB", "ADMIN"} & {r.upper() for r in roles}:
+        if status == DocumentStatus.APPROVAL and ({"ADMIN", "QMB"} & r or "APPROVER" in a):
             return "publish"
         return None
 
-    def require_change_note(self, _target_status: DocumentStatus) -> bool:
-        # GUI verlangt ohnehin eine kurze Notiz; wir lassen True für Konsistenz
-        return True
-
-    # ---- Helpers -------------------------------------------------------------
     @staticmethod
-    def _has_any(user_roles: Iterable[str], required: Iterable[str]) -> bool:
-        ur = {str(r).upper() for r in user_roles}
-        req = {str(r).upper() for r in required}
-        return bool(ur & req)
+    def require_change_note(target_status: DocumentStatus) -> bool:
+        # Wir verlangen überall eine kurze Notiz – GUI setzt das durch.
+        return True
