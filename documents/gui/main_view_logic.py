@@ -2,15 +2,11 @@
 """
 Controller/Logic layer for the Documents main view.
 
-This module encapsulates *all* non-UI logic so that `main_view.py` contains
-only GUI code (widgets, layout, event wiring).
-
-Updates for requirements:
-- Provide actual actors (who executed steps) + signature timestamps
-- Provide rich document details for the Overview (incl. DOCX meta via bridge)
-- Public API to list all published documents for other modules
-- Archive: move entire document folder under <root>/archived/<doc_id> and update DB paths
-- Keep backward/forward workflow rules and password verification
+Key points:
+- Forward step requires signature (interactive) and does NOT advance status on cancel/failure.
+- PDF generation uses repository hook (which converts DOCX to PDF without markup).
+- Reasons (change notes) are collected appropriately.
+- NEW: workflow_active persisted; button text & enablement use persisted state + permission guards.
 """
 
 from __future__ import annotations
@@ -54,7 +50,6 @@ except Exception:
     try:
         from wordmeta_bridge import extract_core_and_comments  # type: ignore
     except Exception:
-        # very small fallback
         def extract_core_and_comments(path: str):
             return {}, []
 
@@ -188,13 +183,27 @@ class DocumentsController:
         return user_id and user_id in {owner, starter}
 
     def validate_assignments(self, reviewers: List[str], approvers: List[str]) -> Tuple[bool, str]:
+        """
+        Business rule:
+          - both roles required (non-empty)
+          - sets must be disjoint (no user in both roles)
+          - at least 2 distinct people across both roles (implizit durch Disjointness + Non-Empty)
+        """
         r = [s.strip() for s in (reviewers or []) if s and s.strip()]
         a = [s.strip() for s in (approvers or []) if s and s.strip()]
         if not r or not a:
             return False, "Sowohl Prüfer als auch Freigeber müssen zugewiesen werden."
-        distinct = {u.lower() for u in r} | {u.lower() for u in a}
-        if len(distinct) < 2:
-            return False, "Die Menge Prüfer ∪ Freigeber muss mindestens zwei verschiedene Personen enthalten."
+
+        rset = {u.lower() for u in r}
+        aset = {u.lower() for u in a}
+
+        if rset & aset:
+            return False, "Eine Person darf nicht gleichzeitig Prüfer und Freigeber sein."
+
+        # optional streng: mindestens 2 Personen insgesamt
+        if len(rset | aset) < 2:
+            return False, "Die Rollen müssen insgesamt mindestens zwei unterschiedliche Personen enthalten."
+
         return True, ""
 
     def list_users_for_dialog(self) -> Optional[List[Dict[str, str]]]:
@@ -281,12 +290,27 @@ class DocumentsController:
         return None
 
     def _is_workflow_active(self, doc: DocumentRecord) -> bool:
+        """
+        Active by definition for non-DRAFT (IN_REVIEW/APPROVAL/PUBLISHED).
+        For DRAFT we consult the repository-persisted flag, fallback to RAM cache.
+        """
         if doc.status != DocumentStatus.DRAFT:
             return True
+        # Persisted flag first
+        if self._repo and hasattr(self._repo, "is_workflow_active"):
+            try:
+                return bool(self._repo.is_workflow_active(doc.doc_id.value))  # type: ignore
+            except Exception:
+                pass
         return bool(self._active_cache.get(doc.doc_id.value, False))
 
-    def _set_workflow_active(self, doc_id: str, active: bool) -> None:
+    def _set_workflow_active(self, doc_id: str, active: bool, started_by: Optional[str] = None) -> None:
         self._active_cache[doc_id] = bool(active)
+        if self._repo and hasattr(self._repo, "set_workflow_active"):
+            try:
+                self._repo.set_workflow_active(doc_id, active, started_by)  # type: ignore
+            except Exception:
+                pass
 
     def _get_workflow_starter(self, doc: DocumentRecord) -> Optional[str]:
         return self._starter_cache.get(doc.doc_id.value)
@@ -323,6 +347,7 @@ class DocumentsController:
         else:
             workflow_text = "Workflow abbrechen"
             starter = (self._get_workflow_starter(doc) or "").strip().lower()
+            # Abbrechen nur, wenn erlaubt:
             can_toggle = self._wf.can_abort_workflow(
                 roles=roles_global, status=doc.status, starter_user_id=starter, current_user_id=uid, active=True
             )
@@ -371,13 +396,29 @@ class DocumentsController:
             return False
         if not ensure_assignments():
             return False
+
         ass = self.get_assignees(doc.doc_id.value)
         uid = self.current_user_id() or ""
-        if ass.get("AUTHOR") is None or len(ass.get("AUTHOR", [])) == 0:
-            self.set_assignees(doc.doc_id.value, Assignments(authors=[uid],
-                                                             reviewers=ass.get("REVIEWER") or [],
-                                                             approvers=ass.get("APPROVER") or []))
-        self._set_workflow_active(doc.doc_id.value, True)
+
+        # Author not set? – ensure the current user is author at minimum
+        if not ass.get("AUTHOR"):
+            self.set_assignees(
+                doc.doc_id.value,
+                Assignments(
+                    authors=[uid],
+                    reviewers=ass.get("REVIEWER") or [],
+                    approvers=ass.get("APPROVER") or []
+                )
+            )
+            ass = self.get_assignees(doc.doc_id.value)
+
+        # <-- NEU: harte Geschäftslogikprüfung
+        ok, msg = self.validate_assignments(ass.get("REVIEWER") or [], ass.get("APPROVER") or [])
+        if not ok:
+            # UI zeigt evtl. keine Nachricht – False reicht, um Start zu verhindern.
+            return False
+
+        self._set_workflow_active(doc.doc_id.value, True, started_by=uid)
         self._set_workflow_starter(doc.doc_id.value, uid)
         return True
 
@@ -400,68 +441,80 @@ class DocumentsController:
         if doc.status != DocumentStatus.DRAFT:
             self._repo.set_status(doc.doc_id.value, DocumentStatus.DRAFT, uid, reason)
             self._restore_docx_best_effort(doc.doc_id.value)
+        # Persistent flag zurücksetzen
         self._set_workflow_active(doc.doc_id.value, False)
         return True, ""
 
-    def forward_transition(self, doc: DocumentRecord, ask_reason: callable, sign_pdf: callable) -> Tuple[bool, str]:
-        assert self._repo, "Controller not initialized"
-        uid = self.current_user_id() or ""
-        roles = self._global_roles_of(self._current_user())
+    def forward_transition(self, doc: DocumentRecord, ask_reason, sign_pdf):
+        """
+        Führt den nächsten Workflow-Schritt aus.
+        WICHTIG:
+          - Wenn der Schritt eine Signatur erfordert und diese abgebrochen/fehlgeschlagen ist,
+            wird KEIN Statuswechsel vorgenommen.
+          - Die Signatur-UI erwartet (pdf_path, reason), daher holen wir den Grund VORHER.
+        """
+        assert self._repo, "Repository nicht initialisiert"
+
+        user = self._current_user()
+        uid = self._uid_from(user) or ""
+        roles_global = self._global_roles_of(user)
         assigned = self._assigned_roles(doc.doc_id.value, uid)
 
-        if doc.status == DocumentStatus.DRAFT:
-            if not self._is_workflow_active(doc):
-                return False, "Bitte zuerst den Workflow starten."
-            if not self._wf.can_submit_review(roles=roles, assigned=assigned, status=doc.status):
-                return False, "Keine Berechtigung zum Einreichen."
+        action_id = self._wf.next_action(roles=roles_global, assigned=assigned, status=doc.status)
+        if not action_id:
+            return False, "Kein nächster Schritt verfügbar."
+
+        requires_signature = self._wf.requires_signature_for(action_id)
+        reason_for_signature: Optional[str] = None
+
+        if requires_signature:
+            # Grund erfragen:
+            try:
+                if callable(ask_reason):
+                    reason_for_signature = ask_reason()
+                    if reason_for_signature is None:
+                        return False, "Abgebrochen."
+            except Exception:
+                reason_for_signature = ""
+
             pdf = self._repo.generate_review_pdf(doc.doc_id.value)
-            if not (pdf and os.path.isfile(pdf)):
-                return False, "Erstellung des Prüf-PDF ist fehlgeschlagen."
-            reason = ask_reason()
-            if not reason: return False, "Abgebrochen."
-            signed = sign_pdf(pdf, reason)
-            if not signed: return False, "Signaturvorgang abgebrochen."
-            self._repo.attach_signed_pdf(doc.doc_id.value, signed, "submit_review", uid, reason)
-            self._repo.set_status(doc.doc_id.value, DocumentStatus.IN_REVIEW, uid, reason)
-            # actual editor is the submitter; signature stored by repo
-            return True, ""
+            if not pdf:
+                return False, "PDF konnte für die Signatur nicht erstellt werden."
 
-        if doc.status == DocumentStatus.IN_REVIEW:
-            if not self._wf.can_request_approval(roles=roles, assigned=assigned, status=doc.status):
-                return False, "Schritt nicht erlaubt."
-            pdf = doc.current_file_path or ""
-            if not (pdf and pdf.lower().endswith(".pdf") and os.path.isfile(pdf)):
-                pdf = self._repo.generate_review_pdf(doc.doc_id.value) or ""
-            if not (pdf and os.path.isfile(pdf)):
-                return False, "Kein aktives PDF verfügbar."
-            reason = ask_reason()
-            if not reason: return False, "Abgebrochen."
-            signed = sign_pdf(pdf, reason)
-            if not signed: return False, "Signaturvorgang abgebrochen."
-            self._repo.attach_signed_pdf(doc.doc_id.value, signed, "request_approval", uid, reason)
-            self._repo.set_status(doc.doc_id.value, DocumentStatus.APPROVAL, uid, reason)
-            self._set_last_reviewer(doc.doc_id.value, uid)  # block same person at publish
-            return True, ""
+            if not callable(sign_pdf):
+                return False, "Signatur erforderlich, aber keine Signaturfunktion verfügbar."
+            signed_pdf_path = sign_pdf(pdf, reason_for_signature or "")
+            if not signed_pdf_path:
+                return False, "Signatur abgebrochen."
 
-        if doc.status == DocumentStatus.APPROVAL:
-            last_reviewer = (self._get_last_reviewer(doc.doc_id.value) or "").strip().lower()
-            if last_reviewer and last_reviewer == (uid.strip().lower()):
-                return False, "Die prüfende Person darf nicht freigeben."
-            if not self._wf.can_publish(roles=roles, assigned=assigned, status=doc.status):
-                return False, "Schritt nicht erlaubt."
-            pub_pdf = self._repo.export_pdf_with_version_suffix(doc.doc_id.value)
-            if not (pub_pdf and os.path.isfile(pub_pdf)):
-                return False, "Versioniertes PDF konnte nicht erstellt werden."
-            reason = ask_reason()
-            if not reason: return False, "Abgebrochen."
-            signed = sign_pdf(pub_pdf, reason)
-            if not signed: return False, "Signaturvorgang abgebrochen."
-            self._repo.attach_signed_pdf(doc.doc_id.value, signed, "publish", uid, reason)
-            self._repo.set_status(doc.doc_id.value, DocumentStatus.PUBLISHED, uid, reason)
-            self._set_workflow_active(doc.doc_id.value, False)
-            return True, ""
+            ok, msg = self._repo.attach_signed_pdf(
+                doc_id=doc.doc_id.value,
+                signed_pdf_path=signed_pdf_path,
+                step=action_id,
+                user_id=uid,
+                reason=reason_for_signature or None,
+            )
+            if not ok:
+                return False, msg or "Signiertes PDF konnte nicht übernommen werden."
 
-        return False, "Kein weiterer Schritt verfügbar."
+        if action_id == "publish":
+            versioned = self._repo.export_pdf_with_version_suffix(doc.doc_id.value)
+            if not versioned:
+                return False, "Versionierte PDF konnte nicht abgelegt werden."
+
+        next_status = self._wf.next_status_for(action_id, doc.status)
+        if not next_status:
+            return False, "Zielstatus nicht bestimmbar."
+
+        status_reason = None
+        try:
+            if self._wf.requires_reason_for(next_status) and callable(ask_reason):
+                status_reason = ask_reason()
+        except Exception:
+            status_reason = None
+
+        self._repo.set_status(doc.doc_id.value, next_status, uid, status_reason)
+        return True, None
 
     def backward_to_draft(self, doc: DocumentRecord, ask_reason: callable) -> Tuple[bool, str]:
         uid = self.current_user_id() or ""
@@ -476,6 +529,7 @@ class DocumentsController:
         assert self._repo, "Controller not initialized"
         self._repo.set_status(doc.doc_id.value, DocumentStatus.DRAFT, uid, reason)
         self._restore_docx_best_effort(doc.doc_id.value)
+        # Achtung: Back-to-draft behält den Workflow als aktiv (nicht abbrechen)
         self._set_workflow_active(doc.doc_id.value, True)
         return True, ""
 
@@ -494,64 +548,50 @@ class DocumentsController:
         if not reason: return False, "Abgebrochen."
         assert self._repo, "Controller not initialized"
 
-        # 1) Update status
         uid = self.current_user_id() or ""
         self._repo.set_status(doc.doc_id.value, status_target, uid, reason)
+        # Persistenter Flag ist ab Veröffentlichung egal; auf Nummer sicher setzen wir ihn aus:
+        self._set_workflow_active(doc.doc_id.value, False)
 
-        # 2) Move on-disk folder into <root>/archived/<doc_id> and fix DB path
+        # Ordner verschieben (best effort)...
         try:
-            # Determine root/doc_dir from current path
             cur = doc.current_file_path or ""
-            # doc_dir is parent of version dir
             doc_dir = os.path.dirname(os.path.dirname(cur)) if cur else None
             if not doc_dir or not os.path.isdir(doc_dir):
-                # fallback to repo helper if available
                 if hasattr(self._repo, "_doc_dir"):
                     doc_dir = self._repo._doc_dir(doc.doc_id.value)  # type: ignore
-            root = getattr(self._repo, "_cfg", {}).get("root_path", None) if hasattr(self._repo, "_cfg") else None
+            root = getattr(self._repo, "_cfg", {}).root_path if hasattr(self._repo, "_cfg") else None
             if not root and doc_dir:
                 root = os.path.dirname(doc_dir)
             arch_root = os.path.join(root, "archived") if root else None
-            if arch_root:
+            if arch_root and doc_dir and os.path.isdir(doc_dir):
                 os.makedirs(arch_root, exist_ok=True)
                 dest_dir = os.path.join(arch_root, doc.doc_id.value)
-                # Ensure unique target
                 if os.path.exists(dest_dir):
                     suffix = datetime.utcnow().strftime("%Y%m%d%H%M%S")
                     dest_dir = os.path.join(arch_root, f"{doc.doc_id.value}_{suffix}")
-                if doc_dir and os.path.isdir(doc_dir):
-                    shutil.move(doc_dir, dest_dir)
+                shutil.move(doc_dir, dest_dir)
 
-                    # Fix DB current_file_path to reflect new location
-                    rel = None
-                    if cur and doc_dir and cur.startswith(doc_dir):
-                        rel = cur[len(doc_dir):].lstrip(os.sep)
-                    new_cur = os.path.join(dest_dir, rel) if rel else None
-                    if new_cur:
-                        try:
-                            self._repo._conn.execute(
-                                "UPDATE documents SET current_file_path=? WHERE doc_id=?",
-                                (new_cur, doc.doc_id.value)
-                            )
-                            self._repo._conn.commit()
-                        except Exception:
-                            pass
+                rel = None
+                if cur and cur.startswith(doc_dir):
+                    rel = cur[len(doc_dir):].lstrip(os.sep)
+                new_cur = os.path.join(dest_dir, rel) if rel else None
+                if new_cur:
+                    try:
+                        self._repo._conn.execute(
+                            "UPDATE documents SET current_file_path=? WHERE doc_id=?",
+                            (new_cur, doc.doc_id.value)
+                        )
+                        self._repo._conn.commit()
+                    except Exception:
+                        pass
         except Exception:
-            # Do not fail archive if move fails; status is already updated.
             pass
 
         return True, ""
 
     # --------------------------------------------------------- actual actors & details
     def get_actual_actors(self, doc: DocumentRecord) -> Dict[str, Any]:
-        """
-        Returns display names of the users who actually *executed* steps,
-        and the signature timestamps.
-        Mapping:
-          - editor       := user who signed 'submit_review'
-          - reviewer     := user who signed 'request_approval'
-          - publisher    := user who signed 'publish'
-        """
         out = {"editor": None, "reviewer": None, "publisher": None,
                "editor_dt": None, "reviewer_dt": None, "publisher_dt": None}
         if not self._repo:
@@ -564,7 +604,6 @@ class DocumentsController:
                 step = (r["step"] or "").strip().lower()
                 if step not in first_by_step:
                     first_by_step[step] = (str(r["user_id"] or ""), str(r["signed_at"] or ""))
-            # Resolve names
             def disp(uid: Optional[str]) -> Optional[str]:
                 if not uid: return None
                 return self._resolve_display_name(uid) or uid
@@ -579,14 +618,6 @@ class DocumentsController:
         return out
 
     def get_document_details(self, doc: DocumentRecord) -> Dict[str, Any]:
-        """
-        Returns a rich details dict to be shown in Overview.
-        Keys (as requested):
-          title, editor, reviewer, publisher, description, documenttype,
-          documentpath, last_modified, editor_signature_date, reviewer_signature_date,
-          publisher_signature_date, valid_by_date, workflow_status, actual_filetype,
-          doc_id, docx_comment_list, pdf_comment_list
-        """
         core = {}
         try:
             core = self.get_docx_meta(doc) or {}
@@ -595,18 +626,15 @@ class DocumentsController:
 
         exec_info = self.get_actual_actors(doc)
 
-        # DOCX comments (latest version)
         docx_comments: List[Dict[str, Any]] = []
-        pdf_comments: List[Dict[str, Any]] = []  # not implemented yet
+        pdf_comments: List[Dict[str, Any]] = []
 
         if self._repo and hasattr(self._repo, "get_docx_comments_for_version"):
             try:
-                # let repo determine version label from meta if not passed
                 docx_comments = self._repo.get_docx_comments_for_version(doc.doc_id.value, version_label=None)  # type: ignore
             except Exception:
                 docx_comments = []
 
-        # Compose
         path = doc.current_file_path or ""
         actual_ftype = os.path.splitext(path)[1][1:].upper() if path else ""
 
@@ -632,10 +660,8 @@ class DocumentsController:
         return details
 
     def _resolve_display_name(self, user_id: str) -> Optional[str]:
-        """Resolve display name via RBAC if available."""
         uid = (user_id or "").strip()
         if not uid: return None
-        # Direct method
         if self._rbac and hasattr(self._rbac, "get_user"):
             try:
                 u = self._rbac.get_user(uid)  # type: ignore
@@ -643,7 +669,6 @@ class DocumentsController:
                     return str(u.get("full_name") or u.get("name") or u.get("username") or u.get("email") or uid)
             except Exception:
                 pass
-        # Search within list_users fallback
         users = self.list_users_for_dialog() or []
         for u in users:
             if str(u.get("id") or "").strip().lower() == uid.lower() \
@@ -705,19 +730,16 @@ class DocumentsController:
 
     # ------------------------------------------------------------ public API
     def list_published_documents(self) -> List[Dict[str, Any]]:
-        """
-        Public method for other modules to retrieve a minimal list of *published* documents.
-        Returns a list of dicts with id, title, type, version, path and timestamps.
-        """
         assert self._repo, "Controller not initialized"
         recs = self._repo.list(status=DocumentStatus.PUBLISHED, text=None)
         out: List[Dict[str, Any]] = []
         for r in recs:
+            version = getattr(r, "version_label", None) or f"{getattr(r, 'version_major', 1)}.{getattr(r, 'version_minor', 0)}"
             out.append({
                 "doc_id": r.doc_id.value,
                 "title": r.title,
                 "doc_type": r.doc_type,
-                "version": r.version_label,
+                "version": version,
                 "status": r.status.name,
                 "path": r.current_file_path,
                 "updated_at": (r.updated_at.isoformat(timespec="seconds") if getattr(r, "updated_at", None) else None),

@@ -12,12 +12,12 @@ Canonical assigned roles (per document): AUTHOR, REVIEWER, APPROVER
 """
 
 from __future__ import annotations
-from typing import Iterable, Set
+from typing import Iterable, Set, Optional
 from documents.models.document_models import DocumentStatus
 
 
 def _norm(s: Iterable[str]) -> Set[str]:
-    return {str(x).upper() for x in (s or [])}
+    return {str(x).strip().upper() for x in (s or []) if str(x).strip()}
 
 
 class WorkflowEngine:
@@ -63,8 +63,11 @@ class WorkflowEngine:
 
     # ----------------- UX helpers (CTA texts / routing) ---------------------
     @staticmethod
-    def next_action(*, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> str | None:
-        """Suggest CTA id for the 'Next Step' button."""
+    def next_action(*, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> Optional[str]:
+        """
+        Suggest next forward action id for the 'Next' button.
+        Returns one of: 'submit_review' | 'request_approval' | 'publish' | None
+        """
         r, a = _norm(roles), _norm(assigned)
         if status == DocumentStatus.DRAFT and ({"ADMIN", "QMB"} & r or "AUTHOR" in a):
             return "submit_review"
@@ -75,6 +78,29 @@ class WorkflowEngine:
         return None
 
     @staticmethod
-    def require_change_note(target_status: DocumentStatus) -> bool:
-        # Wir verlangen überall eine kurze Notiz – GUI setzt das durch.
-        return True
+    def next_status_for(action_id: str, current: DocumentStatus) -> Optional[DocumentStatus]:
+        aid = (action_id or "").strip().lower()
+        if aid == "submit_review" and current == DocumentStatus.DRAFT:
+            return DocumentStatus.IN_REVIEW
+        if aid == "request_approval" and current == DocumentStatus.IN_REVIEW:
+            return DocumentStatus.APPROVAL
+        if aid == "publish" and current == DocumentStatus.APPROVAL:
+            return DocumentStatus.PUBLISHED
+        return None
+
+    @staticmethod
+    def requires_signature_for(action_id: str) -> bool:
+        """For forward actions we require a signature artifact."""
+        return (action_id or "").strip().lower() in {"submit_review", "request_approval", "publish"}
+
+    @staticmethod
+    def requires_reason_for(status_or_action) -> bool:
+        """
+        Ask for a change note (reason) only on *negative* / out-of-band states.
+        The controller calls this with a status object.
+        """
+        try:
+            name = str(getattr(status_or_action, "name", status_or_action)).upper()
+        except Exception:
+            name = str(status_or_action).upper()
+        return name in {"ARCHIVED", "OBSOLETE"}
