@@ -1,7 +1,7 @@
 {
   "id": "documents",
   "label": "Dokumentenlenkung",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main_class": "documents.gui.main_view.DocumentsView",
   "settings_class": "documents.gui.settings_view.DocumentsSettingsTab",
   "visible_for": ["Admin", "QMB", "Autor", "Pruefer", "Freigeber", "User", "Leser"],

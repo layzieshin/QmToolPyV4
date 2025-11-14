@@ -1,133 +1,101 @@
 label	de	en
-documents.title	Dokumentenverwaltung	Documents
-documents.list	Liste	List
-documents.filter.search	Suche	Search
-
-# Tabs
-documents.tab.overview	Übersicht	Overview
-documents.tab.meta	Metadaten	Metadata
-documents.tab.comments	Kommentare	Comments
-documents.tab.reads	Lesebestätigungen	Read Receipts
-
-# Overview-Felder
-documents.ov.id	ID	ID
-documents.ov.title	Titel	Title
-documents.ov.type	Typ	Type
-documents.ov.status	Status	Status
-documents.ov.version	Version	Version
-documents.ov.file	Datei	File
-
-# Listen-Aktionsleiste (links)
-documents.btn.import	Importieren	Import
+common.cancel	Abbrechen	Cancel
+common.close	Schließen	Close
+common.ok	OK	OK
+common.open	Öffnen	Open
+common.reload	Neu laden	Reload
+common.search	Suchen	Search
+core_signature.api_missing	Signatur-API fehlt.	Signature API missing.
+core_signature.sign.choose_pdf_first	Bitte zuerst eine PDF auswählen.	Please select a PDF first.
+documents.archive.err	Archivieren fehlgeschlagen	Archive failed
+documents.ask.pwd	Bitte Passwort eingeben:	Please enter password:
+documents.ask.pwd.title	Passwort erforderlich	Password required
+documents.ask.reason	Bitte eine kurze Begründung eingeben:	Please enter a short reason:
+documents.ask.reason.title	Begründung	Reason
+documents.assign.err	Fehler bei Zuweisung	Assignment failed
+documents.back.err	Zurücksetzen fehlgeschlagen	Revert failed
+documents.btn.archive	Archivieren	Archive
+documents.btn.assign	Rollen zuweisen	Assign roles
+documents.btn.back	Zurück	Back
+documents.btn.copy	Kopie erstellen	Make copy
+documents.btn.edit_meta	Metadaten	Edit meta
 documents.btn.new_from_tpl	Neu aus Vorlage	New from template
-documents.btn.checkout	Check-out	Check-out
-documents.btn.checkin	Check-in	Check-in
-
-# Overview-Aktionsleiste (rechts)
-documents.btn.workflow.start	Workflow starten	Start workflow
+documents.btn.import	Importieren	Import
+documents.btn.next	Nächster Schritt	Next step
+documents.btn.open	Öffnen	Open
+documents.btn.publish	Veröffentlichen	Publish
+documents.btn.read	Als gelesen markieren	Mark as read
+documents.btn.to_review	Zur Prüfung einreichen	Submit for review
+documents.btn.workflow	Workflow	Workflow
 documents.btn.workflow.cont	Workflow fortsetzen	Continue workflow
 documents.btn.workflow.none	Kein aktiver Workflow	No active workflow
-documents.btn.next	Weiter	Next step
-documents.btn.to_review	Zur Prüfung einreichen	Submit for review
-documents.btn.request_approval	Freigabe anfordern	Request approval
-documents.btn.publish	Veröffentlichen	Publish
-documents.btn.back_to_draft	Zurück zu Entwurf	Back to draft
-documents.btn.open	Öffnen	Open
-documents.btn.copy	Kopie	Make copy
-documents.btn.edit	Bearbeiten	Edit
-documents.btn.read	Als gelesen markieren	Mark as read
-
-# Import/Neu aus Vorlage
-documents.import.file	Datei wählen	Choose document
-documents.import.ok	Importiert	Imported
-documents.import.msg	Dokument erstellt: 	Document created:
-documents.tpl.missing.title	Keine Vorlagen	No templates
-documents.tpl.missing.msg	Ordner nicht gefunden: 	Folder not found:
-documents.tpl.choose	Vorlage wählen (*.docx)	Choose template (*.docx)
-documents.new.id_title	Neues Dokument – ID und Titel (Format: A02VA001_Titel)	New document – ID and Title (Format: A02VA001_Title)
-documents.created	Erstellt	Created
-
-# Check-out/Check-in
-documents.locked	Gesperrt	Locked
-documents.locked.msg	Dokument ist bereits ausgecheckt.	Document is already checked-out.
-documents.checkin.file	Aktualisierte Datei wählen (optional)	Choose updated file (optional)
-documents.checkin.note	Änderungsnotiz	Change note
-
-# Workflow-Hinweise/Prompts
-documents.workflow	Workflow	Workflow
-documents.workflow.start_ready	Rollen zugewiesen. Benutzen Sie „Zur Prüfung einreichen“.	Roles assigned. Use 'Submit for Review'.
-documents.workflow.cont_howto	Benutzen Sie „Weiter“, um fortzufahren.	Use 'Next Step' to continue.
-
-# Gründe/Prompts pro Schritt
-documents.reviewpdf.fail	Review-PDF konnte nicht erzeugt werden.	Could not generate review PDF.
-documents.reason.to_review	Grund – Einreichen zur Prüfung	Reason – Submit for Review
-documents.sign.nopdf	Kein aktives PDF.	No active PDF.
-documents.reason.request_approval	Grund – Freigabe anfordern	Reason – Request Approval
-documents.publishpdf.fail	Versions-PDF konnte nicht erstellt werden.	Could not create versioned PDF.
-documents.reason.publish	Grund – Veröffentlichen	Reason – Publish
-documents.back_to_draft.title	Zurück zu Entwurf	Back to Draft
-documents.back_to_draft.q	Auf Entwurf zurücksetzen?	Reset to draft?
-documents.reason.back_to_draft	Grund – Zurück zu Entwurf	Reason – Back to Draft
-
-# Kopie
+documents.btn.workflow.start	Workflow starten	Start workflow
+documents.changenote.prompt	Bitte beschreiben Sie den Grund/die Änderung:	Please describe the reason/change:
+documents.col.active	Aktiv	Active
+documents.col.owner	Eigentümer	Owner
+documents.col.status	Status	Status
+documents.col.title	Titel	Title
+documents.col.type	Typ	Type
+documents.col.updated	Geändert	Updated
+documents.col.version	Version	Version
+documents.comments.author	Autor	Author
+documents.comments.date	Datum	Date
+documents.comments.detail	Kommentar	Comment
+documents.comments.text	Text (Vorschau)	Text (preview)
+documents.comments.title	Kommentare	Comments
 documents.copy.choose_dest	Zielordner wählen	Choose destination
+documents.copy.done	Kopie erstellt in: 	Copy created at:
 documents.copy.ok	Kopie erstellt	Copy created
-documents.copy.done	Kopie erstellt unter: 	Copy created at:
-
-# Öffnen
+documents.filter.active	Nur aktive Workflows	Active workflows only
+documents.filter.search	Suche	Search
+documents.filter.sort	Sortierung	Sort
+documents.filter.status	Status	Status
+documents.import.msg	Dokument angelegt: 	Document created:
+documents.import.ok	Importiert	Imported
+documents.import.title	Dokument importieren	Import document
+documents.init_error	Problem bei der Modulinitialisierung: 	Module initialization problem:
+documents.list	Dokumente	Documents
+documents.meta.actual_filetype	Dateityp (aktuell)	Actual file type
+documents.meta.description	Beschreibung	Description
+documents.meta.last_modified	Zuletzt geändert	Last modified
+documents.meta.type	Dokumententyp	Document type
+documents.meta.valid_by_date	Gültig bis	Valid until
+documents.next.err	Nächster Schritt fehlgeschlagen	Next step failed
 documents.open.error	Öffnen fehlgeschlagen	Open failed
-
-# Reads
+documents.open.nofile	Datei nicht gefunden.	File not found.
+documents.ov.actors	Aktuelle Bearbeiter	Current Actors
+documents.ov.id	Dokumenten-ID	Document ID
+documents.ov.owner	Eigentümer	Owner
+documents.ov.path	Aktuelle Datei	Current File
+documents.ov.status	Status	Status
+documents.ov.title	Titel	Title
+documents.ov.type	Typ	Type
+documents.ov.updated	Geändert	Updated
+documents.ov.version	Version	Version
 documents.read.no_user	Nicht angemeldet	Not logged in
 documents.read.no_user.msg	Kein aktueller Benutzer.	No current user.
-
-# Settings-Tab (documents/settings_view.py)
-documents.settings.title	Dokumente – Einstellungen	Documents – Settings
-documents.settings.root	Repository-Stammordner	Repository root
-documents.settings.idprefix	ID-Präfix	ID prefix
-documents.settings.idpattern	ID-Muster	ID pattern
-documents.settings.types	Zulässige Typen (kommagetrennt)	Allowed types (comma-separated)
-documents.settings.review	Prüfzyklus (Monate)	Review cycle (months)
-documents.settings.watermark	Wasserzeichentext (kontrollierte Kopie)	Watermark text (controlled copy)
-documents.settings.saved	Gespeichert	Saved
-documents.settings.saved_msg	Einstellungen gespeichert.	Settings saved.
-
-# Dialoge: Rollen zuweisen / Kommentare / Metadaten / Tasks
-documents.assign_roles.title	Rollen zuweisen	Assign roles
-documents.assign_roles.col.user	Benutzer	User
-documents.assign_roles.col.selected	Ausgewählt	Selected
-documents.roles.author	Ersteller	Author
-documents.roles.reviewer	Prüfer	Reviewer
-documents.roles.approver	Freigeber	Approver
-
-documents.comments.title	Kommentare	Comments
-documents.comments.col.version	Version	Version
-documents.comments.col.author	Autor	Author
-documents.comments.col.date	Datum	Date
-documents.comments.col.text	Text	Text
-documents.comments.close	Schließen	Close
-
-documents.meta.title	Metadaten bearbeiten	Edit metadata
-documents.meta.lbl.title	Titel	Title
-documents.meta.lbl.type	Typ	Type
-documents.meta.lbl.area	Bereich	Area
-documents.meta.lbl.process	Prozess	Process
-documents.meta.lbl.nextreview	Nächste Prüfung (JJJJ-MM-TT)	Next review (YYYY-MM-DD)
-documents.untitled	Ohne Titel	Untitled
-
-documents.tasks.title	Meine Workflows	My workflows
-documents.tasks.col.doc_id	Dokument-ID	Document ID
-documents.tasks.col.title	Titel	Title
-documents.tasks.col.status	Status	Status
-documents.tasks.col.version	Version	Version
-documents.tasks.col.next_action	Nächste Aktion	Next action
-documents.tasks.col.go	Los	Go
-documents.tasks.close	Schließen	Close
-
-# Change Note
-documents.changenote.prompt	Bitte beschreiben Sie den Grund/die Änderung:	Please describe the reason/change:
-
-common.cancel	Abbrechen	Cancel
-common.ok	OK	OK
-common.search	Suchen	Search
-
+documents.reason.abort	Grund – Abbrechen	Reason – Abort
+documents.reason.archive	Grund – Archivieren	Reason – Archive
+documents.reason.back	Grund – Zurücksetzen	Reason – Revert
+documents.role.editor	Bearbeiter	Editor
+documents.role.editor_dt	Bearb.-Datum	Editor date
+documents.role.publisher	Freigeber	Approver
+documents.role.publisher_dt	Freig.-Datum	Approval date
+documents.role.reviewer	Prüfer	Reviewer
+documents.role.reviewer_dt	Prüf.-Datum	Reviewer date
+documents.status.all	Alle	All
+documents.status.approval	Freigabe	Approval
+documents.status.draft	Entwurf	Draft
+documents.status.obsolete	Obsolet	Obsolete
+documents.status.published	Veröffentlicht	Published
+documents.status.review	Prüfung	Review
+documents.tab.comments	Kommentare	Comments
+documents.tab.overview	Übersicht	Overview
+documents.title	Dokumentenlenkung	Document Control
+documents.tpl.choose	Vorlage wählen	Choose template
+documents.tpl.created	Dokument erstellt	Document created
+documents.tpl.created.msg	Erstellt aus Vorlage: 	Created from template:
+documents.tpl.missing.msg	Ordner nicht gefunden: 	Folder not found:
+documents.tpl.missing.title	Keine Vorlagen	No templates
+documents.workflow.err	Workflow-Aktion fehlgeschlagen	Workflow action failed
+signature.default_reason	Genehmigt	Approved

@@ -1,0 +1,77 @@
+key	de	en
+documentlifecycle.search	Suchen	Search
+documentlifecycle.search.import_docx	DOCX importieren	Import DOCX
+documentlifecycle.search.new_from_template	Neu aus Vorlage	New from Template
+document.read	Lesen	Read
+document.print	Drucken	Print
+document.sign	Fertig & Signieren	Finish & Sign
+document.archive	Archivieren	Archive
+document.roles.edit	Rollen bearbeiten	Edit roles
+workflow.start	Workflow starten	Start workflow
+workflow.abort	Workflow abbrechen	Abort workflow
+panel.list.title	Dokumente	Documents
+panel.details.title	Details	Details
+panel.comments.title	Kommentare	Comments
+ui.show_dev_borders	Entwickler-Rahmen anzeigen	Show dev borders
+status.draft	Entwurf	Draft
+status.in_review	In Prüfung	In review
+status.approved	Genehmigt	Approved
+status.published	Veröffentlicht	Published
+status.archived	Archiviert	Archived
+dialog.import.title	Import	Import
+dialog.import.success	Datei wurde importiert: {path}	File imported: {path}
+dialog.import.cancelled	Import abgebrochen	Import cancelled
+dialog.create.title	Neu aus Vorlage	Create from Template
+dialog.create.success	Neues Dokument erstellt: {path}	New document created: {path}
+errors.unexpected	Unerwarteter Fehler	Unexpected error
+field.code	Kennung	Code
+field.title	Titel	Title
+field.doc_type	Dokumenttyp	Type
+field.description	Beschreibung	Description
+button.save	Speichern	Save
+button.cancel	Abbrechen	Cancel
+button.read	Lesen	Read
+button.print	Drucken	Print
+button.archive	Archivieren	Archive
+button.edit_roles	Rollen bearbeiten	Edit roles
+button.workflow.start	Workflow starten	Start workflow
+button.workflow.cancel	Workflow abbrechen	Cancel workflow
+documentlifecycle.document.read	Lesen	Read
+documentlifecycle.document.print	Drucken	Print
+documentlifecycle.document.edit	Bearbeiten	Edit
+documentlifecycle.document.sign	Fertig & Signieren	Finish & Sign
+documentlifecycle.document.archive	Archivieren	Archive
+documentlifecycle.document.roles.edit	Rollen bearbeiten	Edit roles
+
+documentlifecycle.workflow.start	Workflow starten	Start workflow
+documentlifecycle.workflow.cancel	Workflow abbrechen	Cancel workflow
+
+documentlifecycle.dialog.import.title	Import	Import
+documentlifecycle.dialog.import.cancelled	Import abgebrochen	Import cancelled
+documentlifecycle.dialog.import.success	Datei importiert: {path}	File imported: {path}
+
+documentlifecycle.dialog.create.title	Neu aus Vorlage	Create from template
+documentlifecycle.dialog.create.success	Neues Dokument erstellt: {path}	New document created: {path}
+
+documentlifecycle.errors.unexpected	Unerwarteter Fehler	Unexpected error
+documentlifecycle.document.read    Lesen                       Read
+documentlifecycle.document.print   Drucken                     Print
+documentlifecycle.document.edit    Bearbeiten                  Edit
+documentlifecycle.document.sign    Fertig & Signieren          Finish & Sign
+documentlifecycle.document.archive Archivieren                 Archive
+documentlifecycle.document.roles.edit  Rollen bearbeiten       Edit roles
+
+documentlifecycle.workflow.start   Workflow starten            Start workflow
+documentlifecycle.workflow.cancel  Workflow abbrechen          Cancel workflow
+
+documentlifecycle.print.only_released  Drucken nur für freigegebene oder archivierte Dokumente.  Printing only for released or archived documents.
+
+documentlifecycle.errors.read              Lesefehler                  Read error
+documentlifecycle.errors.unexpected        Unerwarteter Fehler         Unexpected error
+documentlifecycle.errors.missing_file      Kein Dateipfad hinterlegt.  No file path set.
+documentlifecycle.errors.unsupported       Nicht unterstütztes Dateiformat.  Unsupported file format.
+documentlifecycle.errors.convert_failed    PDF-Erzeugung fehlgeschlagen.     PDF conversion failed.
+documentlifecycle.errors.watermark_failed  Wasserzeichen fehlgeschlagen.     Watermark failed.
+
+documentlifecycle.watermark.controlled_copy    kontrollierte Kopie      controlled copy
+documentlifecycle.roles.dialog_stub        Rollendialog ist noch nicht integriert.  Roles dialog not integrated yet.

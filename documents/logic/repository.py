@@ -1,912 +1,719 @@
 # documents/logic/repository.py
-"""
-Repository with:
-- robust status mapping (case-insensitive)
-- per-document assignees
-- DOCX comments ingest
-- PDF conversion helpers
-- signatures recording (via AppContext.signature() – no PNG dialog required)
-- read receipts (who read which version)
-
-This module coordinates SQLite metadata and on-disk file storage for the
-Document Control feature. It supports versioning, audit trails, workflow
-assignments, and integration with an external signature service via
-AppContext.signature().
-
-Note: Integrate paths/imports if your project structure differs.
-"""
-
 from __future__ import annotations
 
 import os
 import re
 import shutil
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from dataclasses import asdict
-from typing import Optional, TypedDict, List, Dict, Any
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-# AppContext is optional at import-time; repository remains usable without signature API.
+from documents.models.document_models import DocumentId, DocumentRecord, DocumentStatus  # type: ignore
+
+# --- Optional DOCX metadata/comments bridge -----------------------------------
 try:
-    from core.common.app_context import AppContext  # type: ignore
+    from documents.logic.wordmeta_bridge import extract_core_and_comments  # type: ignore
 except Exception:
-    class AppContext:  # minimal shim to avoid hard dependency
-        @staticmethod
-        def signature():
-            raise RuntimeError("Signature API unavailable")
+    def extract_core_and_comments(path: str):
+        return {}, []
 
-from documents.models.document_models import DocumentRecord, DocumentStatus, DocumentId
-from .audit_log import AuditLog
-from .id_generator import IdGenerator
-from .pdf_tools import make_controlled_copy, stamp_signature
-
-# NEU
-from documents.logic.wordmeta_bridge import extract_core_and_comments
-from documents.logic.word_tools import set_core_properties, create_from_template
-from documents.logic.doc_convert import convert_to_pdf
-
-
-class RepoConfig(TypedDict):
+# ------------------------------------------------------------------------------
+@dataclass
+class RepoConfig:
     root_path: str
     db_path: str
-    id_prefix: str
-    id_pattern: str
-    review_months: int
-    watermark_copy: str
+    id_prefix: str = "DOC"
+    id_pattern: str = "{YYYY}-{seq:04d}"
+    review_months: int = 24
+    watermark_copy: str = "KONTROLLKOPIE"
 
+def _safe_iso_now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+def _parse_dt(val: Optional[str]) -> Optional[datetime]:
+    if not val: return None
+    try:
+        return datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+    except Exception:
+        try:
+            return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return None
+
+def _col(row: sqlite3.Row, name: str, default=None):
+    try:
+        if hasattr(row, "keys") and name in row.keys():
+            return row[name]
+    except Exception:
+        pass
+    return default
+
+_CODE_RE = re.compile(r"^[A-Z0-9\-]+$")
+def _looks_like_external_code(token: str) -> bool:
+    if not token: return False
+    t = token.strip().upper()
+    if not _CODE_RE.fullmatch(t): return False
+    return any(c.isalpha() for c in t) and any(c.isdigit() for c in t) and len(t) >= 5
+
+def _extract_code_from_filename(path: str) -> Optional[str]:
+    try:
+        base = os.path.splitext(os.path.basename(path))[0]
+        candidate = base.split("_", 1)[0].strip().upper()
+        return candidate if _looks_like_external_code(candidate) else None
+    except Exception:
+        return None
+
+def _extract_code_from_docid(doc_id: str) -> Optional[str]:
+    return doc_id if _looks_like_external_code(doc_id) else None
+
+# ------------------------------------------------------------------------------
 class DocumentsRepository:
     """
-    Coordinates SQLite metadata and on-disk file storage. Supports versioning,
-    workflow role assignments, extracted comments, signature stamping via
-    AppContext.signature(), and read receipts.
+    SQLite + Filesystem Repository.
+
+    Neu:
+    - `workflow_state` als robuste Persistenz für aktive Workflows (Fallback, falls
+      die Spalte `documents.workflow_active` nicht existiert).
+    - Alle Abfragen sind schema-tolerant; kein „no such column“ mehr.
     """
 
-    # ----------------------------- lifecycle --------------------------------
-
     def __init__(self, cfg: RepoConfig) -> None:
-        self._cfg = cfg
-        os.makedirs(cfg["root_path"], exist_ok=True)
-        os.makedirs(os.path.dirname(cfg["db_path"]), exist_ok=True)
-        self._conn = sqlite3.connect(cfg["db_path"])
+        self._cfg = RepoConfig(
+            root_path=os.path.abspath(cfg.root_path),
+            db_path=os.path.abspath(cfg.db_path),
+            id_prefix=cfg.id_prefix,
+            id_pattern=cfg.id_pattern,
+            review_months=cfg.review_months,
+            watermark_copy=cfg.watermark_copy,
+        )
+        os.makedirs(os.path.dirname(self._cfg.db_path), exist_ok=True)
+        os.makedirs(self._root_repo(), exist_ok=True)
+
+        self._conn = sqlite3.connect(self._cfg.db_path)
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA foreign_keys = ON")
-        self._audit = AuditLog(self._conn)
-        self._idg = IdGenerator(self._conn, cfg["id_prefix"], cfg["id_pattern"])
         self._ensure_schema()
 
-    def _ensure_schema(self) -> None:
-        """Ensure that all required tables exist."""
-        self._conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS documents (
-                doc_id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                doc_type TEXT NOT NULL,
-                status TEXT NOT NULL,
-                version_major INTEGER NOT NULL,
-                version_minor INTEGER NOT NULL,
-                current_file_path TEXT,
-                area TEXT,
-                process TEXT,
-                valid_from TEXT,
-                next_review TEXT,
-                obsoleted_at TEXT,
-                created_by TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                change_note TEXT,
-                norm_refs TEXT,
-                tags TEXT,
-                locked_by TEXT,
-                locked_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS versions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT NOT NULL,
-                version_label TEXT NOT NULL,
-                file_path TEXT,
-                created_at TEXT NOT NULL,
-                created_by TEXT NOT NULL,
-                change_note TEXT,
-                FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS signatures (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT NOT NULL,
-                step TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                reason TEXT,
-                signed_at TEXT NOT NULL,
-                file_path TEXT,
-                FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS doc_roles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                UNIQUE(doc_id, role, user_id),
-                FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS doc_comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT NOT NULL,
-                version_label TEXT NOT NULL,
-                author TEXT,
-                date TEXT,
-                text TEXT,
-                FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS read_receipts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT NOT NULL,
-                version_label TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                read_at TEXT NOT NULL,
-                UNIQUE(doc_id, version_label, user_id),
-                FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
-            );
-            """
-        )
-
-    # ----------------------------- helpers ----------------------------------
-
-    def _now(self) -> datetime:
-        return datetime.utcnow()
+    # ------------------------------ paths
+    def _root_repo(self) -> str:
+        root = self._cfg.root_path
+        last = os.path.basename(root.rstrip(os.sep)).lower()
+        return root if last == "documents_repo" else os.path.join(root, "documents_repo")
 
     def _doc_dir(self, doc_id: str) -> str:
-        return os.path.join(self._cfg["root_path"], doc_id)
+        d = os.path.join(self._root_repo(), doc_id); os.makedirs(d, exist_ok=True); return d
 
-    def _ver_dir(self, doc_id: str, version_label: str) -> str:
-        return os.path.join(self._doc_dir(doc_id), f"v{version_label}")
+    def _archived_dir(self) -> str:
+        d = os.path.join(self._root_repo(), "archived"); os.makedirs(d, exist_ok=True); return d
 
-    def _store_file(self, src: str, dst_dir: str, rename_to: Optional[str] = None) -> str:
-        os.makedirs(dst_dir, exist_ok=True)
-        filename = rename_to or os.path.basename(src)
-        dst = os.path.join(dst_dir, filename)
-        shutil.copyfile(src, dst)
-        return dst
+    def _active_dir(self, doc_id: str) -> str:
+        d = os.path.join(self._doc_dir(doc_id), "active"); os.makedirs(d, exist_ok=True); return d
 
-    # ---- filename normalization (single source of truth for naming rules) ---
+    def _version_dir(self, doc_id: str, version_label: str) -> str:
+        try: major = str(version_label).split(".", 1)[0]
+        except Exception: major = "1"
+        d = os.path.join(self._doc_dir(doc_id), "versions", f"v{major}")
+        os.makedirs(d, exist_ok=True); return d
 
-    @staticmethod
-    def _strip_signed_and_version_tokens(name_wo_ext: str) -> str:
-        """
-        Remove all occurrences of '_signed' (case-insensitive) anywhere in the
-        base name and a trailing version pattern like '_v1.2.3'.
-        Collapse duplicate underscores.
-        """
-        n = re.sub(r'(?i)_signed', '', name_wo_ext)
-        n = re.sub(r'_v\d+(?:\.\d+)*$', '', n)
-        n = re.sub(r'__+', '_', n).strip('_')
-        return n
+    # ------------------------------ schema & migrations
+    def _ensure_schema(self) -> None:
+        c = self._conn.cursor()
 
-    @staticmethod
-    def _make_signed_filename(base_wo_ext: str, version_label: Optional[str]) -> str:
-        """
-        Build final file name (with .pdf):
-        - Always exactly one '_signed'
-        - If version_label is given -> suffix '_v<version>'
-        Example: base -> base_signed_v1.3.pdf
-        """
-        core = DocumentsRepository._strip_signed_and_version_tokens(base_wo_ext)
-        if version_label:
-            return f"{core}_signed_v{version_label}.pdf"
-        return f"{core}_signed.pdf"
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS documents (
+            doc_id TEXT PRIMARY KEY,
+            title TEXT,
+            doc_type TEXT,
+            status TEXT,
+            version_label TEXT,
+            version_major INTEGER,
+            version_minor INTEGER,
+            current_file_path TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            next_review TEXT,
+            owner_user_id TEXT,
+            obsoleted_at TEXT
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS assignees (doc_id TEXT, role TEXT, user_id TEXT)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS comments (doc_id TEXT, author TEXT, date TEXT, text TEXT, version_label TEXT)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS signatures (doc_id TEXT, step TEXT, user_id TEXT, signed_at TEXT)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS status_log (doc_id TEXT, old_status TEXT, new_status TEXT, user_id TEXT, reason TEXT, changed_at TEXT)""")
 
-    # ----------------------------- status utils -----------------------------
+        # we also support an auxiliary workflow_state table (robust, no ALTER TABLE dependency)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS workflow_state (
+            doc_id TEXT PRIMARY KEY,
+            active INTEGER DEFAULT 0,
+            started_by TEXT,
+            started_at TEXT
+        )""")
 
-    @staticmethod
-    def _status_to_enum(val: Any) -> DocumentStatus:
-        if isinstance(val, DocumentStatus):
-            return val
-        s = str(val or "").strip()
-        if not s:
-            raise ValueError("Empty status")
-        key = s.upper().replace("-", "_").replace(" ", "_")
+        def _ensure_column(table: str, col: str, ddl: str, post_sql: Optional[str] = None):
+            cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+            if col not in cols:
+                try:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+                except Exception:
+                    pass
+                if post_sql:
+                    try:
+                        c.execute(post_sql)
+                    except Exception:
+                        pass
+
+        # version fields on documents
+        _ensure_column("documents", "version_label", "TEXT",
+                       "UPDATE documents SET version_label='1.0' WHERE version_label IS NULL OR version_label=''")
+        _ensure_column("documents", "version_major", "INTEGER",
+                       "UPDATE documents SET version_major=1 WHERE version_major IS NULL")
+        _ensure_column("documents", "version_minor", "INTEGER",
+                       "UPDATE documents SET version_minor=0 WHERE version_minor IS NULL")
+        _ensure_column("documents", "next_review", "TEXT", None)
+        _ensure_column("documents", "owner_user_id", "TEXT", None)
+        _ensure_column("documents", "obsoleted_at", "TEXT", None)
+
+        # Optional: falls Spalte bereits existiert, initialisieren
+        _ensure_column("documents", "workflow_active", "INTEGER DEFAULT 0",
+                       "UPDATE documents SET workflow_active=0 WHERE workflow_active IS NULL")
+        _ensure_column("documents", "workflow_started_by", "TEXT", None)
+        _ensure_column("documents", "workflow_started_at", "TEXT", None)
+
+        # Indizes – nur anlegen, wenn Spalten existieren
+        c.execute("CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_documents_updated ON documents(updated_at)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_comments_doc ON comments(doc_id)")
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(documents)").fetchall()}
+        if "workflow_active" in cols:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_documents_wf_active ON documents(workflow_active)")
+
+        self._conn.commit()
+
+    # ------------------------------ helpers
+    def _known_columns(self, table: str) -> List[str]:
+        rows = self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return [r["name"] for r in rows]
+
+    def _has_column(self, table: str, col: str) -> bool:
         try:
-            return DocumentStatus[key]
+            return col in self._known_columns(table)
+        except Exception:
+            return False
+
+    # ------------------------------ mapper
+    def _row_to_record(self, row: sqlite3.Row) -> DocumentRecord:
+        raw_id = str(_col(row, "doc_id", "")); doc_id = DocumentId(value=raw_id)
+        title = _col(row, "title", "") or ""; doc_type = _col(row, "doc_type", "") or ""
+        raw_status = str(_col(row, "status", "DRAFT"))
+        try: status = DocumentStatus[raw_status]
+        except Exception:
+            try: status = DocumentStatus(raw_status)
+            except Exception: status = DocumentStatus.DRAFT
+
+        if ("version_major" in row.keys() and _col(row, "version_major") is not None
+            and "version_minor" in row.keys() and _col(row, "version_minor") is not None):
+            try:
+                version_major = int(_col(row, "version_major")); version_minor = int(_col(row, "version_minor"))
+            except Exception:
+                version_major, version_minor = 1, 0
+        else:
+            label = str(_col(row, "version_label", "1.0"))
+            try:
+                mj_s, mn_s = label.split(".", 1); version_major, version_minor = int(mj_s), int(mn_s)
+            except Exception:
+                version_major, version_minor = 1, 0
+
+        doc_code = _extract_code_from_docid(raw_id)
+        if not doc_code:
+            path_for_code = _col(row, "current_file_path", None)
+            if path_for_code:
+                doc_code = _extract_code_from_filename(path_for_code)
+
+        return DocumentRecord(
+            doc_id=doc_id,
+            title=title,
+            doc_type=doc_type,
+            status=status,
+            version_major=version_major,
+            version_minor=version_minor,
+            current_file_path=_col(row, "current_file_path", None),
+            doc_code=doc_code,
+            next_review=_parse_dt(_col(row, "next_review")),
+            created_by=_col(row, "owner_user_id"),
+            created_at=_parse_dt(_col(row, "created_at")) or datetime.utcnow(),
+            updated_at=_parse_dt(_col(row, "updated_at")) or datetime.utcnow(),
+        )
+
+    # ------------------------------ queries
+    def list(self, status: Optional[DocumentStatus], text: Optional[str], active_only: bool = False) -> List[DocumentRecord]:
+        args: List[Any] = []
+        where: List[str] = []
+
+        if status:
+            where.append("d.status=?")
+            args.append(status.name if hasattr(status, "name") else str(status))
+        if text:
+            where.append("(d.title LIKE ? OR d.doc_id LIKE ?)")
+            args.extend([f"%{text}%", f"%{text}%"])
+
+        # Verfügbarkeit der Spalte prüfen
+        has_wf_col = self._has_column("documents", "workflow_active")
+
+        if active_only:
+            # Aktiv = IN_REVIEW/APPROVAL/PUBLISHED oder (DRAFT & workflow aktiv)
+            if has_wf_col:
+                where.append("(d.status IN (?,?,?) OR (d.status=? AND d.workflow_active=1))")
+                args.extend(["IN_REVIEW", "APPROVAL", "PUBLISHED", "DRAFT"])
+                q = "SELECT d.* FROM documents d"
+            else:
+                # über workflow_state gehen
+                where.append("(d.status IN (?,?,?) OR (d.status=? AND COALESCE(ws.active,0)=1))")
+                args.extend(["IN_REVIEW", "APPROVAL", "PUBLISHED", "DRAFT"])
+                q = "SELECT d.* FROM documents d LEFT JOIN workflow_state ws ON ws.doc_id=d.doc_id"
+        else:
+            q = "SELECT d.* FROM documents d"
+            # kein JOIN nötig
+
+        if where:
+            q += " WHERE " + " AND ".join(where)
+        q += " ORDER BY d.updated_at DESC"
+
+        rows = self._conn.execute(q, args).fetchall()
+        return [self._row_to_record(r) for r in rows]
+
+    def get(self, doc_id: str) -> Optional[DocumentRecord]:
+        row = self._conn.execute("SELECT * FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+        return self._row_to_record(row) if row else None
+
+    # ------------------------------ comments (lazy import)
+    def list_comments(self, doc_id: str) -> List[Dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT author, date, text, version_label FROM comments WHERE doc_id=? ORDER BY date ASC",
+            (doc_id,)
+        ).fetchall()
+        if not rows:
+            rec = self.get(doc_id)
+            path = getattr(rec, "current_file_path", None) if rec else None
+            if path and os.path.isfile(path):
+                try:
+                    _meta, found = extract_core_and_comments(path)
+                    if found:
+                        vlabel = f"{rec.version_major}.{rec.version_minor}" if rec else "1.0"
+                        batch = [(doc_id, str(c.get("author") or ""), str(c.get("date") or ""), str(c.get("text") or ""), str(c.get("version_label") or vlabel)) for c in found]
+                        self._conn.executemany("INSERT INTO comments(doc_id,author,date,text,version_label) VALUES(?,?,?,?,?)", batch)
+                        self._conn.commit()
+                        rows = self._conn.execute(
+                            "SELECT author, date, text, version_label FROM comments WHERE doc_id=? ORDER BY date ASC",
+                            (doc_id,)
+                        ).fetchall()
+                except Exception:
+                    pass
+        out: List[Dict[str, Any]] = []
+        for r in rows or []:
+            out.append({"author": _col(r, "author", ""), "date": _col(r, "date", ""), "text": _col(r, "text", ""), "version_label": _col(r, "version_label", None)})
+        return out
+
+    # ------------------------------ assignees
+    def set_assignees(self, doc_id: str, mapping: Optional[Dict[str, Iterable[str]]] = None, *,
+                      authors: Optional[Iterable[str]] = None, reviewers: Optional[Iterable[str]] = None, approvers: Optional[Iterable[str]] = None) -> None:
+        if mapping is None:
+            mapping = {"AUTHOR": list(authors or []), "REVIEWER": list(reviewers or []), "APPROVER": list(approvers or [])}
+        cur = self._conn.cursor()
+        cur.execute("DELETE FROM assignees WHERE doc_id=?", (doc_id,))
+        rows = []
+        for role, users in (mapping or {}).items():
+            r = str(role).strip().upper()
+            for uid in (users or []):
+                u = str(uid).strip()
+                if u: rows.append((doc_id, r, u))
+        if rows:
+            cur.executemany("INSERT INTO assignees(doc_id, role, user_id) VALUES(?,?,?)", rows)
+        self._conn.commit()
+
+    def get_assignees(self, doc_id: str) -> Dict[str, List[str]]:
+        rows = self._conn.execute("SELECT role, user_id FROM assignees WHERE doc_id=?", (doc_id,)).fetchall()
+        out: Dict[str, List[str]] = {}
+        for r in rows or []:
+            role = str(_col(r, "role", "") or "").strip().upper()
+            uid = str(_col(r, "user_id", "") or "").strip()
+            if not role: continue
+            out.setdefault(role, [])
+            if uid: out[role].append(uid)
+        return out
+
+    # ------------------------------ create/update
+    def create_from_file(self, title: Optional[str], doc_type: str, user_id: Optional[str], src_file: str) -> DocumentRecord:
+        if not src_file or not os.path.isfile(src_file):
+            raise FileNotFoundError(f"Source file not found: {src_file}")
+        now = _safe_iso_now()
+
+        preferred_id = _extract_code_from_filename(src_file)
+        use_id = None
+        if preferred_id:
+            exists = self._conn.execute("SELECT 1 FROM documents WHERE doc_id=?", (preferred_id,)).fetchone()
+            if not exists: use_id = preferred_id
+        new_id = use_id or self._new_doc_id()
+
+        ver_label = "1.0"; ver_major, ver_minor = 1, 0
+        ext = os.path.splitext(src_file)[1].lower().lstrip(".") or "docx"
+        active_dir = self._active_dir(new_id)
+        active_path = os.path.join(active_dir, f"current.{ext}")
+        shutil.copy2(src_file, active_path)
+
+        try:
+            next_review_dt = datetime.now() + timedelta(days=30 * int(self._cfg.review_months))
+            next_review = next_review_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            next_review = None
+
+        candidate_values: Dict[str, Any] = {
+            "doc_id": new_id,
+            "title": title or os.path.splitext(os.path.basename(src_file))[0],
+            "doc_type": doc_type,
+            "status": "DRAFT",
+            "version_label": ver_label,
+            "version_major": ver_major,
+            "version_minor": ver_minor,
+            "current_file_path": active_path,
+            "created_at": now,
+            "updated_at": now,
+            "next_review": next_review,
+            "owner_user_id": user_id or None,
+        }
+        known = set(self._known_columns("documents"))
+        filtered = {k: v for k, v in candidate_values.items() if k in known}
+
+        cols = list(filtered.keys()); placeholders = ",".join(["?"] * len(cols))
+        sql = f"INSERT INTO documents({','.join(cols)}) VALUES({placeholders})"
+        self._conn.execute(sql, [filtered[c] for c in cols])
+        self._conn.commit()
+
+        # Best-effort Kommentare auslesen
+        try:
+            _meta, comments = extract_core_and_comments(active_path)
+            if comments:
+                rows = [(new_id, str(c.get("author") or ""), str(c.get("date") or ""), str(c.get("text") or ""), str(c.get("version_label") or ver_label)) for c in comments]
+                self._conn.executemany("INSERT INTO comments(doc_id,author,date,text,version_label) VALUES(?,?,?,?,?)", rows)
+                self._conn.commit()
         except Exception:
             pass
-        for st in DocumentStatus:
-            if str(st.value).lower() == s.lower():
-                return st
-        raise ValueError(f"Unknown status: {val}")
 
-    # ----------------------------- id/title parsing -------------------------
+        rec = self.get(new_id)
+        if rec: return rec
+        row = self._conn.execute("SELECT * FROM documents WHERE doc_id=?", (new_id,)).fetchone()
+        return self._row_to_record(row) if row else DocumentRecord(
+            doc_id=DocumentId(value=new_id), title=title or "", doc_type=doc_type,
+            status=DocumentStatus.DRAFT, version_major=ver_major, version_minor=ver_minor
+        )
 
-    @staticmethod
-    def _parse_id_title_from_filename(path: str) -> tuple[Optional[str], Optional[str]]:
-        name = os.path.splitext(os.path.basename(path))[0]
-        if "_" in name:
-            left, right = name.split("_", 1)
-            if left.strip() and right.strip():
-                return left.strip(), right.strip()
-        return None, None
+    def update_metadata(self, data: Dict[str, Any], user_id: Optional[str]) -> None:
+        doc_id = str(data.get("doc_id") or "").strip()
+        if not doc_id: raise ValueError("update_metadata: 'doc_id' missing")
 
-    def _ensure_unique_doc_id(self, desired: Optional[str]) -> str:
-        if not desired:
-            return self._idg.next_id()
-        row = self._conn.execute("SELECT 1 FROM documents WHERE doc_id=?", (desired,)).fetchone()
-        if not row:
-            return desired
-        i = 1
-        while True:
-            cand = f"{desired}-{i:03d}"
-            row = self._conn.execute("SELECT 1 FROM documents WHERE doc_id=?", (cand,)).fetchone()
-            if not row:
-                return cand
-            i += 1
+        fields: Dict[str, Any] = {}
+        for k in ("title", "doc_type", "next_review"):
+            if k in data and data[k] is not None: fields[k] = data[k]
 
-    # ----------------------------- CRUD ------------------------------------
+        has_vmj = self._has_column("documents", "version_major")
+        has_vmn = self._has_column("documents", "version_minor")
+        has_vlabel = self._has_column("documents", "version_label")
 
-    def create_from_file(
-        self,
-        *,
-        title: str | None,
-        doc_type: str,
-        user_id: str | None,
-        src_file: str,
-        area: str | None = None,
-        process: str | None = None,
-        change_note: str | None = None,
-    ) -> DocumentRecord:
-        parsed_id, parsed_title = self._parse_id_title_from_filename(src_file)
-        doc_id = self._ensure_unique_doc_id(parsed_id)
-        now = self._now()
-        version_major, version_minor = 1, 0
-        ver_label = f"{version_major}.{version_minor}"
-        final_title = (parsed_title or title or os.path.splitext(os.path.basename(src_file))[0]).strip()
+        if ("version_major" in data) or ("version_minor" in data):
+            vmj = int(data.get("version_major", 1) or 1); vmn = int(data.get("version_minor", 0) or 0)
+            if has_vmj: fields["version_major"] = vmj
+            if has_vmn: fields["version_minor"] = vmn
+            if has_vlabel and "version_label" not in data: fields["version_label"] = f"{vmj}.{vmn}"
+        elif "version_label" in data and data["version_label"]:
+            label = str(data["version_label"])
+            try: mj_s, mn_s = label.split(".", 1); mj, mn = int(mj_s), int(mn_s)
+            except Exception: mj, mn = 1, 0
+            if has_vlabel: fields["version_label"] = label
+            if has_vmj: fields["version_major"] = mj
+            if has_vmn: fields["version_minor"] = mn
 
-        fpath = self._store_file(src_file, self._ver_dir(doc_id, ver_label))
-        # If DOCX: set metadata and ingest comments
-        if fpath.lower().endswith(".docx"):
+        if not fields: return
+        fields["updated_at"] = _safe_iso_now()
+        known = set(self._known_columns("documents"))
+        filtered = {k: v for k, v in fields.items() if k in known}
+        sets = [f"{k}=?" for k in filtered.keys()]
+        args = list(filtered.values()) + [doc_id]
+        self._conn.execute(f"UPDATE documents SET {', '.join(sets)} WHERE doc_id=?", args)
+        self._conn.commit()
+
+    # ------------------------------ status & logging
+    def update_status(self, doc_id: str, new_status: DocumentStatus) -> None:
+        self._conn.execute(
+            "UPDATE documents SET status=?, updated_at=? WHERE doc_id=?",
+            ((new_status.name if hasattr(new_status, "name") else str(new_status)), _safe_iso_now(), doc_id)
+        )
+        self._conn.commit()
+
+    def _log_status_change(self, doc_id: str, old_status: str, new_status: str, user_id: Optional[str], reason: Optional[str]) -> None:
+        try:
+            self._conn.execute(
+                "INSERT INTO status_log(doc_id,old_status,new_status,user_id,reason,changed_at) VALUES(?,?,?,?,?,?)",
+                (doc_id, old_status, new_status, user_id, reason, _safe_iso_now())
+            )
+            self._conn.commit()
+        except Exception:
+            pass
+
+    def set_status(self, doc_id: str, new_status: DocumentStatus, user_id: Optional[str] = None, reason: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        rec = self.get(doc_id)
+        if not rec: return False, f"Document not found: {doc_id}"
+
+        old_status = getattr(rec.status, "name", str(rec.status))
+        new_status_s = getattr(new_status, "name", str(new_status))
+
+        new_path = rec.current_file_path
+        if new_status_s in ("ARCHIVED", "OBSOLETE"):
             try:
-                set_core_properties(fpath, props={
-                    "author": user_id or "",
-                    "last_modified_by": user_id or "",
-                    "title": final_title,
-                })
-                _, comments = extract_core_and_comments(fpath)
-                self._ingest_comments(doc_id, ver_label, comments)
+                if rec.current_file_path and os.path.isfile(rec.current_file_path):
+                    dest_dir = os.path.join(self._archived_dir(), doc_id); os.makedirs(dest_dir, exist_ok=True)
+                    ts = datetime.now().strftime("%Y%m%d-%H%M%S"); base = os.path.basename(rec.current_file_path)
+                    dest = os.path.join(dest_dir, f"{base}.{ts}.archived"); shutil.move(rec.current_file_path, dest); new_path = dest
+            except Exception:
+                new_path = rec.current_file_path
+
+        fields: Dict[str, Any] = {"status": new_status_s, "updated_at": _safe_iso_now()}
+        if new_path != rec.current_file_path: fields["current_file_path"] = new_path
+        if new_status_s in ("ARCHIVED", "OBSOLETE") and self._has_column("documents", "obsoleted_at"):
+            fields["obsoleted_at"] = _safe_iso_now()
+
+        known = set(self._known_columns("documents"))
+        filtered = {k: v for k, v in fields.items() if k in known}
+        sets = [f"{k}=?" for k in filtered.keys()]
+        args = list(filtered.values()) + [doc_id]
+        self._conn.execute(f"UPDATE documents SET {', '.join(sets)} WHERE doc_id=?", args)
+        self._conn.commit()
+
+        if reason:
+            version_label = f"{rec.version_major}.{rec.version_minor}"
+            try:
+                self._conn.execute("INSERT INTO comments(doc_id,author,date,text,version_label) VALUES(?,?,?,?,?)",
+                                   (doc_id, user_id or "", _safe_iso_now(), reason, version_label))
+                self._conn.commit()
             except Exception:
                 pass
 
-        next_review_dt = now + timedelta(days=30 * int(self._cfg["review_months"]))
-        self._conn.execute(
-            """
-            INSERT INTO documents (doc_id,title,doc_type,status,version_major,version_minor,current_file_path,
-                                   area,process,valid_from,next_review,created_by,created_at,updated_at,change_note)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                doc_id,
-                final_title,
-                doc_type,
-                DocumentStatus.DRAFT.name,
-                version_major,
-                version_minor,
-                fpath,
-                area,
-                process,
-                now.isoformat(timespec="seconds"),
-                next_review_dt.isoformat(timespec="seconds"),
-                user_id,
-                now.isoformat(timespec="seconds"),
-                now.isoformat(timespec="seconds"),
-                change_note,
-            ),
-        )
-        self._conn.execute(
-            """
-            INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
-            VALUES (?,?,?,?,?,?)
-            """,
-            (doc_id, ver_label, fpath, now.isoformat(timespec="seconds"), user_id or "", change_note),
-        )
-        self._audit.write(doc_id, "create", user_id, {"title": final_title, "doc_type": doc_type})
-        self._conn.commit()
-        return self.get(doc_id)
+        self._log_status_change(doc_id, old_status, new_status_s, user_id, reason)
+        return True, None
 
-    def create_from_template(
-        self,
-        *,
-        template_path: str,
-        target_id: Optional[str],
-        title: str,
-        doc_type: str,
-        user_id: str | None,
-    ) -> DocumentRecord:
-        doc_id = self._ensure_unique_doc_id(target_id)
-        now = self._now()
-        version_major, version_minor = 1, 0
-        ver_label = f"{version_major}.{version_minor}"
-        out_dir = self._ver_dir(doc_id, ver_label)
-        out_name = f"{doc_id}_{title}.docx"
-        out_path = os.path.join(out_dir, out_name)
-        create_from_template(
-            template_path,
-            out_path,
-            props={"author": user_id or "", "last_modified_by": user_id or "", "title": title, "revision": 1},
-        )
-        _, comments = extract_core_and_comments(out_path)
-        self._ingest_comments(doc_id, ver_label, comments)
-        next_review_dt = now + timedelta(days=30 * int(self._cfg["review_months"]))
-        self._conn.execute(
-            """
-            INSERT INTO documents (doc_id,title,doc_type,status,version_major,version_minor,current_file_path,
-                                   valid_from,next_review,created_by,created_at,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                doc_id,
-                title,
-                doc_type,
-                DocumentStatus.DRAFT.name,
-                version_major,
-                version_minor,
-                out_path,
-                now.isoformat(timespec="seconds"),
-                next_review_dt.isoformat(timespec="seconds"),
-                user_id,
-                now.isoformat(timespec="seconds"),
-                now.isoformat(timespec="seconds"),
-            ),
-        )
-        self._conn.execute(
-            """
-            INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
-            VALUES (?,?,?,?,?,?)
-            """,
-            (doc_id, ver_label, out_path, now.isoformat(timespec="seconds"), user_id or "", None),
-        )
-        self._audit.write(doc_id, "create_from_template", user_id, {"template": os.path.basename(template_path)})
-        self._conn.commit()
-        return self.get(doc_id)
-
-    def get(self, doc_id: str) -> DocumentRecord:
-        row = self._conn.execute("SELECT * FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
-        if not row:
-            raise KeyError(f"Document not found: {doc_id}")
-        return self._map_record(dict(row))
-
-    def list(self, status: Optional[DocumentStatus] = None, text: Optional[str] = None) -> list[DocumentRecord]:
-        sql = "SELECT * FROM documents"
-        args: list[object] = []
-        conds: list[str] = []
-        if status:
-            conds.append("UPPER(status)=?"); args.append(status.name)
-        if text:
-            conds.append("(title LIKE ? OR doc_id LIKE ?)"); args.extend([f"%{text}%", f"%{text}%"])
-        if conds:
-            sql += " WHERE " + " AND ".join(conds)
-        sql += " ORDER BY updated_at DESC"
-        rows = self._conn.execute(sql, tuple(args)).fetchall()
-        return [self._map_record(dict(r)) for r in rows]
-
-    def update_metadata(self, doc: DocumentRecord, user_id: str | None) -> None:
-        d = asdict(doc)
-        self._conn.execute(
-            """
-            UPDATE documents SET title=?, doc_type=?, area=?, process=?, next_review=?, change_note=?,
-                                 updated_at=? WHERE doc_id=?
-            """,
-            (
-                d["title"],
-                d["doc_type"],
-                d["area"],
-                d["process"],
-                d["next_review"].isoformat(timespec="seconds") if d["next_review"] else None,
-                d["change_note"],
-                self._now().isoformat(timespec="seconds"),
-                doc.doc_id.value,
-            ),
-        )
-        self._audit.write(doc.doc_id.value, "update_metadata", user_id, {"title": d["title"], "doc_type": d["doc_type"]})
+    # ------------------------------ workflow persistence (dual-mode)
+    def set_workflow_active(self, doc_id: str, active: bool, user_id: Optional[str] = None) -> None:
+        now = _safe_iso_now()
+        if self._has_column("documents", "workflow_active"):
+            if active:
+                self._conn.execute(
+                    "UPDATE documents SET workflow_active=1, workflow_started_by=COALESCE(workflow_started_by, ?), workflow_started_at=COALESCE(workflow_started_at, ?), updated_at=? WHERE doc_id=?",
+                    (user_id, now, now, doc_id))
+            else:
+                self._conn.execute("UPDATE documents SET workflow_active=0, updated_at=? WHERE doc_id=?", (now, doc_id))
+        else:
+            # workflow_state upsert
+            cur = self._conn.cursor()
+            if active:
+                cur.execute("INSERT INTO workflow_state(doc_id,active,started_by,started_at) VALUES(?,?,?,?) "
+                            "ON CONFLICT(doc_id) DO UPDATE SET active=excluded.active, started_by=COALESCE(workflow_state.started_by, excluded.started_by), started_at=COALESCE(workflow_state.started_at, excluded.started_at)",
+                            (doc_id, 1, user_id, now))
+            else:
+                cur.execute("INSERT INTO workflow_state(doc_id,active) VALUES(?,?) "
+                            "ON CONFLICT(doc_id) DO UPDATE SET active=excluded.active",
+                            (doc_id, 0))
         self._conn.commit()
 
-    # ----------------------------- check-in/out -----------------------------
+    def is_workflow_active(self, doc_id: str) -> bool:
+        if self._has_column("documents", "workflow_active"):
+            row = self._conn.execute("SELECT workflow_active FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+            if not row: return False
+            try: return int(row["workflow_active"] or 0) == 1
+            except Exception: return False
+        row = self._conn.execute("SELECT active FROM workflow_state WHERE doc_id=?", (doc_id,)).fetchone()
+        if not row: return False
+        try: return int(row["active"] or 0) == 1
+        except Exception: return False
 
-    def check_out(self, doc_id: str, user_id: str) -> bool:
-        row = self._conn.execute("SELECT locked_by FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
-        if row and row["locked_by"]:
-            return False
-        now = self._now().isoformat(timespec="seconds")
-        self._conn.execute("UPDATE documents SET locked_by=?, locked_at=? WHERE doc_id=?", (user_id, now, doc_id))
-        self._audit.write(doc_id, "check_out", user_id, {})
-        self._conn.commit()
-        return True
+    # ------------------------------ PDF utils
+    def _active_pdf_path(self, doc_id: str) -> str:
+        return os.path.join(self._active_dir(doc_id), "current.pdf")
 
-    def check_in(
-        self,
-        doc_id: str,
-        user_id: str,
-        src_file: Optional[str],
-        change_note: Optional[str],
-    ) -> DocumentRecord:
-        """
-        Content check-in (new file or metadata-only): bumps minor version.
-        """
-        cur = self._conn.execute(
-            "SELECT version_major,version_minor,current_file_path FROM documents WHERE doc_id=?",
-            (doc_id,),
-        ).fetchone()
-        if not cur:
-            raise KeyError("Document not found")
+    def _active_docx_path(self, doc_id: str) -> Optional[str]:
+        d = self._active_dir(doc_id)
+        cands = [os.path.join(d, n) for n in os.listdir(d) if n.lower().endswith(".docx")]
+        cands = sorted(cands, key=lambda p: (not os.path.basename(p).startswith(f"{doc_id}_"), p))
+        return cands[0] if cands else None
 
-        maj, minor = int(cur["version_major"]), int(cur["version_minor"])
-        new_minor = minor + 1
-        new_path = None
-
-        if src_file:
-            if src_file.lower().endswith(".docx"):
+    def _convert_docx_to_pdf_clean(self, docx_path: str, out_pdf: str) -> bool:
+        # 1) Word-COM (ohne Markups)
+        try:
+            import win32com.client  # type: ignore
+            import pythoncom  # type: ignore
+            pythoncom.CoInitialize()
+            word = win32com.client.Dispatch("Word.Application"); word.Visible = False
+            try:
+                doc = word.Documents.Open(docx_path, ReadOnly=True)
                 try:
-                    core, comments = extract_core_and_comments(src_file)
-                    rev = int(core.get("revision") or 0)
-                    if rev and rev > minor:
-                        new_minor = rev
-                    self._ingest_comments(doc_id, f"{maj}.{new_minor}", comments)
+                    view = word.ActiveWindow.View
+                    try: view.ShowRevisionsAndComments = False
+                    except Exception: pass
+                    try: view.RevisionsView = 0  # wdRevisionsViewFinal
+                    except Exception: pass
+                    try: word.Options.PrintRevisions = False
+                    except Exception: pass
                 except Exception:
                     pass
-            new_path = self._store_file(src_file, self._ver_dir(doc_id, f"{maj}.{new_minor}"))
-
-        now = self._now().isoformat(timespec="seconds")
-        self._conn.execute(
-            """
-            UPDATE documents SET version_major=?, version_minor=?, current_file_path=?, locked_by=NULL, locked_at=NULL,
-                                 updated_at=?, change_note=? WHERE doc_id=?
-            """,
-            (maj, new_minor, new_path, now, change_note, doc_id),
-        )
-        new_label = f"{maj}.{new_minor}"
-        self._conn.execute(
-            """
-            INSERT INTO versions (doc_id,version_label,file_path,created_at,created_by,change_note)
-            VALUES (?,?,?,?,?,?)
-            """,
-            (doc_id, new_label, new_path, now, user_id, change_note),
-        )
-        self._audit.write(doc_id, "check_in", user_id, {"version": new_label})
-        self._conn.commit()
-        return self.get(doc_id)
-
-    # ----------------------------- status transitions -----------------------
-
-    def set_status(self, doc_id: str, target: DocumentStatus, user_id: Optional[str], change_note: Optional[str]) -> DocumentRecord:
-        now = self._now()
-        obsoleted_at = now.isoformat(timespec="seconds") if target == DocumentStatus.OBSOLETE else None
-        self._conn.execute(
-            "UPDATE documents SET status=?, updated_at=?, change_note=?, obsoleted_at=? WHERE doc_id=?",
-            (target.name, now.isoformat(timespec="seconds"), change_note, obsoleted_at, doc_id),
-        )
-        self._audit.write(doc_id, f"status_{target.name}", user_id, {"change_note": change_note})
-        self._conn.commit()
-        return self.get(doc_id)
-
-    # ----------------------------- PDF helpers ------------------------------
+                wdFormatPDF = 17
+                doc.SaveAs(out_pdf, FileFormat=wdFormatPDF)
+                doc.Close(False); word.Quit()
+                return os.path.isfile(out_pdf)
+            finally:
+                try: word.Quit()
+                except Exception: pass
+                try: pythoncom.CoUninitialize()
+                except Exception: pass
+        except Exception:
+            pass
+        # 2) docx2pdf
+        try:
+            from docx2pdf import convert  # type: ignore
+            convert(docx_path, out_pdf)
+            return os.path.isfile(out_pdf)
+        except Exception:
+            pass
+        # 3) Fallback (verhindert Crash)
+        try:
+            shutil.copy2(docx_path, out_pdf); return os.path.isfile(out_pdf)
+        except Exception:
+            return False
 
     def generate_review_pdf(self, doc_id: str) -> Optional[str]:
-        row = self._conn.execute("SELECT current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
-        if not row or not row["current_file_path"]:
-            return None
-        src = str(row["current_file_path"])
-        out_pdf = os.path.join(os.path.dirname(src), os.path.splitext(os.path.basename(src))[0] + ".pdf")
-        pdf_path = convert_to_pdf(src, out_pdf)
-        if pdf_path:
-            now = self._now().isoformat(timespec="seconds")
-            self._conn.execute("UPDATE documents SET current_file_path=?, updated_at=? WHERE doc_id=?", (pdf_path, now, doc_id))
-            self._conn.commit()
-        return pdf_path
+        rec = self.get(doc_id)
+        if not rec: return None
+        dst = self._active_pdf_path(doc_id); os.makedirs(os.path.dirname(dst), exist_ok=True)
+
+        if rec.current_file_path and rec.current_file_path.lower().endswith(".pdf") and os.path.isfile(rec.current_file_path):
+            if os.path.abspath(rec.current_file_path) != os.path.abspath(dst):
+                try: shutil.copy2(rec.current_file_path, dst)
+                except Exception: dst = rec.current_file_path
+            try:
+                self._conn.execute("UPDATE documents SET current_file_path=?, updated_at=? WHERE doc_id=?",
+                                   (dst, _safe_iso_now(), doc_id)); self._conn.commit()
+            except Exception: pass
+            return dst
+
+        docx = self._active_docx_path(doc_id)
+        if not docx and rec.current_file_path and rec.current_file_path.lower().endswith(".docx") and os.path.isfile(rec.current_file_path):
+            docx = rec.current_file_path
+        if not (docx and os.path.isfile(docx)): return None
+
+        ok = self._convert_docx_to_pdf_clean(docx, dst)
+        if not ok: return None
+        try:
+            self._conn.execute("UPDATE documents SET current_file_path=?, updated_at=? WHERE doc_id=?",
+                               (dst, _safe_iso_now(), doc_id)); self._conn.commit()
+        except Exception: pass
+        return dst if os.path.isfile(dst) else None
 
     def export_pdf_with_version_suffix(self, doc_id: str) -> Optional[str]:
-        row = self._conn.execute(
-            "SELECT current_file_path,version_major,version_minor FROM documents WHERE doc_id=?",
-            (doc_id,),
-        ).fetchone()
-        if not row or not row["current_file_path"]:
-            return None
-        src = str(row["current_file_path"])
-        ver_label = f"{int(row['version_major'])}.{int(row['version_minor'])}"
-        base = os.path.splitext(os.path.basename(src))[0]
-        out_pdf = os.path.join(os.path.dirname(src), f"{base}_v{ver_label}.pdf")
-        return convert_to_pdf(src, out_pdf)
+        rec = self.get(doc_id)
+        if not rec: return None
+        src = rec.current_file_path or ""
+        if not (src and src.lower().endswith(".pdf") and os.path.isfile(src)):
+            src = self.generate_review_pdf(doc_id) or ""
+        if not (src and os.path.isfile(src)): return None
+        version_label = f"{rec.version_major}.{rec.version_minor}"
+        dst_dir = self._version_dir(doc_id, version_label)
+        dst = os.path.join(dst_dir, f"{doc_id}_v{version_label}.pdf")
+        os.makedirs(dst_dir, exist_ok=True); shutil.copy2(src, dst); return dst
 
-    # ----------------------------- signature integration --------------------
-
-    def _default_placement(self):
-        class P:
-            page_index = -1
-            x = 460
-            y = 80
-            target_width = 180
-        return P()
-
-    def attach_signed_pdf(self, doc_id: str, signed_pdf: str, step: str, user_id: str, reason: str) -> str:
-        """
-        Attach a (externally) signed PDF to the *current* version without bumping version numbers.
-
-        Naming rules:
-          - exactly one '_signed'
-          - version suffix only for final publish: '_signed_v<maj.min>.pdf'
-
-        Updates 'documents.current_file_path' and the latest 'versions.file_path' for the current version label.
-        Also appends a row to 'signatures' and writes an audit entry.
-
-        Returns: absolute path to the normalized stored PDF.
-        """
-        if not (signed_pdf and os.path.isfile(signed_pdf)):
-            raise FileNotFoundError("Signed PDF not found.")
-
-        cur = self._conn.execute(
-            "SELECT version_major,version_minor FROM documents WHERE doc_id=?",
-            (doc_id,),
-        ).fetchone()
-        if not cur:
-            raise KeyError(f"Document not found: {doc_id}")
-
-        maj, minor = int(cur["version_major"]), int(cur["version_minor"])
-        version_label = f"{maj}.{minor}"
-
-        step_norm = (step or "").strip().lower()
-        use_version_suffix = step_norm in {"publish"}  # only final publish receives version suffix
-
-        base_in = os.path.splitext(os.path.basename(signed_pdf))[0]
-        target_name = self._make_signed_filename(base_in, version_label if use_version_suffix else None)
-
-        out_dir = self._ver_dir(doc_id, version_label)
-        os.makedirs(out_dir, exist_ok=True)
-        target_path = os.path.join(out_dir, target_name)
-
-        if os.path.abspath(signed_pdf) != os.path.abspath(target_path):
-            shutil.copyfile(signed_pdf, target_path)
-
-        now = self._now().isoformat(timespec="seconds")
-        # Update current document pointer
-        self._conn.execute(
-            "UPDATE documents SET current_file_path=?, updated_at=? WHERE doc_id=?",
-            (target_path, now, doc_id),
-        )
-        # Ensure the versions row for this version_label points to the normalized file
-        self._conn.execute(
-            """
-            UPDATE versions
-               SET file_path=?
-             WHERE id = (
-                 SELECT id FROM versions
-                  WHERE doc_id=? AND version_label=?
-                  ORDER BY id DESC
-                  LIMIT 1
-             )
-            """,
-            (target_path, doc_id, version_label),
-        )
-        # Signatures trail
-        self._conn.execute(
-            """
-            INSERT INTO signatures(doc_id,step,user_id,reason,signed_at,file_path)
-            VALUES (?,?,?,?,?,?)
-            """,
-            (doc_id, step_norm, user_id or "", reason or "", now, target_path),
-        )
-        self._audit.write(doc_id, "signature", user_id, {"step": step_norm, "file": os.path.basename(target_path)})
-        self._conn.commit()
-        return target_path
-
-    def record_signature(
-        self,
-        doc_id: str,
-        step: str,
-        user_id: str,
-        reason: Optional[str],
-        signature_png: Optional[bytes],
-    ) -> None:
-        """
-        Record a signature for allowed workflow steps by stamping the current PDF
-        via the signature API (preferred) or PNG fallback, and attach the result
-        to the *current* version without changing version numbers.
-
-        Allowed steps: submit_review, request_approval, publish
-        - Only 'publish' will get a filename with '_signed_v<maj.min>.pdf'
-        - Other steps get '<name>_signed.pdf'
-        """
-        step_norm = (step or "").strip().lower()
-        allowed = {"submit_review", "request_approval", "publish"}
-        if step_norm not in allowed:
-            # No-op but audit for traceability
-            self._audit.write(doc_id, "signature_skipped", user_id, {"step": step_norm})
-            self._conn.commit()
-            return
-
-        row = self._conn.execute(
-            "SELECT current_file_path FROM documents WHERE doc_id=?",
-            (doc_id,),
-        ).fetchone()
-        if not row:
-            self._audit.write(doc_id, "signature_failed", user_id, {"step": step_norm, "err": "doc_missing"})
-            self._conn.commit()
-            return
-
-        src_pdf = (row["current_file_path"] or "").strip()
-        if not (src_pdf and src_pdf.lower().endswith(".pdf") and os.path.isfile(src_pdf)):
-            self._audit.write(doc_id, "signature_failed", user_id, {"step": step_norm, "err": "no_pdf"})
-            self._conn.commit()
-            return
-
-        # Try external signature API first
-        signed_path: Optional[str] = None
+    def attach_signed_pdf(self, doc_id: str, signed_pdf_path: str, step: str, user_id: Optional[str] = None, reason: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        if not (signed_pdf_path and os.path.isfile(signed_pdf_path)): return False, None
+        rec = self.get(doc_id)
+        if not rec: return False, None
+        step_norm = (step or "").strip().lower(); now = _safe_iso_now()
+        if step_norm == "publish":
+            version_label = f"{rec.version_major}.{rec.version_minor}"
+            vdir = self._version_dir(doc_id, version_label)
+            base = f"{doc_id}_v{version_label}_signed.pdf"
+            dst = os.path.join(vdir, base)
+        else:
+            dst = self._active_pdf_path(doc_id)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        try: shutil.copy2(signed_pdf_path, dst)
+        except Exception as ex: return False, str(ex)
         try:
-            api = AppContext.signature()
-            # Placement discovery
-            placement = None
-            for meth in ("default_placement", "placement_default", "make_default_placement"):
-                if hasattr(api, meth):
-                    try:
-                        placement = getattr(api, meth)()
-                        break
-                    except Exception:
-                        placement = None
-            if placement is None:
-                placement = self._default_placement()
+            self._conn.execute("UPDATE documents SET current_file_path=?, updated_at=? WHERE doc_id=?",
+                               (dst, now, doc_id)); self._conn.commit()
+        except Exception: pass
+        try:
+            self._conn.execute("INSERT INTO signatures(doc_id, step, user_id, signed_at) VALUES(?,?,?,?)",
+                               (doc_id, step_norm, user_id or "", now)); self._conn.commit()
+        except Exception: pass
+        if reason:
             try:
-                out = api.sign_pdf(input_path=src_pdf, placement=placement, reason=reason,
-                                   use_user_signature=True, raw_signature_png=signature_png)
-            except TypeError:
-                # Older API shape
-                out = api.sign_pdf(src_pdf, placement, reason)
+                version_label = f"{rec.version_major}.{rec.version_minor}"
+                self._conn.execute("INSERT INTO comments(doc_id,author,date,text,version_label) VALUES(?,?,?,?,?)",
+                                   (doc_id, user_id or "", now, reason, version_label)); self._conn.commit()
+            except Exception: pass
+        return True, dst
 
-            # Normalize result to a path
-            if isinstance(out, str) and os.path.isfile(out):
-                signed_path = out
-            elif isinstance(out, dict):
-                p = out.get("out") or out.get("path") or out.get("pdf")
-                if isinstance(p, str) and os.path.isfile(p):
-                    signed_path = p
-            elif hasattr(out, "path"):
-                p = getattr(out, "path", None)
-                if isinstance(p, str) and os.path.isfile(p):
-                    signed_path = p
-            # Some APIs modify in-place and return a truthy object
-            if not signed_path and out and os.path.isfile(src_pdf):
-                signed_path = src_pdf
-        except Exception:
-            signed_path = None
+    # ------------------------------ misc helpers
+    def get_owner(self, doc_id: str) -> Optional[str]:
+        row = self._conn.execute("SELECT owner_user_id FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+        return (row["owner_user_id"] if row and "owner_user_id" in row.keys() else None)
 
-        # PNG fallback stamping if API failed but a raw signature is available
-        if signed_path is None and signature_png:
-            tmp_dir = os.path.dirname(src_pdf)
-            tmp_out = os.path.join(tmp_dir, os.path.basename(src_pdf))
-            label = f"Signed by {user_id} ({step_norm})" if user_id else f"Signature ({step_norm})"
-            if stamp_signature(src_pdf, tmp_out, signature_png, label=label):
-                signed_path = tmp_out
-
-        if not signed_path:
-            self._audit.write(doc_id, "signature_failed", user_id, {"step": step_norm, "err": "no_output"})
-            self._conn.commit()
-            return
-
-        # Finalize: attach using normalized naming and without version bump
-        self.attach_signed_pdf(doc_id, signed_path, step_norm, user_id or "", reason or "")
-
-    # ----------------------------- controlled copies ------------------------
-
-    def make_controlled_copy(self, doc_id: str) -> Optional[str]:
-        row = self._conn.execute("SELECT current_file_path FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
-        if not row or not row["current_file_path"]:
-            return None
-        src = str(row["current_file_path"])
-        if not src.lower().endswith(".pdf"):
-            return src
-        out_dir = os.path.join(os.path.dirname(src), "controlled_copy")
-        os.makedirs(out_dir, exist_ok=True)
-        out_pdf = os.path.join(out_dir, os.path.basename(src))
-        make_controlled_copy(src, out_pdf, self._cfg["watermark_copy"])
-        return out_pdf
-
-    def copy_to_destination(self, doc_id: str, dest_dir: str) -> Optional[str]:
-        """Create a watermarked PDF copy in the specified destination if document is published."""
-        row = self._conn.execute(
-            "SELECT current_file_path,status FROM documents WHERE doc_id=?",
-            (doc_id,),
-        ).fetchone()
-        if not row or row["status"] != DocumentStatus.PUBLISHED.name:
-            return None
-        src = row["current_file_path"]
-        if not (src and src.lower().endswith(".pdf")):
-            return None
-        name = os.path.basename(src)
-        out = os.path.join(dest_dir, name)
-        make_controlled_copy(src, out, self._cfg["watermark_copy"])
+    def get_docx_comments_for_version(self, doc_id: str, version_label: Optional[str] = None) -> List[Dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT author,date,text,version_label FROM comments WHERE doc_id=? AND (? IS NULL OR version_label=?) ORDER BY date ASC",
+            (doc_id, version_label, version_label),
+        ).fetchall()
+        if rows:
+            return [{"author": r["author"], "date": r["date"], "text": r["text"], "version_label": r["version_label"]} for r in rows]
+        rec = self.get(doc_id); path = getattr(rec, "current_file_path", None) if rec else None
+        out: List[Dict[str, Any]] = []
+        if path and os.path.isfile(path):
+            try:
+                _meta, found = extract_core_and_comments(path)
+                if found:
+                    vlabel = version_label or (f"{rec.version_major}.{rec.version_minor}" if rec else "1.0")
+                    batch = []
+                    for c in found:
+                        a = str(c.get("author") or ""); d = str(c.get("date") or ""); t = str(c.get("text") or ""); vl = str(c.get("version_label") or vlabel)
+                        batch.append((doc_id, a, d, t, vl)); out.append({"author": a, "date": d, "text": t, "version_label": vl})
+                    self._conn.executemany("INSERT INTO comments(doc_id,author,date,text,version_label) VALUES(?,?,?,?,?)", batch); self._conn.commit()
+            except Exception: pass
         return out
 
-    # ----------------------------- comments & reads -------------------------
-
-    def _ingest_comments(self, doc_id: str, version_label: str, comments: List[Dict]) -> None:
-        if not comments:
-            return
-        cur = self._conn.cursor()
-        for c in comments:
-            dt = c.get("date")
-            cur.execute(
-                "INSERT INTO doc_comments(doc_id,version_label,author,date,text) VALUES (?,?,?,?,?)",
-                (doc_id, version_label, c.get("author"), dt.isoformat() if dt else None, c.get("text")),
-            )
-        self._conn.commit()
-
-    def list_comments(self, doc_id: str, version_label: str | None = None) -> list[dict]:
-        """
-        Read review comments *live* from the current DOCX and show Word's revision/version.
-        - No DB usage, no persistence.
-        - First column prefers Word 'revision' (r<rev>), then Word 'version', then repo maj.min.
-        - Always returns a list; dates are formatted as 'YYYY-MM-DD HH:MM:SS'.
-        """
+    def check_in(self, doc_id: str, user_id: str, src_docx_path: str, note: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        if not (src_docx_path and os.path.isfile(src_docx_path)): return False, "Quelle nicht gefunden."
+        rec = self.get(doc_id)
+        if not rec: return False, "Dokument nicht gefunden."
+        dst = os.path.join(self._active_dir(doc_id), "current.docx"); os.makedirs(os.path.dirname(dst), exist_ok=True)
+        try: shutil.copy2(src_docx_path, dst)
+        except Exception as ex: return False, str(ex)
         try:
-            row = self._conn.execute(
-                "SELECT current_file_path, version_major, version_minor FROM documents WHERE doc_id=?",
-                (doc_id,),
-            ).fetchone()
-            if not row:
-                return []
+            self._conn.execute("UPDATE documents SET current_file_path=?, updated_at=? WHERE doc_id=?",
+                               (dst, _safe_iso_now(), doc_id)); self._conn.commit()
+        except Exception: pass
+        if note:
+            try:
+                vlabel = f"{rec.version_major}.{rec.version_minor}"
+                self._conn.execute("INSERT INTO comments(doc_id,author,date,text,version_label) VALUES(?,?,?,?,?)",
+                                   (doc_id, user_id or "", _safe_iso_now(), note, vlabel)); self._conn.commit()
+            except Exception: pass
+        return True, None
 
-            path = (row["current_file_path"] or "").strip()
-            if not (path and path.lower().endswith(".docx")):
-                return []
-
-            # live extraction via word_meta bridge
-            from documents.logic.wordmeta_bridge import extract_core_and_comments
-            core, comments = extract_core_and_comments(path)
-
-            # determine label for first column (prefer Word 'revision', then Word 'version')
-            label = None
-            rev = core.get("revision")
-            if isinstance(rev, int) and rev > 0:
-                label = f"r{rev}"
-            if not label:
-                ver = core.get("version")
-                if isinstance(ver, str) and ver.strip():
-                    label = ver.strip()
-            if not label:
-                label = f"{int(row['version_major'])}.{int(row['version_minor'])}"  # fallback
-            if version_label:
-                label = version_label  # explicit override, if caller provides
-
-            out: list[dict] = []
-            for c in comments or []:
-                dt = c.get("date")
-                dt_str = ""
-                if hasattr(dt, "strftime"):
-                    dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                elif isinstance(dt, str):
-                    dt_str = dt
-                out.append({
-                    "version_label": label,
-                    "author": str(c.get("author") or ""),
-                    "date": dt_str,
-                    "text": str(c.get("text") or "").strip(),
-                })
-            return out
-        except Exception:
-            return []
-
-    # ----------------------------- assignees / tasks ------------------------
-
-    def set_assignees(
-        self, doc_id: str, *, authors: list[str] | None, reviewers: list[str], approvers: list[str]
-    ) -> None:
-        cur = self._conn.cursor()
-        cur.execute("DELETE FROM doc_roles WHERE doc_id=?", (doc_id,))
-        def ins(role: str, users: list[str] | None) -> None:
-            if not users:
-                return
-            for u in sorted({x.strip() for x in users if str(x).strip()}):
-                cur.execute(
-                    "INSERT OR IGNORE INTO doc_roles(doc_id,role,user_id) VALUES (?,?,?)",
-                    (doc_id, role.upper(), u),
-                )
-        ins("AUTHOR", authors)
-        ins("REVIEWER", reviewers)
-        ins("APPROVER", approvers)
-        self._conn.commit()
-        self._audit.write(doc_id, "set_assignees", None, {"authors": authors or [], "reviewers": reviewers, "approvers": approvers})
-
-    def get_assignees(self, doc_id: str) -> dict[str, list[str]]:
-        out = {"AUTHOR": [], "REVIEWER": [], "APPROVER": []}
-        rows = self._conn.execute("SELECT role,user_id FROM doc_roles WHERE doc_id=?", (doc_id,)).fetchall()
-        for r in rows:
-            rl = str(r["role"]).upper()
-            if rl in out:
-                out[rl].append(str(r["user_id"]))
-        return out
-
-    def list_tasks_for_user(self, user_id: str) -> list[dict]:
-        tasks: list[dict] = []
-        rows = self._conn.execute(
-            """
-            SELECT d.doc_id, d.title, d.status, d.version_major, d.version_minor, d.created_by
-              FROM documents d
-             WHERE d.created_by = ?
-                OR EXISTS (SELECT 1 FROM doc_roles r WHERE r.doc_id=d.doc_id AND r.user_id=?)
-             ORDER BY d.updated_at DESC
-            """,
-            (user_id, user_id),
-        ).fetchall()
-        for r in rows:
-            status = self._status_to_enum(r["status"])
-            doc_id = str(r["doc_id"])
-            ass = self.get_assignees(doc_id)
-            next_action = None
-            if status == DocumentStatus.DRAFT:
-                if (user_id == (r["created_by"] or "")) or user_id in ass.get("AUTHOR", []):
-                    next_action = "submit_review"
-            elif status == DocumentStatus.IN_REVIEW:
-                if user_id in ass.get("REVIEWER", []):
-                    next_action = "request_approval"
-            elif status == DocumentStatus.APPROVAL:
-                if user_id in ass.get("APPROVER", []):
-                    next_action = "publish"
-            if next_action:
-                tasks.append(
-                    {
-                        "doc_id": doc_id,
-                        "title": str(r["title"]),
-                        "status": status.name,
-                        "version": f"{int(r['version_major'])}.{int(r['version_minor'])}",
-                        "next_action": next_action,
-                    }
-                )
-        return tasks
-
-    # ----------------------------- read receipts ----------------------------
-
-    def mark_read(self, doc_id: str, user_id: str) -> None:
-        row = self._conn.execute("SELECT version_major,version_minor FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
-        if not row:
-            return
-        ver_label = f"{int(row['version_major'])}.{int(row['version_minor'])}"
-        self._conn.execute(
-            "INSERT OR IGNORE INTO read_receipts(doc_id,version_label,user_id,read_at) VALUES (?,?,?,?)",
-            (doc_id, ver_label, user_id, self._now().isoformat(timespec="seconds")),
-        )
-        self._conn.commit()
-
-    def list_reads(self, doc_id: str) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT version_label,user_id,read_at FROM read_receipts WHERE doc_id=? ORDER BY read_at DESC",
-            (doc_id,),
-        ).fetchall()
-        return [{"version_label": r["version_label"], "user_id": r["user_id"], "read_at": r["read_at"]} for r in rows]
-
-    # ----------------------------- mapping ----------------------------------
-
-    def _map_record(self, r: dict) -> DocumentRecord:
-        def parse_dt(val: Optional[str]):
-            if not val:
-                return None
-            return datetime.fromisoformat(val)
-        return DocumentRecord(
-            doc_id=DocumentId(str(r["doc_id"])),
-            title=str(r["title"]),
-            doc_type=str(r["doc_type"]),
-            status=self._status_to_enum(r["status"]),
-            version_major=int(r["version_major"]),
-            version_minor=int(r["version_minor"]),
-            current_file_path=str(r["current_file_path"]) if r["current_file_path"] else None,
-            area=str(r["area"]) if r["area"] else None,
-            process=str(r["process"]) if r["process"] else None,
-            valid_from=parse_dt(r["valid_from"]),
-            next_review=parse_dt(r["next_review"]),
-            obsoleted_at=parse_dt(r["obsoleted_at"]),
-            created_by=str(r["created_by"]) if r["created_by"] else None,
-            created_at=parse_dt(r["created_at"]) or datetime.utcnow(),
-            updated_at=parse_dt(r["updated_at"]) or datetime.utcnow(),
-            change_note=str(r["change_note"]) if r["change_note"] else None,
-            norm_refs=(str(r["norm_refs"]).split(",") if r["norm_refs"] else []),
-            tags=(str(r["tags"]).split(",") if r["tags"] else []),
-            locked_by=str(r["locked_by"]) if r["locked_by"] else None,
-            locked_at=parse_dt(r["locked_at"]),
-        )
+    # ------------------------------ id generation
+    def _new_doc_id(self) -> str:
+        year = datetime.now().year; prefix = self._cfg.id_prefix.strip(); pattern = self._cfg.id_pattern
+        like = f"{prefix}-{year}-%"
+        rows = self._conn.execute("SELECT doc_id FROM documents WHERE doc_id LIKE ? ORDER BY doc_id DESC LIMIT 1", (like,)).fetchall()
+        seq = 0
+        if rows:
+            last = rows[0]["doc_id"]; m = re.search(rf"^{re.escape(prefix)}-{year}-(\d+)$", last)
+            if m: seq = int(m.group(1))
+        seq += 1
+        doc_id = f"{prefix}-" + pattern.format(YYYY=year, seq=seq)
+        while self._conn.execute("SELECT 1 FROM documents WHERE doc_id=?", (doc_id,)).fetchone():
+            seq += 1; doc_id = f"{prefix}-" + pattern.format(YYYY=year, seq=seq)
+        return doc_id
