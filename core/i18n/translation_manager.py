@@ -1,4 +1,5 @@
 import csv
+import threading
 from pathlib import Path
 from core.logging.logic.logger import logger
 
@@ -6,27 +7,35 @@ LOCALE_TRACK_MISSING_KEYS = True
 
 # Cache for current language to avoid repeated database lookups
 _cached_language: str | None = None
+_language_cache_lock = threading.Lock()
 
 
 def _invalidate_language_cache() -> None:
     """Invalidate the cached language. Call when language settings change."""
     global _cached_language
-    _cached_language = None
+    with _language_cache_lock:
+        _cached_language = None
 
 
 def _get_cached_language() -> str:
     """
     Get the current language, using cache to avoid repeated DB lookups.
     The cache is invalidated when AppContext.update_language() is called.
+    Thread-safe implementation with double-check pattern.
     """
     global _cached_language
     if _cached_language is not None:
         return _cached_language
     
-    from core.common.app_context import AppContext  # noqa: WPS433
-    lang = AppContext.settings_manager.get("app", "language", user_specific=True, fallback="de")
-    _cached_language = lang or "de"
-    return _cached_language
+    with _language_cache_lock:
+        # Double-check after acquiring lock
+        if _cached_language is not None:
+            return _cached_language
+        
+        from core.common.app_context import AppContext  # noqa: WPS433
+        lang = AppContext.settings_manager.get("app", "language", user_specific=True, fallback="de")
+        _cached_language = lang or "de"
+        return _cached_language
 
 
 class TranslationManager:

@@ -38,10 +38,9 @@ def default_roots() -> List[Path]:
 def _in_ignored_dir(p: Path) -> bool:
     """
     Check if any component of the path is in the ignored directories set.
-    Uses path.parts for efficient O(parts) check with O(1) set lookups.
+    Uses generator with any() for efficient short-circuit evaluation.
     """
-    # Check all parts of the path (more efficient than iterating parents)
-    return bool(_IGNORE_DIRS & set(p.parts))
+    return any(part in _IGNORE_DIRS for part in p.parts)
 
 def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
     """

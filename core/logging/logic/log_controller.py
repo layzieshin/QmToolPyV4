@@ -48,17 +48,17 @@ class LogController:
         """
         Get unique filter options directly from the database using SQL DISTINCT.
         This is much more efficient than loading all logs into memory.
+        Uses the logger's public execute_query method for thread-safe access.
         """
-        with sqlite3.connect(str(logger.db_path)) as conn:
-            features = [r[0] for r in conn.execute(
-                "SELECT DISTINCT feature FROM logs WHERE feature IS NOT NULL ORDER BY feature"
-            ).fetchall()]
-            events = [r[0] for r in conn.execute(
-                "SELECT DISTINCT event FROM logs WHERE event IS NOT NULL ORDER BY event"
-            ).fetchall()]
-            levels = [r[0] for r in conn.execute(
-                "SELECT DISTINCT log_level FROM logs WHERE log_level IS NOT NULL ORDER BY log_level"
-            ).fetchall()]
+        features = [r[0] for r in logger.execute_query(
+            "SELECT DISTINCT feature FROM logs WHERE feature IS NOT NULL ORDER BY feature"
+        )]
+        events = [r[0] for r in logger.execute_query(
+            "SELECT DISTINCT event FROM logs WHERE event IS NOT NULL ORDER BY event"
+        )]
+        levels = [r[0] for r in logger.execute_query(
+            "SELECT DISTINCT log_level FROM logs WHERE log_level IS NOT NULL ORDER BY log_level"
+        )]
         return {
             "features": features,
             "events": events,

@@ -60,15 +60,28 @@ class Logger:
     #  Connection management (reuse single connection)                   #
     # ------------------------------------------------------------------ #
     def _get_connection(self) -> sqlite3.Connection:
-        """Get or create a reusable database connection."""
+        """Get or create a reusable database connection (thread-safe)."""
         if self._conn is None:
-            os.makedirs(self.db_path.parent, exist_ok=True)
-            self._conn = sqlite3.connect(
-                str(self.db_path),
-                check_same_thread=False,  # Allow multi-threaded access
-            )
-            self._conn.row_factory = sqlite3.Row
+            with self._lock:
+                # Double-check pattern for thread safety
+                if self._conn is None:
+                    os.makedirs(self.db_path.parent, exist_ok=True)
+                    self._conn = sqlite3.connect(
+                        str(self.db_path),
+                        check_same_thread=False,  # Allow multi-threaded access
+                    )
+                    self._conn.row_factory = sqlite3.Row
         return self._conn
+
+    def close(self) -> None:
+        """Close the database connection and release resources."""
+        with self._lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
 
     # ------------------------------------------------------------------ #
     #  Öffentliche API: log                                              #
@@ -187,6 +200,23 @@ class Logger:
             conn = self._get_connection()
             conn.execute("DELETE FROM logs")
             conn.commit()
+
+    def execute_query(self, query: str, params: tuple = ()) -> List[sqlite3.Row]:
+        """
+        Execute a read-only SQL query with thread-safe access.
+        Public method for external callers (e.g., LogController) to safely
+        execute queries using the shared connection.
+        
+        Args:
+            query: SQL query string
+            params: Query parameters tuple
+            
+        Returns:
+            List of Row objects
+        """
+        with self._lock:
+            conn = self._get_connection()
+            return conn.execute(query, params).fetchall()
 
     # ------------------------------------------------------------------ #
     #  Interne Helfer                                                    #
