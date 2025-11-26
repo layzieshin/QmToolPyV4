@@ -9,8 +9,7 @@ Auto-Discovery für Module via `meta.json`.
 • Gibt eine deterministisch sortierte Liste gefundener Dateien zurück.
 
 Performance optimizations:
-• Uses set lookup for ignored directory names (O(1) instead of O(n))
-• Checks path parts directly instead of iterating all parents
+• Uses frozenset for ignored directory names (immutable, O(1) lookups)
 """
 
 from __future__ import annotations
@@ -37,10 +36,17 @@ def default_roots() -> List[Path]:
 
 def _in_ignored_dir(p: Path) -> bool:
     """
-    Check if any component of the path is in the ignored directories set.
-    Uses generator with any() for efficient short-circuit evaluation.
+    Check if the path is inside any ignored directory.
+    Uses frozenset for O(1) lookups while maintaining the original
+    parent-directory-only semantic (not checking the filename itself).
     """
-    return any(part in _IGNORE_DIRS for part in p.parts)
+    # Only check parent directories (not the file itself)
+    # This maintains the original behavior of checking if the file is
+    # *inside* an ignored directory, not if the file *is* an ignored name
+    for parent in p.parents:
+        if parent.name in _IGNORE_DIRS:
+            return True
+    return False
 
 def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
     """
