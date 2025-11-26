@@ -4,6 +4,10 @@ core/logging/logic/logger.py
 
 Thread-sicherer Singleton-Logger mit SQLite-Backend und
 Auto-Fill des Benutzernamens, falls nicht explizit angegeben.
+
+Performance optimizations:
+- Reuses a single database connection instead of creating new ones per operation
+- Connection is thread-safe via check_same_thread=False and explicit locking
 """
 
 from __future__ import annotations
@@ -49,7 +53,22 @@ class Logger:
         self._lock = threading.Lock()
         self.db_path: Path = LOG_DB_PATH
         self.entries: list[LogEntry] = []
+        self._conn: sqlite3.Connection | None = None
         self._ensure_db()
+
+    # ------------------------------------------------------------------ #
+    #  Connection management (reuse single connection)                   #
+    # ------------------------------------------------------------------ #
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get or create a reusable database connection."""
+        if self._conn is None:
+            os.makedirs(self.db_path.parent, exist_ok=True)
+            self._conn = sqlite3.connect(
+                str(self.db_path),
+                check_same_thread=False,  # Allow multi-threaded access
+            )
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
 
     # ------------------------------------------------------------------ #
     #  Öffentliche API: log                                              #
@@ -101,16 +120,14 @@ class Logger:
     #  Fetch / Query / Clear                                             #
     # ------------------------------------------------------------------ #
     def fetch_logs(self, limit: int = 100) -> List[LogEntry]:
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self._lock:
+            conn = self._get_connection()
             c = conn.cursor()
             c.execute(
                 "SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?", (limit,)
             )
             rows = c.fetchall()
-            return [
-                LogEntry.from_dict(dict(zip([col[0] for col in c.description], row)))
-                for row in rows
-            ]
+            return [LogEntry.from_dict(dict(row)) for row in rows]
 
     def query_logs(
         self,
@@ -125,7 +142,8 @@ class Logger:
         end_time: Optional[str] = None,
         limit: int = 1_000,
     ) -> List[LogEntry]:
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self._lock:
+            conn = self._get_connection()
             c = conn.cursor()
 
             query = "SELECT * FROM logs WHERE 1=1"
@@ -162,14 +180,12 @@ class Logger:
             c.execute(query, params)
             rows = c.fetchall()
 
-            return [
-                LogEntry.from_dict(dict(zip([col[0] for col in c.description], row)))
-                for row in rows
-            ]
+            return [LogEntry.from_dict(dict(row)) for row in rows]
 
     def clear_logs(self) -> None:
-        with sqlite3.connect(str(self.db_path)) as conn:
-            conn.cursor().execute("DELETE FROM logs")
+        with self._lock:
+            conn = self._get_connection()
+            conn.execute("DELETE FROM logs")
             conn.commit()
 
     # ------------------------------------------------------------------ #
@@ -177,26 +193,27 @@ class Logger:
     # ------------------------------------------------------------------ #
     def _ensure_db(self) -> None:
         os.makedirs(self.db_path.parent, exist_ok=True)
-        with sqlite3.connect(str(self.db_path)) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    user_id INTEGER,
-                    username TEXT,
-                    feature TEXT NOT NULL,
-                    event TEXT NOT NULL,
-                    reference_id TEXT,
-                    message TEXT,
-                    log_level TEXT NOT NULL DEFAULT 'INFO'
-                )
-                """
+        conn = self._get_connection()
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                user_id INTEGER,
+                username TEXT,
+                feature TEXT NOT NULL,
+                event TEXT NOT NULL,
+                reference_id TEXT,
+                message TEXT,
+                log_level TEXT NOT NULL DEFAULT 'INFO'
             )
-            conn.commit()
+            """
+        )
+        conn.commit()
 
     def _insert_log(self, entry: LogEntry) -> None:
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self._lock:
+            conn = self._get_connection()
             conn.execute(
                 """
                 INSERT INTO logs

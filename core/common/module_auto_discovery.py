@@ -7,6 +7,10 @@ Auto-Discovery für Module via `meta.json`.
 • Durchsucht definierte Wurzel-Verzeichnisse rekursiv nach `meta.json`.
 • Ignoriert typische Build-/Tooling-Ordner.
 • Gibt eine deterministisch sortierte Liste gefundener Dateien zurück.
+
+Performance optimizations:
+• Uses set lookup for ignored directory names (O(1) instead of O(n))
+• Checks path parts directly instead of iterating all parents
 """
 
 from __future__ import annotations
@@ -19,10 +23,10 @@ from core.logging.logic.logger import logger
 HERE = Path(__file__).resolve().parent           # .../core/common
 PROJECT_ROOT = HERE.parents[2]                   # .../<root>
 
-_IGNORE_DIRS = {
+_IGNORE_DIRS = frozenset({
     ".git", ".idea", ".vscode", "__pycache__", "node_modules",
     "build", "dist", ".venv", "venv", ".mypy_cache", ".pytest_cache",
-}
+})
 
 def default_roots() -> List[Path]:
     """
@@ -32,10 +36,12 @@ def default_roots() -> List[Path]:
     return [PROJECT_ROOT]
 
 def _in_ignored_dir(p: Path) -> bool:
-    for parent in p.parents:
-        if parent.name in _IGNORE_DIRS:
-            return True
-    return False
+    """
+    Check if any component of the path is in the ignored directories set.
+    Uses path.parts for efficient O(parts) check with O(1) set lookups.
+    """
+    # Check all parts of the path (more efficient than iterating parents)
+    return bool(_IGNORE_DIRS & set(p.parts))
 
 def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
     """
