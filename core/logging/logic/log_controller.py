@@ -45,11 +45,24 @@ class LogController:
         self._sort_ascending = ascending
 
     def get_filter_options(self) -> Dict[str, List[str]]:
-        logs = self.get_logs(limit=10_000)
+        """
+        Get unique filter options directly from the database using SQL DISTINCT.
+        This is much more efficient than loading all logs into memory.
+        Uses the logger's public execute_query method for thread-safe access.
+        """
+        features = [r[0] for r in logger.execute_query(
+            "SELECT DISTINCT feature FROM logs WHERE feature IS NOT NULL ORDER BY feature"
+        )]
+        events = [r[0] for r in logger.execute_query(
+            "SELECT DISTINCT event FROM logs WHERE event IS NOT NULL ORDER BY event"
+        )]
+        levels = [r[0] for r in logger.execute_query(
+            "SELECT DISTINCT log_level FROM logs WHERE log_level IS NOT NULL ORDER BY log_level"
+        )]
         return {
-            "features": sorted({l["feature"] for l in logs if l["feature"]}),
-            "events":   sorted({l["event"]   for l in logs if l["event"]}),
-            "levels":   sorted({l["log_level"] for l in logs if l["log_level"]}),
+            "features": features,
+            "events": events,
+            "levels": levels,
         }
 
     # ------------------------------------------------------------------ #
