@@ -204,12 +204,17 @@ class Logger:
     def execute_query(self, query: str, params: tuple = ()) -> List[sqlite3.Row]:
         """
         Execute a read-only SQL query with thread-safe access.
-        Public method for external callers (e.g., LogController) to safely
-        execute queries using the shared connection.
+        
+        This method is intended for internal use by LogController and other
+        core components with pre-defined, trusted queries. Parameters should
+        be passed via the params tuple to prevent SQL injection.
+        
+        WARNING: Do not pass user-provided strings directly to the query parameter.
+        Always use parameterized queries with the params argument.
         
         Args:
-            query: SQL query string
-            params: Query parameters tuple
+            query: SQL query string (should be a constant, not user input)
+            params: Query parameters tuple (safe for user input)
             
         Returns:
             List of Row objects
@@ -222,24 +227,26 @@ class Logger:
     #  Interne Helfer                                                    #
     # ------------------------------------------------------------------ #
     def _ensure_db(self) -> None:
-        os.makedirs(self.db_path.parent, exist_ok=True)
-        conn = self._get_connection()
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                user_id INTEGER,
-                username TEXT,
-                feature TEXT NOT NULL,
-                event TEXT NOT NULL,
-                reference_id TEXT,
-                message TEXT,
-                log_level TEXT NOT NULL DEFAULT 'INFO'
+        """Initialize the database schema. Thread-safe via lock."""
+        with self._lock:
+            os.makedirs(self.db_path.parent, exist_ok=True)
+            conn = self._get_connection()
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    user_id INTEGER,
+                    username TEXT,
+                    feature TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    reference_id TEXT,
+                    message TEXT,
+                    log_level TEXT NOT NULL DEFAULT 'INFO'
+                )
+                """
             )
-            """
-        )
-        conn.commit()
+            conn.commit()
 
     def _insert_log(self, entry: LogEntry) -> None:
         with self._lock:
