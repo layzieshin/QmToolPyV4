@@ -2,22 +2,14 @@
 ===============================================================================
 DocumentLifecycleView – 3-Zonen-Layout (Search | List+Details | Bottom)
 -------------------------------------------------------------------------------
-Role
-    - Compose GUI: SearchBar (top), DocumentListPanel (left), DocumentDetailPanel (right),
-      BottomBar (bottom).
-    - Wire controllers:
-        * DocumentLifecycleController -> list + details
-        * WorkflowController         -> bottom bar actions
-        * CreationController         -> search bar (Import/Neu aus Vorlage)
-      and forward selection to WorkflowController (set_current_document).
-    - Provide simple info/error surfaces for controllers.
-Design
-    - Pure UI composition (SRP). No business logic.
-    - Robust wiring: supports both set_controller(...) and attach_controller(...).
-    - Dev-borders toggle persisted via SettingsManager.
+- SearchBar (oben)
+- DocumentListPanel (links) + DocumentDetailPanel (rechts)
+- BottomBar (unten)
+
+Fixes:
+- left_wrap/right_wrap mit row/column weights → volle Höhe/Breite.
 ===============================================================================
 """
-
 from __future__ import annotations
 
 import tkinter as tk
@@ -43,21 +35,32 @@ from documentlifecycle.gui.document_list_panel import DocumentListPanel
 from documentlifecycle.gui.detail_panel import DocumentDetailPanel
 from documentlifecycle.gui.bottom_bar import BottomBar
 
-# Controllers
-from documentlifecycle.controllers.document_controller import DocumentLifecycleController
-from documentlifecycle.controllers.workflow_controller import WorkflowController
-from documentlifecycle.controllers.creation_controller import CreationController
+# Controllers (new expected naming)
+from documentlifecycle.controllers.topbar_controller import TopbarController
+from documentlifecycle.controllers.document_list_controller import DocumentListController
+from documentlifecycle.controllers.document_details_controller import DocumentDetailsController
+from documentlifecycle.controllers.bottombar_controller import BottomBarController
 
-# Services (für CreationController)
+# Services
+from documentlifecycle.logic.services.document_service import DocumentService
 from documentlifecycle.logic.services.document_creation_service import DocumentCreationService
+from documentlifecycle.logic.services.ui_state_service import UIStateService
+
+# Repositories (SQLite)
+from documentlifecycle.logic.repository.sqlite.document_repository_sqlite import DocumentRepositorySQLite
+from documentlifecycle.logic.repository.sqlite.role_repository_sqlite import RoleRepositorySQLite
+
+# Current user provider (AppContext bridge preferred; fallback for dev)
+try:
+    from documentlifecycle.logic.adapters.appcontext_user_provider import AppContextUserProvider  # type: ignore
+except Exception:  # pragma: no cover
+    AppContextUserProvider = None  # type: ignore
+
+from documentlifecycle.logic.adapters.current_user_provider import DefaultCurrentUserProvider
 
 
 class DocumentLifecycleView(ttk.Frame):
-    """
-    Main composition frame for the Document Lifecycle feature.
-    """
-
-    _FEATURE_ID = "documentlifecycle"  # for storing UI dev-border preference
+    _FEATURE_ID = "documentlifecycle"
 
     def __init__(self, parent: tk.Widget, *,
                  settings_manager: Optional[SettingsManager] = None,
@@ -65,20 +68,16 @@ class DocumentLifecycleView(ttk.Frame):
                  **_ignore) -> None:
         super().__init__(parent)
 
-        # ------------------------------------------------------------------ #
-        # Settings / layout grid
-        # ------------------------------------------------------------------ #
+        # Layout base
         self._sm: SettingsManager = (settings_manager or sm) or SettingsManager()  # type: ignore
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)  # middle grows
+        self.rowconfigure(1, weight=1)
 
         self._dev_borders_var = tk.BooleanVar(
             value=bool(self._sm.get(self._FEATURE_ID, "ui_dev_borders", False))
         )
 
-        # ------------------------------------------------------------------ #
-        # TOP: header + search bar
-        # ------------------------------------------------------------------ #
+        # TOP
         top = tk.Frame(self, highlightthickness=0, highlightbackground="#999")
         top.grid(row=0, column=0, sticky="ew")
         top.columnconfigure(0, weight=1)
@@ -102,9 +101,7 @@ class DocumentLifecycleView(ttk.Frame):
         self.search_bar = SearchBar(top, on_search=self._on_search_clicked)
         self.search_bar.grid(row=1, column=0, sticky="ew", padx=12, pady=(4, 8))
 
-        # ------------------------------------------------------------------ #
-        # MIDDLE: split left/right
-        # ------------------------------------------------------------------ #
+        # MIDDLE
         mid = tk.Frame(self, highlightthickness=0, highlightbackground="#999")
         mid.grid(row=1, column=0, sticky="nsew")
         mid.columnconfigure(0, weight=1)
@@ -113,8 +110,13 @@ class DocumentLifecycleView(ttk.Frame):
 
         left_wrap = tk.Frame(mid, highlightthickness=0, highlightbackground="#999")
         left_wrap.grid(row=0, column=0, sticky="nsew")
+        left_wrap.columnconfigure(0, weight=1)
+        left_wrap.rowconfigure(0, weight=1)
+
         right_wrap = tk.Frame(mid, highlightthickness=0, highlightbackground="#999")
         right_wrap.grid(row=0, column=1, sticky="nsew")
+        right_wrap.columnconfigure(0, weight=1)
+        right_wrap.rowconfigure(0, weight=1)
 
         self.list_panel = DocumentListPanel(left_wrap, controller=None)
         self.list_panel.grid(row=0, column=0, sticky="nsew", padx=12, pady=(0, 8))
@@ -122,9 +124,7 @@ class DocumentLifecycleView(ttk.Frame):
         self.detail_panel = DocumentDetailPanel(right_wrap, controller=None)
         self.detail_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 12), pady=(0, 8))
 
-        # ------------------------------------------------------------------ #
-        # BOTTOM: bottom bar
-        # ------------------------------------------------------------------ #
+        # BOTTOM
         bottom = tk.Frame(self, highlightthickness=0, highlightbackground="#999")
         bottom.grid(row=2, column=0, sticky="ew")
         bottom.columnconfigure(0, weight=1)
@@ -132,55 +132,60 @@ class DocumentLifecycleView(ttk.Frame):
         self.bottom_bar = BottomBar(bottom, controller=None)
         self.bottom_bar.grid(row=0, column=0, sticky="ew", padx=12, pady=(0, 10))
 
-        # ------------------------------------------------------------------ #
-        # Instantiate + wire controllers
-        # ------------------------------------------------------------------ #
-        self.controller = DocumentLifecycleController(view=self)
-        self.workflow_controller = WorkflowController(facade=self, ui_service=None, user_provider=None)
+        # ------------------------------------------------------------------
+        # Compose repositories + services
+        # ------------------------------------------------------------------
+        self._repo_docs = DocumentRepositorySQLite()
+        self._repo_roles = RoleRepositorySQLite()
+        self._svc_docs = DocumentService(repo=self._repo_docs, roles=self._repo_roles)
+        self._svc_ui_state = UIStateService(docs=self._repo_docs, roles=self._repo_roles)
+        self._svc_creation = DocumentCreationService()
 
-        # 👉 NEU: CreationController + Service
-        self.creation_controller = CreationController(
+        # Current user provider
+        if AppContextUserProvider is not None:  # type: ignore[truthy-bool]
+            self._users = AppContextUserProvider()  # type: ignore[call-arg]
+        else:
+            self._users = DefaultCurrentUserProvider()
+
+        # ------------------------------------------------------------------
+        # Controllers (ONLY 4 controllers in this module)
+        # ------------------------------------------------------------------
+        self.bottom_bar_controller = BottomBarController(facade=self, user_provider=self._users)
+        self.details_controller = DocumentDetailsController(
             view=self,
-            creation_service=DocumentCreationService(),
-            user_provider=None,  # AppContext-Provider nutzt der Controller intern automatisch, wenn vorhanden
+            doc_service=self._svc_docs,
+            ui_state_service=self._svc_ui_state,
+            user_provider=self._users,
+        )
+        self.list_controller = DocumentListController(
+            view=self,
+            doc_service=self._svc_docs,
+            details_controller=self.details_controller,
+            bottom_bar_controller=self.bottom_bar_controller,
+        )
+        self.topbar_controller = TopbarController(
+            view=self,
+            creation_service=self._svc_creation,
+            user_provider=self._users,
         )
 
-        # list + details -> DocumentLifecycleController
-        self._wire_controller(self.list_panel, self.controller)
-        self._wire_controller(self.detail_panel, self.controller)
+        # Wiring
+        self._wire(self.list_panel, self.list_controller)
+        self._wire(self.detail_panel, self.details_controller)  # panel doesn't use it yet, but ok
+        self._wire(self.bottom_bar, self.bottom_bar_controller)
+        self._wire(self.search_bar, self.topbar_controller)
 
-        # bottom bar -> WorkflowController (Buttons erwarten action_* Methoden)
-        self._wire_controller(self.bottom_bar, self.workflow_controller)
+        # Initial load
+        try:
+            self.list_controller.load_document_list()
+        except Exception:
+            pass
 
-        # search bar -> CreationController (fixes: "kein Controller connected")
-        self._wire_controller(self.search_bar, self.creation_controller)
-
-        # let the list/detail controller inform workflow controller about selection
-        if hasattr(self.controller, "set_workflow_controller"):
-            try:
-                self.controller.set_workflow_controller(self.workflow_controller)
-            except Exception:
-                pass
-
-        # initial list load
-        if hasattr(self.controller, "load_document_list"):
-            try:
-                self.controller.load_document_list()
-            except Exception:
-                pass
-
-        # dev borders
         self._apply_dev_borders()
 
-    # ---------------------------------------------------------------------- #
-    # Helper: tolerant wiring (set_controller or attach_controller)
-    # ---------------------------------------------------------------------- #
+    # helpers
     @staticmethod
-    def _wire_controller(component: Any, controller: Any) -> None:
-        """
-        Try set_controller(...) first, then fallback to attach_controller(...).
-        Silent if neither exists.
-        """
+    def _wire(component: Any, controller: Any) -> None:
         fn = getattr(component, "set_controller", None)
         if callable(fn):
             try:
@@ -195,24 +200,30 @@ class DocumentLifecycleView(ttk.Frame):
             except Exception:
                 pass
 
-    # ---------------------------------------------------------------------- #
-    # Controller hooks
-    # ---------------------------------------------------------------------- #
+    # surfaces
     def render_document_list(self, rows: list[dict]) -> None:
-        if hasattr(self.list_panel, "render_rows"):
-            try:
-                self.list_panel.render_rows(rows)
-            except Exception:
-                pass
+        try:
+            self.list_panel.render_rows(rows)
+        except Exception:
+            pass
 
     def render_document_details(self, doc: Optional[dict]) -> None:
-        if hasattr(self.detail_panel, "render_details"):
-            try:
-                self.detail_panel.render_details(doc)
-            except Exception:
-                pass
+        """Render the right-hand detail panel.
 
-    # Optional surfaces for controllers
+        The detail panel API is `set_details(doc_id, details)`.
+        For convenience, we accept either:
+            - None (clears the panel)
+            - a dict containing at least an 'id' key
+        """
+        try:
+            if doc is None:
+                self.detail_panel.set_details(-1, None)
+                return
+            doc_id = int(doc.get("id", -1)) if isinstance(doc, dict) else -1
+            self.detail_panel.set_details(doc_id, doc)
+        except Exception:
+            pass
+
     def show_info(self, title: str, message: str) -> None:
         try:
             messagebox.showinfo(title=title, message=message, parent=self)
@@ -231,25 +242,36 @@ class DocumentLifecycleView(ttk.Frame):
         except Exception:
             pass
 
-    # ---------------------------------------------------------------------- #
-    # Search callback
-    # ---------------------------------------------------------------------- #
+    # search callback
     def _on_search_clicked(self, query: str) -> None:
-        if hasattr(self.controller, "action_search"):
-            try:
-                self.controller.action_search(query)
-            except Exception:
-                pass
+        try:
+            self.list_controller.action_search(query)
+        except Exception:
+            pass
 
-    # ---------------------------------------------------------------------- #
-    # Dev borders
-    # ---------------------------------------------------------------------- #
+    # ------------------------------------------------------------------
+    # Facade API expected by BottomBarController
+    # ------------------------------------------------------------------
+    @property
+    def view(self) -> Any:
+        """Backwards compatible 'facade.view' surface expected by services."""
+        return self
+
+    def load_document_list(self) -> None:
+        """Facade method used by action controllers to refresh the list."""
+        self.list_controller.load_document_list()
+
+    def on_select_document(self, doc_id: int) -> None:
+        """Facade method used by action controllers to re-open details."""
+        self.list_controller.on_select_document(doc_id)
+
+    # dev-borders
     def _apply_dev_borders(self) -> None:
         enabled = bool(self._dev_borders_var.get())
-        for wrap in self.winfo_children():
+        for child in self.winfo_children():
             try:
-                if isinstance(wrap, tk.Frame):
-                    wrap.configure(highlightthickness=1 if enabled else 0)
+                if isinstance(child, tk.Frame):
+                    child.configure(highlightthickness=1 if enabled else 0)
             except Exception:
                 pass
         try:
