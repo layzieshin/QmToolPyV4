@@ -1,72 +1,79 @@
 """
 ===============================================================================
-PdfPreviewService – open temporary PDF previews and cleanup
+PdfPreviewService – open previews without blocking the Tk mainloop
 -------------------------------------------------------------------------------
 Behavior
-    - Create a temp PDF (using the supplied DocxToPdfService) from a DOCX.
-    - Open it with the system viewer.
-    - On Windows, try to block until viewer closes (best effort).
-    - Otherwise schedule deletion after a short delay (best effort).
+- DOCX preview: convert → open viewer → do NOT wait.
+- Temp cleanup: best-effort in Hintergrund-Thread + atexit Fallback.
+- Öffnet systemtypisch:
+    * Windows: os.startfile(path)
+    * macOS:  Popen(['open', path])
+    * Linux:  Popen(['xdg-open', path])
+
+No UI code here; exceptions wandern zum Caller/Controller.
 ===============================================================================
 """
 from __future__ import annotations
+
+import atexit
 import os
 import sys
-import subprocess
-import threading
 import time
+import threading
+import tempfile
+import subprocess
 from pathlib import Path
 from typing import Optional
 
-from .docx_to_pdf_service import DocxToPdfService
+from documentlifecycle.logic.services.docx_to_pdf_service import DocxToPdfService
 
 
 class PdfPreviewService:
-    """Manages temporary previews for DOCX files."""
+    def __init__(self, docx_to_pdf: Optional[DocxToPdfService] = None) -> None:
+        self._docx2pdf = docx_to_pdf or DocxToPdfService()
+        self._tmp_dir = Path(tempfile.gettempdir()) / "dlc_previews"
+        self._tmp_dir.mkdir(parents=True, exist_ok=True)
+        atexit.register(self._cleanup_old_previews)
 
-    def __init__(self, docx_to_pdf: DocxToPdfService) -> None:
-        self._docx2pdf = docx_to_pdf
+    # ---------- public -------------------------------------------------------
+    def open_docx_preview_and_cleanup(self, docx_path: Path) -> None:
+        """Convert DOCX to temp PDF and open it without blocking the GUI."""
+        def worker() -> None:
+            pdf_path = self._docx2pdf.convert_to_temp_pdf(docx_path, target_dir=self._tmp_dir)
+            self._open_non_blocking(pdf_path)
+            # optional: verzögertes Aufräumen, wenn Viewer geschlossen wurde
+            self._delayed_best_effort_delete(pdf_path, delay_sec=60 * 30)  # 30 min
 
-    def open_docx_preview_and_cleanup(self, docx_path: Path, *, delete_after_seconds: int = 600) -> None:
-        """Convert DOCX to temp PDF, open it, and cleanup later."""
-        pdf = self._docx2pdf.convert_to_temp_pdf(docx_path)
+        threading.Thread(target=worker, daemon=True).start()
 
+    # ---------- helpers ------------------------------------------------------
+    def _open_non_blocking(self, path: Path) -> None:
         if sys.platform.startswith("win"):
-            # Try to wait until the viewer closes using cmd start /WAIT (best effort)
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+
+    def _delayed_best_effort_delete(self, path: Path, *, delay_sec: int) -> None:
+        """Delete the file later (no blocking). Ignores any failure."""
+        def _delete_job() -> None:
             try:
-                subprocess.run(["cmd", "/c", "start", "", "/WAIT", str(pdf)], check=False)
-                self._safe_delete(pdf)
-                return
+                time.sleep(delay_sec)
+                if path.exists():
+                    path.unlink(missing_ok=True)  # type: ignore[call-arg]
             except Exception:
                 pass
+        threading.Thread(target=_delete_job, daemon=True).start()
 
-        # Non-Windows or failed wait: open and schedule deletion
+    def _cleanup_old_previews(self) -> None:
+        """Best-effort cleanup on interpreter exit (ignore errors)."""
         try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", str(pdf)])
-            elif sys.platform.startswith("win"):
-                os.startfile(str(pdf))  # type: ignore[arg-type]
-            else:
-                subprocess.Popen(["xdg-open", str(pdf)])
-        except Exception:
-            pass
-
-        # delayed cleanup
-        t = threading.Thread(target=self._delayed_delete, args=(pdf, delete_after_seconds), daemon=True)
-        t.start()
-
-    # ---- helpers ---- #
-    def _delayed_delete(self, path: Path, delay: int) -> None:
-        time.sleep(max(5, delay))
-        self._safe_delete(path)
-
-    def _safe_delete(self, path: Path) -> None:
-        try:
-            if path.exists():
-                path.unlink(missing_ok=True)
-                # remove temp dir if empty
-                parent = path.parent
-                if parent.is_dir() and not any(parent.iterdir()):
-                    parent.rmdir()
+            for p in self._tmp_dir.glob("*.pdf"):
+                try:
+                    if p.stat().st_mtime < (time.time() - 24 * 3600):  # älter als 24h
+                        p.unlink(missing_ok=True)  # type: ignore[call-arg]
+                except Exception:
+                    continue
         except Exception:
             pass

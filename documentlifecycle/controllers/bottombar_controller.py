@@ -1,25 +1,35 @@
-"""
-===============================================================================
-WorkflowController – thin MVC controller delegating to Services (SRP)
--------------------------------------------------------------------------------
-This controller now only:
-  - receives UI events from BottomBar,
-  - delegates to services,
-  - shows user feedback (via facade),
-  - refreshes list/details,
-  - opens the roles dialog after start/cancel (UI responsibility).
+"""documentlifecycle/controllers/bottombar_controller.py
 
-Public method names match your BottomBar wiring:
-  action_open_read / action_read
-  action_print
-  action_edit
-  action_workflow_start
-  action_workflow_cancel / action_workflow_abort
-  action_finish_and_sign
-  action_archive
-  action_edit_roles
+===============================================================================
+BottomBarController – anemic controller for BottomBar actions
+-------------------------------------------------------------------------------
+Goal (explicit project rule)
+    - Controllers are *anemic*: they only forward UI events to services.
+    - This controller holds ONLY the selected document id and forwards
+      BottomBar button clicks.
+
+Wired by:
+    documentlifecycle/gui/bottom_bar.py
+
+BottomBar expects the following methods on its controller:
+    action_open_read / action_read
+    action_print
+    action_edit
+    action_workflow_start
+    action_workflow_cancel / action_workflow_abort
+    action_finish_and_sign
+    action_archive
+    action_edit_roles
+
+Notes
+    - Refreshing list/details after actions is UI orchestration.
+      We keep that in the *service layer* for new flows where possible.
+      For existing action services, we keep a tiny refresh helper here because
+      the services are already independent and it avoids touching many files.
+      (No business rules live here.)
 ===============================================================================
 """
+
 from __future__ import annotations
 
 from typing import Optional, Protocol, Any
@@ -27,7 +37,8 @@ from typing import Optional, Protocol, Any
 try:
     from core.common.app_context import T  # type: ignore
 except Exception:  # pragma: no cover
-    def T(_key: str) -> str: return ""
+    def T(_key: str) -> str:  # type: ignore
+        return ""
 
 from documentlifecycle.logic.services.actions.reading_service import ReadingService
 from documentlifecycle.logic.services.actions.printing_service import PrintingService
@@ -36,22 +47,25 @@ from documentlifecycle.logic.services.actions.workflow_service import WorkflowSe
 
 
 class _Facade(Protocol):
+    """Minimum surface the controller expects from the surrounding view."""
+
     def load_document_list(self) -> None: ...
     def on_select_document(self, doc_id: int) -> None: ...
     def show_info(self, title: str, message: str) -> None: ...
     def show_error(self, title: str, message: str) -> None: ...
+
     @property
     def view(self) -> Any: ...
 
 
-class WorkflowController:
-    """Delegating controller for BottomBar actions."""
+class BottomBarController:
+    """Delegating controller for BottomBar actions (anemic)."""
 
-    def __init__(self, *, facade: _Facade, ui_service: Any | None = None, user_provider: Any | None = None) -> None:
+    def __init__(self, *, facade: _Facade, user_provider: Any | None = None) -> None:
         self._facade = facade
         self._users = user_provider
 
-        # Services (grouped under logic/services/actions/)
+        # Action services (grouped under logic/services/actions/)
         self._svc_read = ReadingService()
         self._svc_print = PrintingService()
         self._svc_edit = EditingService()
@@ -59,11 +73,16 @@ class WorkflowController:
 
         self._doc_id: Optional[int] = None
 
-    # ---------- selection ----------
+    # ------------------------------------------------------------------
+    # Selection is injected by the list controller
+    # ------------------------------------------------------------------
     def set_current_document(self, doc_id: Optional[int]) -> None:
+        """Set currently selected document id for subsequent button actions."""
         self._doc_id = doc_id
 
-    # ---------- actions ----------
+    # ------------------------------------------------------------------
+    # BottomBar actions
+    # ------------------------------------------------------------------
     def action_open_read(self) -> None:
         self.action_read()
 
@@ -80,8 +99,10 @@ class WorkflowController:
             return
         try:
             self._svc_print.print_controlled_copy(document_id=self._doc_id, user_provider=self._users)
-            self._facade.show_info(T("documentlifecycle.document.print") or "Print",
-                                   T("documentlifecycle.print.done") or "Print job triggered.")
+            self._facade.show_info(
+                T("documentlifecycle.document.print") or "Print",
+                T("documentlifecycle.print.done") or "Print job triggered.",
+            )
         except Exception as exc:
             self._facade.show_error(T("documentlifecycle.document.print") or "Print", str(exc))
 
@@ -140,6 +161,7 @@ class WorkflowController:
         """Open roles dialog if present; otherwise show info."""
         try:
             from documentlifecycle.gui.dialogs.roles_dialog import RolesDialog  # type: ignore
+
             dlg = RolesDialog(self._facade.view, document_id=self._doc_id)
             dlg.show_modal()
         except Exception:
@@ -148,7 +170,9 @@ class WorkflowController:
                 T("documentlifecycle.roles.dialog_stub") or "Roles dialog not integrated yet.",
             )
 
-    # ---------- refresh ----------
+    # ------------------------------------------------------------------
+    # Refresh helper (UI orchestration, not business logic)
+    # ------------------------------------------------------------------
     def _refresh(self) -> None:
         try:
             self._facade.load_document_list()
