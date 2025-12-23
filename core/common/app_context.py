@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.config.config_loader import LABELS_TSV_PATH, MODULES_JSON_PATH
-from core.i18n.translation_manager import translations
+from core.i18n.translation_manager import translations, _invalidate_language_cache, _get_cached_language
 from core.logging.logic.log_controller import LogController
 from core.settings.logic.settings_manager import settings_manager  # instance
 from usermanagement.logic.user_manager import UserManager
@@ -84,7 +84,12 @@ class AppContext:
         """
         Determine active language:
         1) user-specific  2) global  3) fallback 'de'
+        
+        Also invalidates the language cache to ensure fresh lookups.
         """
+        # Invalidate the language cache so next T() call will refresh
+        _invalidate_language_cache()
+        
         lang = cls.settings_manager.get("app", "language", user_specific=True, fallback=None)
         if lang is None:
             lang = cls.settings_manager.get("app", "language", fallback="de")
@@ -110,7 +115,11 @@ class AppContext:
 #  Translation shortcut                                              #
 # ------------------------------------------------------------------ #
 def T(label: str) -> str:
-    lang = AppContext.settings_manager.get("app", "language", user_specific=True, fallback="de")
+    """
+    Global translation function with cached language lookup.
+    Uses cached language to avoid repeated database lookups per translation.
+    """
+    lang = _get_cached_language()
     return translations.t(label, lang)  # logs missing keys once. :contentReference[oaicite:2]{index=2}
 
 
