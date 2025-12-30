@@ -7,7 +7,6 @@ SQLite-Persistenz + Meta-Import + Auto-Scan-Hooks.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -15,12 +14,12 @@ from core.config.config_loader import QM_DB_PATH
 from core.logging.logic.logger import logger
 from core.common.module_descriptor import ModuleDescriptor
 from core.common.module_auto_discovery import discover_meta_files, default_roots
+from core.common.db_interface import SQLiteRepository
 
 
-class ModuleRepository:
+class ModuleRepository(SQLiteRepository):
     def __init__(self) -> None:
-        self.conn = sqlite3.connect(QM_DB_PATH.as_posix(), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
+        super().__init__(QM_DB_PATH, check_same_thread=False)
         self._ensure_schema()
 
     # ---------------- Schema ---------------- #

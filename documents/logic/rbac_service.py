@@ -7,13 +7,15 @@ RBACService – centralizes membership maintenance (Settings) and role requests 
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Optional, Sequence
+from pathlib import Path
+import sqlite3
 
 from core.common.app_context import AppContext
 from core.settings.logic.settings_manager import SettingsManager
+from core.common.db_interface import DatabaseAccess, create_sqlite_connection
 
 # Try to import your repository as in your codebase; fall back to local file if needed.
 try:
@@ -35,18 +37,18 @@ class RoleRequest:
     processed_at: datetime | None = None
 
 
-class RBACService:
+class RBACService(DatabaseAccess):
     FEATURE_ID = "documents"
 
     def __init__(self, db_path: str, sm: SettingsManager) -> None:
-        self._db_path = db_path
+        self._db_path = Path(db_path)
         self._sm = sm
         self._users = UserRepository()
         self._ensure_schema()
 
     # ---- DB schema -----------------------------------------------------------
     def _ensure_schema(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
+        with self.connect() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS rbac_requests (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +100,7 @@ class RBACService:
 
         roles_str = ",".join(sorted({r.upper() for r in roles if r}))
         now = datetime.utcnow().isoformat(timespec="seconds")
-        with sqlite3.connect(self._db_path) as conn:
+        with self.connect() as conn:
             cur = conn.execute("""
                 INSERT INTO rbac_requests(requested_by,username,roles,comment,status,requested_at)
                 VALUES (?,?,?,?, 'PENDING', ?)
@@ -114,7 +116,7 @@ class RBACService:
             args.append(status.upper())
         sql += " ORDER BY requested_at DESC"
         out: list[RoleRequest] = []
-        with sqlite3.connect(self._db_path) as conn:
+        with self.connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, tuple(args)).fetchall()
             for r in rows:
@@ -146,7 +148,7 @@ class RBACService:
 
     # ---- Internals -----------------------------------------------------------
     def _get(self, req_id: int) -> RoleRequest:
-        with sqlite3.connect(self._db_path) as conn:
+        with self.connect() as conn:
             conn.row_factory = sqlite3.Row
             r = conn.execute("SELECT * FROM rbac_requests WHERE id=?", (req_id,)).fetchone()
             if not r:
@@ -167,11 +169,18 @@ class RBACService:
         user = getattr(AppContext, "current_user", None)
         uid = str(getattr(user, "id", "")) if user else ""
         now = datetime.utcnow().isoformat(timespec="seconds")
-        with sqlite3.connect(self._db_path) as conn:
+        with self.connect() as conn:
             conn.execute("""
                 UPDATE rbac_requests SET status=?, processed_by=?, processed_at=? WHERE id=?
             """, (new_status.upper(), uid or None, now, req_id))
             conn.commit()
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path
+
+    def connect(self):
+        return create_sqlite_connection(self._db_path)
 
 
 def _role_to_key(role: str) -> str:

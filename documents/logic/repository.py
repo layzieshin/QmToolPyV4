@@ -8,8 +8,10 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from pathlib import Path
 
 from documents.models.document_models import DocumentId, DocumentRecord, DocumentStatus  # type: ignore
+from core.common.db_interface import SQLiteRepository
 
 # --- Optional DOCX metadata/comments bridge -----------------------------------
 try:
@@ -68,7 +70,7 @@ def _extract_code_from_docid(doc_id: str) -> Optional[str]:
     return doc_id if _looks_like_external_code(doc_id) else None
 
 # ------------------------------------------------------------------------------
-class DocumentsRepository:
+class DocumentsRepository(SQLiteRepository):
     """
     SQLite + Filesystem Repository.
 
@@ -90,8 +92,8 @@ class DocumentsRepository:
         os.makedirs(os.path.dirname(self._cfg.db_path), exist_ok=True)
         os.makedirs(self._root_repo(), exist_ok=True)
 
-        self._conn = sqlite3.connect(self._cfg.db_path)
-        self._conn.row_factory = sqlite3.Row
+        super().__init__(Path(self._cfg.db_path))
+        self._conn = self.connect()
         self._ensure_schema()
 
     # ------------------------------ paths

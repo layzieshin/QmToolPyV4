@@ -14,16 +14,16 @@ Note: Primary application settings (DB paths, app name, …) live in
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from pathlib import Path
 from typing import Any
 
 # Public getters from ConfigLoader
 from core.config.config_loader import config_loader
+from core.common.db_interface import SQLiteRepository
 
 
-class ConfigRepository:
+class ConfigRepository(SQLiteRepository):
     """
     Thread-safe singleton for key-value configs stored in SQLite.
 
@@ -47,9 +47,7 @@ class ConfigRepository:
         if db_path is None:
             db_path = config_loader.get_qm_db_path()
 
-        self.db_path = db_path
-        self._conn = sqlite3.connect(str(self.db_path))
-        self._conn.row_factory = sqlite3.Row
+        super().__init__(db_path)
 
         self._ensure_table()
         self._defaults: dict[str, dict[str, Any]] = {
@@ -94,7 +92,7 @@ class ConfigRepository:
     #  DB setup
     # ------------------------------------------------------------------ #
     def _ensure_table(self) -> None:
-        cur = self._conn.cursor()
+        cur = self.conn.cursor()
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS config (
@@ -105,7 +103,7 @@ class ConfigRepository:
             )
             """
         )
-        self._conn.commit()
+        self.conn.commit()
 
     def _inject_defaults(self) -> None:
         """Writes default values if they are missing."""
@@ -127,7 +125,7 @@ class ConfigRepository:
         >>> repo.get("General", "app_name", "<unnamed>")
         '<unnamed>'
         """
-        cur = self._conn.cursor()
+        cur = self.conn.cursor()
         cur.execute(
             "SELECT value FROM config WHERE section=? AND key=?", (section, key)
         )
@@ -180,7 +178,7 @@ class ConfigRepository:
         >>> repo = ConfigRepository.instance()
         >>> repo.set("General", "app_name", "QM-Tool Deluxe")
         """
-        cur = self._conn.cursor()
+        cur = self.conn.cursor()
         cur.execute(
             """
             INSERT INTO config (section, key, value)
@@ -189,4 +187,4 @@ class ConfigRepository:
             """,
             (section, key, str(value)),
         )
-        self._conn.commit()
+        self.conn.commit()

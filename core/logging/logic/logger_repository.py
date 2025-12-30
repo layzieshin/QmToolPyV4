@@ -1,11 +1,11 @@
-import sqlite3
-from pathlib import Path
-
 from core.logging.models.log_entry import LogEntry
 from core.config.config_loader import config_loader
+from core.common.db_interface import SQLiteRepository
+
 logs_db_path = config_loader.get_logging_db_path()
 
-class LoggerRepository:
+
+class LoggerRepository(SQLiteRepository):
     def __init__(self):
         # Ableiten aus der Haupt-DB (aber eigene Datei)
         #self.db_path = db_path.parent / "logs.db"
@@ -15,20 +15,11 @@ class LoggerRepository:
        # if config_loader.get_bool("General", "debug_db_paths", False):
         print(f"[DEBUG] Logger DB ➡ {logs_db_path}")
 
-        self._conn = None
+        super().__init__(logs_db_path)
         self._ensure_db()
 
-
-
-
-    def _connect(self):
-        if self._conn is None:
-            self._conn = sqlite3.connect(str(logs_db_path))
-            self._conn.row_factory = sqlite3.Row
-
     def _ensure_db(self):
-        self._connect()
-        cursor = self._conn.cursor()
+        cursor = self.conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,11 +33,10 @@ class LoggerRepository:
                 log_level TEXT NOT NULL DEFAULT 'INFO'
             )
         """)
-        self._conn.commit()
+        self.conn.commit()
 
     def insert_log(self, entry: LogEntry):
-        self._connect()
-        cursor = self._conn.cursor()
+        cursor = self.conn.cursor()
         cursor.execute(
             """INSERT INTO logs
                (timestamp, feature, event, user_id, username, reference_id, message, log_level)
@@ -62,11 +52,10 @@ class LoggerRepository:
                 entry.log_level,
             )
         )
-        self._conn.commit()
+        self.conn.commit()
 
     def fetch_logs(self, limit=100):
-        self._connect()
-        cursor = self._conn.cursor()
+        cursor = self.conn.cursor()
         cursor.execute(
             "SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?", (limit,)
         )
@@ -75,8 +64,7 @@ class LoggerRepository:
 
     def query_logs(self, user_id=None, username=None, feature=None, level=None,
                    start_time=None, end_time=None, limit=1000):
-        self._connect()
-        cursor = self._conn.cursor()
+        cursor = self.conn.cursor()
         query = "SELECT * FROM logs WHERE 1=1"
         params = []
 
@@ -107,12 +95,6 @@ class LoggerRepository:
         return [LogEntry.from_dict(dict(row)) for row in rows]
 
     def clear_logs(self):
-        self._connect()
-        cursor = self._conn.cursor()
+        cursor = self.conn.cursor()
         cursor.execute("DELETE FROM logs")
-        self._conn.commit()
-
-    def close(self):
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        self.conn.commit()

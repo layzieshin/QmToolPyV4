@@ -4,6 +4,7 @@ from threading import RLock
 from typing import Any, Final
 from core.config.config_loader import QM_DB_PATH
 from core.logging.logic.logger import logger
+from core.common.db_interface import SQLiteRepository
 
 def _to_json(v: Any) -> str:            # serialisieren
     try: return json.dumps(v)
@@ -14,7 +15,7 @@ def _from_json(txt: str) -> Any:        # deserialisieren
     except Exception: return txt        # noqa: BLE001
 
 # ------------------------------------------------------------------ #
-class SettingsRepository:
+class SettingsRepository(SQLiteRepository):
     _inst: "SettingsRepository|None" = None
     _lock: Final[RLock] = RLock()
 
@@ -27,8 +28,7 @@ class SettingsRepository:
     def __init__(self) -> None:
         if getattr(self, "_ready", False): return
         self._ready = True
-        self.conn = sqlite3.connect(QM_DB_PATH.as_posix(), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
+        super().__init__(QM_DB_PATH, check_same_thread=False)
         self._ensure_schema()
 
     # ------------------------- öffentliche API ----------------------- #
