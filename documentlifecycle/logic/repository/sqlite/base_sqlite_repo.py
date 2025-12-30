@@ -17,7 +17,6 @@ Notes:
 ===============================================================================
 """
 from __future__ import annotations
-import sqlite3
 from pathlib import Path
 from typing import Optional
 
@@ -27,8 +26,10 @@ try:
 except Exception:  # pragma: no cover
     QM_DB_PATH = Path("qmtool.db")
 
+from core.common.db_interface import SQLiteRepository
 
-class BaseSQLiteRepo:
+
+class BaseSQLiteRepo(SQLiteRepository):
     """
     Thin base to share connection handling across SQLite repositories.
 
@@ -44,22 +45,5 @@ class BaseSQLiteRepo:
     """
 
     def __init__(self, db_path: Optional[Path] = None) -> None:
-        self._db_path = Path(db_path) if db_path else Path(QM_DB_PATH)
-        self._conn: Optional[sqlite3.Connection] = None
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        """Return a shared sqlite3.Connection; create it on first use."""
-        if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA foreign_keys = ON")
-        return self._conn
-
-    def close(self) -> None:
-        """Close the current connection if present and clear the handle."""
-        if self._conn is not None:
-            try:
-                self._conn.close()
-            finally:
-                self._conn = None
+        resolved = Path(db_path) if db_path else Path(QM_DB_PATH)
+        super().__init__(resolved, foreign_keys=True)

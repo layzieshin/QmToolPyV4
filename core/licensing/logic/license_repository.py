@@ -8,16 +8,16 @@ Table 'licenses':
 """
 
 from __future__ import annotations
-import sqlite3
 from typing import Optional
 from core.config.config_loader import QM_DB_PATH
+from core.common.db_interface import SQLiteRepository
 
 
-class LicenseRepository:
+class LicenseRepository(SQLiteRepository):
     """Minimal license storage; extend as needed."""
 
     def __init__(self) -> None:
-        self.conn = sqlite3.connect(QM_DB_PATH.as_posix(), check_same_thread=False)
+        super().__init__(QM_DB_PATH, check_same_thread=False)
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:

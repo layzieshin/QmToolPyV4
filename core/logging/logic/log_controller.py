@@ -7,7 +7,6 @@ Erweiterte Version mit Null-sicherer Sortierung.
 from __future__ import annotations
 
 import json
-import sqlite3
 import tempfile
 from datetime import datetime, date, timezone
 from pathlib import Path
@@ -142,7 +141,7 @@ class LogController:
         if not real_ids:
             return
         q = ",".join("?" * len(real_ids))
-        with sqlite3.connect(str(logger.db_path)) as conn:
+        with logger.connect() as conn:
             conn.execute(f"DELETE FROM logs WHERE id IN ({q})", tuple(real_ids))
             conn.commit()
     # ------------------------------------------------------------------ #

@@ -9,13 +9,13 @@ Auto-Fill des Benutzernamens, falls nicht explizit angegeben.
 from __future__ import annotations
 
 import os
-import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from core.config.config_loader import config_loader
+from core.common.db_interface import DatabaseAccess, create_sqlite_connection
 from core.logging.models.log_entry import LogEntry
 
 # --------------------------------------------------------------------------- #
@@ -27,7 +27,7 @@ LOG_DB_PATH: Path = config_loader.get_logging_db_path()
 # --------------------------------------------------------------------------- #
 #  Singleton-Klasse                                                           #
 # --------------------------------------------------------------------------- #
-class Logger:
+class Logger(DatabaseAccess):
     """Thread-sicherer Singleton-Logger mit Auto-Username."""
 
     _instance: "Logger | None" = None
@@ -47,9 +47,16 @@ class Logger:
         self._initialized = True
 
         self._lock = threading.Lock()
-        self.db_path: Path = LOG_DB_PATH
+        self._db_path: Path = LOG_DB_PATH
         self.entries: list[LogEntry] = []
         self._ensure_db()
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path
+
+    def connect(self):
+        return create_sqlite_connection(self._db_path)
 
     # ------------------------------------------------------------------ #
     #  Öffentliche API: log                                              #
@@ -101,7 +108,7 @@ class Logger:
     #  Fetch / Query / Clear                                             #
     # ------------------------------------------------------------------ #
     def fetch_logs(self, limit: int = 100) -> List[LogEntry]:
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self.connect() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?", (limit,)
@@ -125,7 +132,7 @@ class Logger:
         end_time: Optional[str] = None,
         limit: int = 1_000,
     ) -> List[LogEntry]:
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self.connect() as conn:
             c = conn.cursor()
 
             query = "SELECT * FROM logs WHERE 1=1"
@@ -168,7 +175,7 @@ class Logger:
             ]
 
     def clear_logs(self) -> None:
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self.connect() as conn:
             conn.cursor().execute("DELETE FROM logs")
             conn.commit()
 
@@ -177,7 +184,7 @@ class Logger:
     # ------------------------------------------------------------------ #
     def _ensure_db(self) -> None:
         os.makedirs(self.db_path.parent, exist_ok=True)
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self.connect() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS logs (
@@ -196,7 +203,7 @@ class Logger:
             conn.commit()
 
     def _insert_log(self, entry: LogEntry) -> None:
-        with sqlite3.connect(str(self.db_path)) as conn:
+        with self.connect() as conn:
             conn.execute(
                 """
                 INSERT INTO logs

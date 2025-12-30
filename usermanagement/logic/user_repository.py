@@ -18,16 +18,17 @@ import bcrypt
 from core.models.user import User, UserRole
 from core.config.config_loader import config_loader
 from core.logging.logic.logger import logger      #  ← NEU
+from core.common.db_interface import DatabaseAccess, create_sqlite_connection
 
 
-class UserRepository:
+class UserRepository(DatabaseAccess):
     """Complete CRUD layer for `User` entities."""
 
     # ------------------------------------------------------------------ #
     # Construction                                                       #
     # ------------------------------------------------------------------ #
     def __init__(self) -> None:
-        self.db_path = config_loader.get_qm_db_path()
+        self._db_path = config_loader.get_qm_db_path()
         self._ensure_table()
 
     # ------------------------------------------------------------------ #
@@ -167,9 +168,14 @@ class UserRepository:
     # Internals                                                          #
     # ------------------------------------------------------------------ #
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row  # <— NEW: named access everywhere
-        return conn
+        return self.connect()
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path
+
+    def connect(self) -> sqlite3.Connection:
+        return create_sqlite_connection(self._db_path)
 
     def _ensure_table(self) -> None:
         with self._connect() as conn:

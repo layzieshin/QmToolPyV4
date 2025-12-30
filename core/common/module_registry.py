@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from core.common.module_descriptor import ModuleDescriptor
-from core.common.module_catalog import get_catalog
+from core.common.module_catalog import get_catalog, invalidate_catalog
 from core.licensing.logic.license_manager import license_manager
 from core.logging.logic.logger import logger
 from core.models.user import UserRole
@@ -68,4 +68,5 @@ def invalidate_registry_cache() -> None:
     global _LOADED, _CACHE
     _LOADED = False
     _CACHE.clear()
+    invalidate_catalog()
     logger.log("ModuleRegistry", "CacheInvalidated")
