@@ -2,11 +2,17 @@
 core/common/module_auto_discovery.py
 ====================================
 
-Auto-Discovery für Module via `meta.json`.
+Module auto-discovery via `meta.json`.
 
-• Durchsucht definierte Wurzel-Verzeichnisse rekursiv nach `meta.json`.
-• Ignoriert typische Build-/Tooling-Ordner.
-• Gibt eine deterministisch sortierte Liste gefundener Dateien zurück.
+IMPORTANT ARCHITECTURE RULE:
+- ConfigLoader is the SINGLE source of truth for project root and config paths.
+- This module must not implement its own root strategy (no Path(__file__).parents hacks,
+  no marker files, no cwd assumptions).
+
+Behavior:
+- Recursively searches given roots for `meta.json`.
+- Ignores typical tooling/build directories.
+- Returns a deterministically sorted list of found meta.json files.
 """
 
 from __future__ import annotations
@@ -14,44 +20,72 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, List
 
+from core.config.config_loader import PROJECT_ROOT_PATH_T
 from core.logging.logic.logger import logger
-
-HERE = Path(__file__).resolve().parent           # .../core/common
-PROJECT_ROOT = HERE.parents[2]                   # .../<root>
 
 _IGNORE_DIRS = {
     ".git", ".idea", ".vscode", "__pycache__", "node_modules",
     "build", "dist", ".venv", "venv", ".mypy_cache", ".pytest_cache",
 }
 
+
 def default_roots() -> List[Path]:
     """
-    Liefert Default-Root-Verzeichnisse für den Scan.
-    Erweitere hier ggf. um weitere Modul-Wurzeln (z.B. aus ConfigLoader).
+    Default root directories for module scanning.
+
+    Single source of truth:
+    - The project root is provided by ConfigLoader.
     """
-    return [PROJECT_ROOT]
+    return [PROJECT_ROOT_PATH_T]
+
 
 def _in_ignored_dir(p: Path) -> bool:
+    """
+    Returns True if path is located inside a directory that we want to ignore.
+    """
     for parent in p.parents:
         if parent.name in _IGNORE_DIRS:
             return True
     return False
 
+
 def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
     """
-    Rekursiver Scan nach `meta.json` unterhalb der angegebenen Roots.
-    Rückgabe sortiert (deterministisch).
+    Recursively scan for `meta.json` under the given roots.
+
+    Returns:
+        Deterministically sorted list of resolved meta.json Paths.
     """
-    roots = list(roots) if roots else default_roots()
+    scan_roots = list(roots) if roots else default_roots()
     found: set[Path] = set()
 
-    for root in roots:
-        if not root.exists():
+    # Single source of truth root reference (for sanity checks)
+    project_root = PROJECT_ROOT_PATH_T.resolve()
+
+    for root in scan_roots:
+        if not root:
             continue
+
+        root = Path(root).resolve()
+
+        if not root.exists():
+            logger.log("ModuleAutoDiscovery", "RootMissing", message=str(root))
+            continue
+
         for meta in root.rglob("meta.json"):
-            if _in_ignored_dir(meta):
-                continue
-            found.add(meta.resolve())
+            try:
+                if _in_ignored_dir(meta):
+                    continue
+
+                # Ensure the discovered file is within the project root
+                # (protects against weird symlink/junction edge cases)
+                meta_resolved = meta.resolve()
+                if not meta_resolved.is_relative_to(project_root):
+                    continue
+
+                found.add(meta_resolved)
+            except Exception as exc:  # noqa: BLE001
+                logger.log("ModuleAutoDiscovery", "ScanError", message=f"{meta}: {exc}")
 
     result = sorted(found)
     logger.log("ModuleAutoDiscovery", "Scan", message=f"{len(result)} meta.json found")

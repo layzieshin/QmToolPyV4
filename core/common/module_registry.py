@@ -29,18 +29,27 @@ def load_registry(role: Optional[UserRole | str] = None) -> Dict[str, ModuleDesc
     """
     Build (once) and return the module registry, optionally filtered by role.
 
-    Behavior:
-    - Source: static module catalog (no DB).
-    - Lizenzfilter bleibt erhalten; Essentials (z. B. 'settings') werden nie geblockt.
+    Änderungen gegenüber ursprünglicher Implementierung:
+    - Module mit enabled == 0 werden beim Aufbau des Caches ignoriert.
+    - Wenn role is None (VOR dem Login), werden nur noch die
+      als essentiell definierten Module (_ESSENTIAL_MODULE_IDS) zurückgegeben.
+      Damit werden vor dem Login nicht mehr alle entdeckten Module
+      in der Navigation angezeigt (verringert Startzeit und Verwirrung).
     """
     global _LOADED, _CACHE
 
     if not _LOADED:
         all_items = get_catalog().values()
 
-        # Lizenz-Filter: nur lizenzierte Module, Essentials immer erlauben
+        # Lizenz-Filter + enabled-Filter: nur lizenzierte UND aktivierte Module,
+        # Essentials werden immer beibehalten.
         filtered: Dict[str, ModuleDescriptor] = {}
         for d in all_items:
+            # Ignoriere explizit deaktivierte Module
+            if not getattr(d, "enabled", 1):
+                logger.log("ModuleRegistry", "ModuleDisabled", message=d.id)
+                continue
+
             if d.id in _ESSENTIAL_MODULE_IDS:
                 filtered[d.id] = d
                 continue
@@ -57,11 +66,11 @@ def load_registry(role: Optional[UserRole | str] = None) -> Dict[str, ModuleDesc
         _LOADED = True
         logger.log("ModuleRegistry", "CacheBuilt", message=f"{len(_CACHE)} entries (static)")
 
+    # Wenn role None (vor Login), nur Essentials zurückgeben.
     if role is None:
-        return dict(_CACHE)
+        return {mid: d for mid, d in _CACHE.items() if mid in _ESSENTIAL_MODULE_IDS}
 
     return {mid: d for mid, d in _CACHE.items() if d.allowed_in_menu(role)}
-
 
 def invalidate_registry_cache() -> None:
     """Drop the in-memory cache so the next call rebuilds it."""

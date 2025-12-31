@@ -84,8 +84,23 @@ def _load_modules_json() -> Dict[str, ModuleDescriptor]:
 
 
 def _augment_with_auto_discovery(items: Dict[str, ModuleDescriptor]) -> None:
-    """Optionally augment catalog with meta.json-discovered modules (no overwrite)."""
+    """
+    Optionally augment catalog with meta.json-discovered modules (no overwrite).
+
+    Änderung:
+    - Führe Auto-Discovery nur aus, wenn 'items' leer ist (d.h. keine
+      core/config/modules.json Einträge vorhanden). Das verhindert, dass
+      ein vollständiger Repo-Scan unbeabsichtigt viele Module in die
+      Navigation bringt, wenn bereits eine kuratierte modules.json existiert.
+    """
     try:
+        if items:
+            # Wenn modules.json gepflegt ist, behalten wir dessen Inhalt und
+            # überspringen die Auto-Discovery, damit nicht "zufällig"
+            # viele meta.json aus dem Projekt auftauchen.
+            logger.log("ModuleCatalog", "AutoDiscoverySkip", message="modules.json present, skipping auto-discovery")
+            return
+
         metas = discover_meta_files(default_roots())
         count = 0
         for meta in metas:

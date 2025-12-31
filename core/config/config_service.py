@@ -10,20 +10,39 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Callable, Dict, Tuple, Union, get_args, get_origin, get_type_hints
 
+#from documents.logic.word_tools import Document
+
 # --------------------------------------------------------------------------- #
 #  Paths & default definitions
 # --------------------------------------------------------------------------- #
 
 def _find_project_root() -> Path:
     """
-    Walk upwards from this file until a folder containing 'core' is found.
-    Falls back to the current file's parent if nothing matches.
+    Determine the repository/project root in a robust way.
+
+    Why this exists:
+    - The app is started from different working directories (PyCharm, CLI, tests, packaged app).
+    - Using `os.getcwd()` or relying on a marker file is fragile.
+    - We need a stable anchor to build absolute paths (config.ini, defaults.ini, databases, …).
+
+    Strategy:
+    1) Walk upwards from this file and search for the *known* repository layout:
+       <root>/core/config/defaults.ini
+    2) If not found, fall back to the classic assumption that this file lives in
+       <root>/core/config/config_service.py (=> parents[2]).
     """
     here = Path(__file__).resolve()
-    for parent in here.parents:
-        if (parent / "core").is_dir():
+
+    # 1) Preferred: detect by existing repo structure
+    for parent in [here.parent, *here.parents]:
+        if (parent / "core" / "config" / "defaults.ini").exists() and (parent / "core").is_dir():
             return parent
-    return here.parent
+
+    # 2) Fallback: known relative depth (…/core/config/config_service.py)
+    try:
+        return here.parents[2]
+    except IndexError:
+        return here.parent
 
 
 PROJECT_ROOT = _find_project_root()

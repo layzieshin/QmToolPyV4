@@ -832,9 +832,19 @@ class DocumentsView(ttk.Frame):
 
         current = self.ctrl.get_assignees(rec.doc_id.value) or {}
 
+        # --- obtain users for the dialog (fallback to empty list) ---
+        users = []
+        try:
+            rbac = getattr(self.ctrl, "_rbac", None)
+            if rbac and hasattr(rbac, "list_users"):
+                users = rbac.list_users()
+        except Exception:
+            users = []
+
         if force or not any(bool(current.get(k)) for k in ("authors", "reviewers", "approvers")):
             if AssignRolesDialog:
-                dlg = AssignRolesDialog(self, current=current)  # type: ignore
+                # pass users explicitly (was missing before)
+                dlg = AssignRolesDialog(self, users=users, current=current)  # type: ignore
                 self.wait_window(dlg)
                 result = getattr(dlg, "result", None)
                 if not result:

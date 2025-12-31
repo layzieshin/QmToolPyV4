@@ -78,13 +78,34 @@ class ModuleDescriptor:
 
     # ---------------- Loader --------------------- #
     def safe_load_class(self):
-        """Importiert die Hauptklasse; gibt Klasse oder None zurück."""
+        """Importiert die Hauptklasse; gibt Klasse oder None zurück.
+
+        Verbesserungen:
+        - Bei Fehlern wird das vollständige Traceback ins zentrale Logging geschrieben.
+        - Falls die Klasse im Modul nicht gefunden wird, wird das ebenfalls geloggt.
+        - Die Methode bleibt absturzsicher (gibt bei Fehler None zurück).
+        """
         try:
             mod = importlib.import_module(self.module_path)
             cls = getattr(mod, self.class_name, None)
+            if cls is None:
+                # Modul importierbar, aber Klasse nicht vorhanden
+                logger.log(
+                    "ModuleDescriptor",
+                    "ImportError",
+                    message=f"Module imported ({self.module_path}) but class '{self.class_name}' not found"
+                )
             return cls
         except Exception as exc:  # noqa: BLE001
-            logger.log("ModuleDescriptor", "ImportError", message=str(exc))
+            # Vollständiges Traceback loggen — hilft beim Aufspüren von
+            # ModuleNotFoundError, ImportError, SyntaxError in abhängigen Dateien etc.
+            import traceback
+            tb = traceback.format_exc()
+            logger.log(
+                "ModuleDescriptor",
+                "ImportError",
+                message=f"Importing {self.module_path}.{self.class_name} failed: {exc}\n{tb}"
+            )
             return None
 
     # ---------------- Fabriken ------------------- #
