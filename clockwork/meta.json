@@ -4,8 +4,15 @@
   "version": "1.2.0",
   "main_class": "clockwork.gui.clockwork_view.ClockworkView",
   "settings_class": "clockwork.gui.clockwork_settings_view.ClockworkSettingsTab",
-  "visible_for": ["Admin", "QMB", "User"],
-  "settings_for": ["Admin", "User"],
+  "visible_for": [
+    "Admin",
+    "QMB",
+    "User"
+  ],
+  "settings_for": [
+    "Admin",
+    "User"
+  ],
   "is_core": false,
   "sort_order": 350,
   "requires_login": true

@@ -25,7 +25,7 @@ from core.config.config_loader import (
     INI_PATH,
 )
 from core.config.config_repository import ConfigRepository
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 from core.common.app_context import T, AppContext
 
 # ----------------------------------------------------------- #

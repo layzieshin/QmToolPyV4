@@ -23,7 +23,7 @@ from typing import Dict
 from core.common.module_descriptor import ModuleDescriptor
 from core.common.module_auto_discovery import discover_meta_files, default_roots
 from core.config.config_loader import MODULES_JSON_PATH
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 
 # In-memory cache
 _CATALOG: Dict[str, ModuleDescriptor] = {}

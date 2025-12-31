@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 
 LOCALE_TRACK_MISSING_KEYS = True
 

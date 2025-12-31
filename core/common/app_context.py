@@ -13,7 +13,7 @@ from pathlib import Path
 
 from core.config.config_loader import LABELS_TSV_PATH, MODULES_JSON_PATH, PROJECT_ROOT_PATH_T
 from core.i18n.translation_manager import translations
-from core.logging.logic.log_controller import LogController
+from core.qm_logging.logic.log_controller import LogController
 from core.settings.logic.settings_manager import settings_manager  # instance
 from usermanagement.logic.user_manager import UserManager
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Optional, Dict
 
 from usermanagement.logic.user_repository import UserRepository
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 from core.models.user import User, UserRole
 
 

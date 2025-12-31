@@ -1,18 +1,18 @@
-# documentlifecycle – Feature README
+# clockwork – Feature README
 
 ## Zweck
-- UI-Modul/Skeleton für Workflow-/Lifecycle-nahe Funktionen (Status/Übergänge).
+- UI-Modul für Clock/Time-Feature (Settings + Service/Repository).
 
 ## Discovery
 - `meta.json` ist die Discovery-Quelle (required keys: `id`, `label`, `version`, `main_class`).
-- `id`: `documentlifecycle`
-- `main_class`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- `settings_class`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- `id`: `clockwork`
+- `main_class`: `clockwork.gui.clockwork_view.ClockworkView`
+- `settings_class`: `clockwork.gui.clockwork_settings_view.ClockworkSettingsTab`
 
 ## Contracts (contracts.json)
 ### Provides
-- UI `main_view`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- UI `settings_view`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- UI `main_view`: `clockwork.gui.clockwork_view.ClockworkView`
+- UI `settings_view`: `clockwork.gui.clockwork_settings_view.ClockworkSettingsTab`
 
 ### Requires
 - Services (DI-by-name):
@@ -29,8 +29,8 @@
 ### Dependencies
 ```mermaid
 graph LR
-  documentlifecycle([documentlifecycle])
-  documentlifecycle
+  clockwork([clockwork])
+  clockwork
 ```
 ### Load + DI
 ```mermaid
@@ -48,5 +48,4 @@ sequenceDiagram
 
 ## Open Points / TODOs
 - Interfaces/ABCs (`core/contracts/*`) sind im Repo noch nicht vorhanden → `contracts.json` referenziert bewusst keine Interface-Pfade.
-- DI verlangt gleichzeitig `settings_manager` und `sm` (siehe Constructor). Das erhöht Integrationsrisiko.
 

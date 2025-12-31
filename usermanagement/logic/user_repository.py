@@ -17,7 +17,7 @@ import bcrypt
 
 from core.models.user import User, UserRole
 from core.config.config_loader import config_loader
-from core.logging.logic.logger import logger      #  ← NEU
+from core.qm_logging.logic.logger import logger      #  ← NEU
 from core.common.db_interface import DatabaseAccess, create_sqlite_connection
 
 

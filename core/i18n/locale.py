@@ -11,7 +11,7 @@ Label(self, text=locale.t("login"))
 
 from __future__ import annotations
 
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 #from core.common.app_context import AppContext
 
 LOCALE_TRACK_MISSING_KEYS = True   # set False in production

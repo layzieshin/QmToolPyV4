@@ -1,23 +1,27 @@
-# documentlifecycle – Feature README
+# signature – Feature README
 
 ## Zweck
-- UI-Modul/Skeleton für Workflow-/Lifecycle-nahe Funktionen (Status/Übergänge).
+- UI-Modul für PDF/Signatur-Workflows (inkl. Passwort-Prompt, Signatur-API Integration).
 
 ## Discovery
 - `meta.json` ist die Discovery-Quelle (required keys: `id`, `label`, `version`, `main_class`).
-- `id`: `documentlifecycle`
-- `main_class`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- `settings_class`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- `id`: `core_signature`
+- `main_class`: `signature.gui.signature_view.SignatureView`
+- `settings_class`: `signature.gui.signature_settings_view.SignatureSettingsView`
+
+**Achtung:** `meta.json.id` entspricht nicht dem Ordnernamen (`signature`). Das kann gegen Projektkonventionen verstoßen.
 
 ## Contracts (contracts.json)
 ### Provides
-- UI `main_view`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- UI `settings_view`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- UI `main_view`: `signature.gui.signature_view.SignatureView`
+- UI `settings_view`: `signature.gui.signature_settings_view.SignatureSettingsView`
 
 ### Requires
 - Services (DI-by-name):
   - `settings_manager` (required)
   - `sm` (required)
+- Feature-Dependencies:
+  - `usermanagement`
 
 ## Usage
 1. Feature-Ordner enthält `meta.json` (und künftig auch `contracts.json`).
@@ -29,8 +33,8 @@
 ### Dependencies
 ```mermaid
 graph LR
-  documentlifecycle([documentlifecycle])
-  documentlifecycle
+  signature([signature])
+  signature --> usermanagement
 ```
 ### Load + DI
 ```mermaid

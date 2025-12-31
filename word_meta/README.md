@@ -1,23 +1,19 @@
-# documentlifecycle – Feature README
+# word_meta – Feature README
 
 ## Zweck
-- UI-Modul/Skeleton für Workflow-/Lifecycle-nahe Funktionen (Status/Übergänge).
+- Utility/Viewer für Word-Metadaten & Review-Comments.
 
 ## Discovery
 - `meta.json` ist die Discovery-Quelle (required keys: `id`, `label`, `version`, `main_class`).
-- `id`: `documentlifecycle`
-- `main_class`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- `settings_class`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- `id`: `word_meta`
+- `main_class`: `word_meta.gui.main.WordCommentsViewer`
 
 ## Contracts (contracts.json)
 ### Provides
-- UI `main_view`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- UI `settings_view`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- UI `main_view`: `word_meta.gui.main.WordCommentsViewer`
 
 ### Requires
-- Services (DI-by-name):
-  - `settings_manager` (required)
-  - `sm` (required)
+- Services: *(none detected via constructor DI)*
 
 ## Usage
 1. Feature-Ordner enthält `meta.json` (und künftig auch `contracts.json`).
@@ -29,8 +25,8 @@
 ### Dependencies
 ```mermaid
 graph LR
-  documentlifecycle([documentlifecycle])
-  documentlifecycle
+  word_meta([word_meta])
+  word_meta
 ```
 ### Load + DI
 ```mermaid
@@ -48,5 +44,5 @@ sequenceDiagram
 
 ## Open Points / TODOs
 - Interfaces/ABCs (`core/contracts/*`) sind im Repo noch nicht vorhanden → `contracts.json` referenziert bewusst keine Interface-Pfade.
-- DI verlangt gleichzeitig `settings_manager` und `sm` (siehe Constructor). Das erhöht Integrationsrisiko.
+- Dieses Feature enthält Template-Platzhalter in `gui/modul_view.py` / `gui/modul_settings_view.py`.
 

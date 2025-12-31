@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.models.user import UserRole
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 
 
 @dataclass

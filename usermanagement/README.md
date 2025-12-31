@@ -1,23 +1,26 @@
-# documentlifecycle – Feature README
+# usermanagement – Feature README
 
 ## Zweck
-- UI-Modul/Skeleton für Workflow-/Lifecycle-nahe Funktionen (Status/Übergänge).
+- Auth-/User-Management GUI (Login/Logout/Profil/Passwort/Admin-CRUD).
 
 ## Discovery
 - `meta.json` ist die Discovery-Quelle (required keys: `id`, `label`, `version`, `main_class`).
-- `id`: `documentlifecycle`
-- `main_class`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- `settings_class`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- `id`: `usermanagement`
+- `main_class`: `usermanagement.gui.user_view.UserManagementView`
+- `settings_class`: `usermanagement.gui.user_settings_tab.UserSettingsTab`
 
 ## Contracts (contracts.json)
 ### Provides
-- UI `main_view`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- UI `settings_view`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- UI `main_view`: `usermanagement.gui.user_view.UserManagementView`
+- UI `settings_view`: `usermanagement.gui.user_settings_tab.UserSettingsTab`
 
 ### Requires
 - Services (DI-by-name):
-  - `settings_manager` (required)
-  - `sm` (required)
+  - `user_manager` (required)
+- Callbacks (Host):
+  - `on_login_success` (required)
+  - `on_logout` (required)
+  - `set_status_message` (required)
 
 ## Usage
 1. Feature-Ordner enthält `meta.json` (und künftig auch `contracts.json`).
@@ -29,8 +32,8 @@
 ### Dependencies
 ```mermaid
 graph LR
-  documentlifecycle([documentlifecycle])
-  documentlifecycle
+  usermanagement([usermanagement])
+  usermanagement
 ```
 ### Load + DI
 ```mermaid
@@ -48,5 +51,4 @@ sequenceDiagram
 
 ## Open Points / TODOs
 - Interfaces/ABCs (`core/contracts/*`) sind im Repo noch nicht vorhanden → `contracts.json` referenziert bewusst keine Interface-Pfade.
-- DI verlangt gleichzeitig `settings_manager` und `sm` (siehe Constructor). Das erhöht Integrationsrisiko.
 

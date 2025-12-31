@@ -1,23 +1,26 @@
-# documentlifecycle – Feature README
+# documents – Feature README
 
 ## Zweck
-- UI-Modul/Skeleton für Workflow-/Lifecycle-nahe Funktionen (Status/Übergänge).
+- UI-Modul für Dokumentenlenkung (Listen/Details/RBAC) und Integrationspunkt für Signatur/Word-Metadaten.
 
 ## Discovery
 - `meta.json` ist die Discovery-Quelle (required keys: `id`, `label`, `version`, `main_class`).
-- `id`: `documentlifecycle`
-- `main_class`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- `settings_class`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- `id`: `documents`
+- `main_class`: `documents.gui.main_view.DocumentsView`
+- `settings_class`: `documents.gui.settings_view.DocumentsSettingsTab`
 
 ## Contracts (contracts.json)
 ### Provides
-- UI `main_view`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- UI `settings_view`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- UI `main_view`: `documents.gui.main_view.DocumentsView`
+- UI `settings_view`: `documents.gui.settings_view.DocumentsSettingsTab`
 
 ### Requires
 - Services (DI-by-name):
   - `settings_manager` (required)
   - `sm` (required)
+- Feature-Dependencies:
+  - `usermanagement`
+  - `word_meta`
 
 ## Usage
 1. Feature-Ordner enthält `meta.json` (und künftig auch `contracts.json`).
@@ -29,8 +32,9 @@
 ### Dependencies
 ```mermaid
 graph LR
-  documentlifecycle([documentlifecycle])
-  documentlifecycle
+  documents([documents])
+  documents --> usermanagement
+  documents --> word_meta
 ```
 ### Load + DI
 ```mermaid
@@ -48,5 +52,4 @@ sequenceDiagram
 
 ## Open Points / TODOs
 - Interfaces/ABCs (`core/contracts/*`) sind im Repo noch nicht vorhanden → `contracts.json` referenziert bewusst keine Interface-Pfade.
-- DI verlangt gleichzeitig `settings_manager` und `sm` (siehe Constructor). Das erhöht Integrationsrisiko.
 

@@ -16,7 +16,7 @@ from typing import List, Optional
 
 from core.config.config_loader import config_loader
 from core.common.db_interface import DatabaseAccess, create_sqlite_connection
-from core.logging.models.log_entry import LogEntry
+from core.qm_logging.models.log_entry import LogEntry
 
 # --------------------------------------------------------------------------- #
 #  Pfad zur Logging-Datenbank                                                 #

@@ -41,7 +41,7 @@ class SettingsView(ttk.Frame):
 
         # Module settings tabs (settings_class only)
         role = AppContext.current_user.role if AppContext.current_user else None
-        for desc in load_registry(role=None).values():
+        for desc in load_registry(role=role).values():
             if not desc.settings_class:
                 continue
             if not desc.allowed_in_settings(role):

@@ -39,7 +39,7 @@ from documentlifecycle.models.document_type import DocumentType
 
 # Optional project logger; must not break even if signature differs
 try:
-    from core.logging.logic.logger import logger  # type: ignore
+    from core.qm_logging.logic.logger import logger  # type: ignore
 except Exception:  # pragma: no cover
     class _NoopLogger:
         def log(self, *args, **kwargs) -> None:

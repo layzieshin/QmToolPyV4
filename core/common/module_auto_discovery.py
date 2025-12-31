@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Iterable, List
 
 from core.config.config_loader import PROJECT_ROOT_PATH_T
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 
 _IGNORE_DIRS = {
     ".git", ".idea", ".vscode", "__pycache__", "node_modules",

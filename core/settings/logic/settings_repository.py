@@ -3,7 +3,7 @@ import json, sqlite3
 from threading import RLock
 from typing import Any, Final
 from core.config.config_loader import QM_DB_PATH
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 from core.common.db_interface import SQLiteRepository
 
 def _to_json(v: Any) -> str:            # serialisieren

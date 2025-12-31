@@ -9,7 +9,7 @@ from __future__ import annotations
 from threading import RLock
 from typing import Any, Final
 
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 from core.settings.logic.settings_repository import SettingsRepository
 
 

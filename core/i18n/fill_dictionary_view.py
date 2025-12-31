@@ -17,7 +17,7 @@ from typing import Dict, List
 from core.common.app_context import AppContext
 
 from core.i18n.translation_manager import translations, T
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 
 LABELS_FILE = translations.file_path or Path("translations/labels.tsv")
 LANGS = ["de", "en"]                     # aktuell gepflegte Sprachen

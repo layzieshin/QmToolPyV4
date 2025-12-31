@@ -1,4 +1,4 @@
-from core.logging.models.log_entry import LogEntry
+from core.qm_logging.models.log_entry import LogEntry
 from core.config.config_loader import config_loader
 from core.common.db_interface import SQLiteRepository
 

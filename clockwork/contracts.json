@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "clockwork",
+  "source": {
+    "generated_from": "QmToolPyV4 master.zip",
+    "notes": [
+      "Interfaces/ABCs are not yet defined in this repo; 'interface' fields are intentionally null to avoid assumptions.",
+      "Service names are derived from view constructor keyword-only parameters (DI-by-name)."
+    ]
+  },
+  "provides": {
+    "ui": [
+      {
+        "role": "main_view",
+        "class": "clockwork.gui.clockwork_view.ClockworkView",
+        "interface": null
+      },
+      {
+        "role": "settings_view",
+        "class": "clockwork.gui.clockwork_settings_view.ClockworkSettingsTab",
+        "interface": null
+      }
+    ],
+    "services": []
+  },
+  "requires": {
+    "services": [
+      {
+        "name": "settings_manager",
+        "interface": null,
+        "required": true
+      },
+      {
+        "name": "sm",
+        "interface": null,
+        "required": true
+      }
+    ],
+    "callbacks": [],
+    "features": []
+  }
+}

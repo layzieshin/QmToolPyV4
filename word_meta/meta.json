@@ -1,0 +1,6 @@
+{
+  "id": "word_meta",
+  "label": "Word Meta",
+  "version": "1.0.0",
+  "main_class": "word_meta.gui.main.WordCommentsViewer"
+}

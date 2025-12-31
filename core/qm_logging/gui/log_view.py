@@ -16,6 +16,15 @@ from datetime import date
 from typing import Optional
 from tkcalendar import DateEntry
 
+# ------------------------------------------------------------
+# Optional dependency: tkcalendar
+# ------------------------------------------------------------
+try:
+    from tkcalendar import DateEntry
+    _TKCALENDAR_AVAILABLE = True
+except ImportError:
+    DateEntry = None  # type: ignore
+    _TKCALENDAR_AVAILABLE = False
 
 class LogView(ttk.Frame):
     """
@@ -35,6 +44,10 @@ class LogView(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         self.controller = controller
 
+        if not _TKCALENDAR_AVAILABLE:
+            self._show_missing_dependency()
+            return
+
         # Variables to hold filter input values (synchronized with DateEntry widgets)
         self.start_date_var = tk.StringVar()
         self.end_date_var = tk.StringVar()
@@ -52,6 +65,20 @@ class LogView(ttk.Frame):
         # Initial sorting set for controller
         self.controller.set_sorting(self._sort_column, self._sort_ascending)
         self._populate_logs()
+
+    # ------------------------------------------------------------
+
+    def _show_missing_dependency(self) -> None:
+        msg = (
+            "Das Logger-Modul benötigt das optionale Paket 'tkcalendar'.\n\n"
+            "Bitte installiere es mit:\n\n"
+            "    pip install tkcalendar\n\n"
+            "Danach kann das Modul verwendet werden."
+        )
+        label = ttk.Label(self, text=msg, foreground="red", justify=tk.LEFT)
+        label.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+    # ------------------------------------------------------------
 
     def _build_ui(self):
         """
@@ -293,7 +320,7 @@ if __name__ == "__main__":
 
     # You would normally pass your real controller here.
     # For standalone testing, you can create a mock controller or pass a stub.
-    from core.logging.logic.log_controller import LogController
+    from core.qm_logging.logic.log_controller import LogController
 
     controller = LogController()
     log_view = LogView(root, controller)

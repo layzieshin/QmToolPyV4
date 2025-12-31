@@ -12,9 +12,9 @@ from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from core.logging.logic.logger import logger
-from core.logging.logic import log_export_utils
-from core.logging.models.log_entry import LogEntry
+from core.qm_logging.logic.logger import logger
+from core.qm_logging.logic import log_export_utils
+from core.qm_logging.models.log_entry import LogEntry
 
 
 class LogController:

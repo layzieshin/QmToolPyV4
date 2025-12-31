@@ -1,23 +1,19 @@
-# documentlifecycle – Feature README
+# EmptyFeature – Feature README
 
 ## Zweck
-- UI-Modul/Skeleton für Workflow-/Lifecycle-nahe Funktionen (Status/Übergänge).
+- Template/Skeleton mit Platzhaltern. Nicht importierbar bis die Platzhalter ersetzt wurden.
 
 ## Discovery
 - `meta.json` ist die Discovery-Quelle (required keys: `id`, `label`, `version`, `main_class`).
-- `id`: `documentlifecycle`
-- `main_class`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- `settings_class`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- `id`: `emptyfeature`
+- `main_class`: `EmptyFeature.gui.modul_view.<REPLACE_ME>`
 
 ## Contracts (contracts.json)
 ### Provides
-- UI `main_view`: `documentlifecycle.gui.main_view.DocumentLifecycleView`
-- UI `settings_view`: `documentlifecycle.gui.settings_view.DocumentLifecycleSettingsView`
+- UI `main_view`: `EmptyFeature.gui.modul_view.<REPLACE_ME>`
 
 ### Requires
-- Services (DI-by-name):
-  - `settings_manager` (required)
-  - `sm` (required)
+- Services: *(none detected via constructor DI)*
 
 ## Usage
 1. Feature-Ordner enthält `meta.json` (und künftig auch `contracts.json`).
@@ -29,8 +25,8 @@
 ### Dependencies
 ```mermaid
 graph LR
-  documentlifecycle([documentlifecycle])
-  documentlifecycle
+  EmptyFeature([EmptyFeature])
+  EmptyFeature
 ```
 ### Load + DI
 ```mermaid
@@ -48,5 +44,5 @@ sequenceDiagram
 
 ## Open Points / TODOs
 - Interfaces/ABCs (`core/contracts/*`) sind im Repo noch nicht vorhanden → `contracts.json` referenziert bewusst keine Interface-Pfade.
-- DI verlangt gleichzeitig `settings_manager` und `sm` (siehe Constructor). Das erhöht Integrationsrisiko.
+- Dieses Feature enthält Template-Platzhalter in `gui/modul_view.py` / `gui/modul_settings_view.py`.
 

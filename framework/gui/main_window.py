@@ -133,32 +133,93 @@ class MainWindow(tk.Tk):
             widget.destroy()
 
     def load_view(self, mod: ModuleDescriptor) -> None:
+        """
+        Load a module view into the display area.
+
+        Improvements:
+        - Shows the real exception/traceback when import/class loading fails.
+        - Shows detailed instantiation errors (constructor, missing deps, etc.).
+        """
+        import traceback
+
         self.clear_display_area()
 
-        view_cls = mod.safe_load_class()
-        if view_cls is None:
-            messagebox.showerror("Module error", f"Cannot load module: {mod.label}", parent=self)
+        # ------------------- 1) Load view class -------------------
+        try:
+            view_cls = mod.safe_load_class()
+        except Exception as exc:  # pragma: no cover
+            tb = traceback.format_exc()
+            messagebox.showerror(
+                "Module error",
+                f"Failed to load class for module '{mod.label}' ({mod.id}).\n\n{exc}\n\n{tb}",
+                parent=self,
+            )
             return
 
-        # Abhängigkeiten aus Signatur auflösen
+        if view_cls is None:
+            # Try to show the real import error collected by ModuleDescriptor
+            details = getattr(mod, "last_import_error", None)
+
+            if not details:
+                details = (
+                    "No detailed import error available.\n\n"
+                    "Possible causes:\n"
+                    "- wrong main_class path in meta.json\n"
+                    "- missing __init__.py in package\n"
+                    "- missing dependency\n"
+                    "- syntax error in imported module\n\n"
+                    "Check application logs for ModuleDescriptor/ImportError."
+                )
+
+            messagebox.showerror(
+                "Module error",
+                f"Cannot load module '{mod.label}' ({mod.id}).\n\n"
+                f"Import details:\n\n{details}",
+                parent=self,
+            )
+            return
+
+        # ------------------- 2) Resolve dependencies -------------------
         sig = inspect.signature(view_cls.__init__)
         kwargs = {}
+
+        # NOTE: parameters are typically: (self, parent, ...)
         for name, param in list(sig.parameters.items())[2:]:
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 continue
+
             if name in AppContext.services:
                 kwargs[name] = AppContext.services[name]
-            elif hasattr(self, name) and callable(getattr(self, name)):
+                continue
+
+            # convenience: expose full context itself
+            if name in ("ctx", "context", "app_context"):
+                kwargs[name] = AppContext
+                continue
+
+            if hasattr(self, name) and callable(getattr(self, name)):
                 kwargs[name] = getattr(self, name)
-            elif param.default is inspect._empty:
+                continue
+
+            if param.default is inspect._empty:
                 messagebox.showerror(
-                    "Module error", f"Missing dependency '{name}' for '{mod.label}'", parent=self
+                    "Module error",
+                    f"Missing dependency '{name}' for '{mod.label}' ({mod.id}).\n\n"
+                    f"Constructor signature: {view_cls.__init__}",
+                    parent=self,
                 )
                 return
+
+        # ------------------- 3) Instantiate view -------------------
         try:
             self.active_view = view_cls(self.display_area, **kwargs)
         except Exception as exc:  # pragma: no cover
-            messagebox.showerror("Module error", str(exc), parent=self)
+            tb = traceback.format_exc()
+            messagebox.showerror(
+                "Module error",
+                f"Failed to instantiate module '{mod.label}' ({mod.id}).\n\n{exc}\n\n{tb}",
+                parent=self,
+            )
             return
 
         self.active_view.pack(fill="both", expand=True)

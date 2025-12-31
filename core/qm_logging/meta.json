@@ -1,12 +1,12 @@
 {
-  "id": "logging",
+  "id": "qm_logging",
   "label": "Logger",
   "version": "0.1.0",
   "is_core": true,
   "sort_order": 30,
   "requires_login": true,
   "visible_for": ["Admin", "QMB", "User"],
-  "main_class": "logging.gui.logging_view.LoggingView",
+  "main_class": "core.qm_logging.gui.log_view.LogView",
   "settings_class": null,
   "settings_for": []
 }

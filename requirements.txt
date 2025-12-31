@@ -1,3 +1,13 @@
 tkcalendar
 bcrypt
 tzdata
+pywin32
+docx2pdf
+reportlab
+python-docx
+pypdf
+PyMuPDF
+fastapi
+pillow
+cryptography
+pypdfium2

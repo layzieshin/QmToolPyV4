@@ -7,7 +7,7 @@ from core.settings.logic.settings_manager import SettingsManager
 
 # Fallback-Logger (falls AppContext.logger fehlt)
 try:
-    from core.logging.logic.logger import logger as default_logger  # type: ignore
+    from core.qm_logging.logic.logger import logger as default_logger  # type: ignore
 except Exception:
     default_logger = None  # type: ignore
 

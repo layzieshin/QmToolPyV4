@@ -1,0 +1,8 @@
+{
+  "id": "emptyfeature",
+  "label": "EmptyFeature (Template)",
+  "version": "0.0.0",
+  "main_class": "EmptyFeature.gui.modul_view.<REPLACE_ME>",
+  "enabled": false,
+  "requires_login": false
+}

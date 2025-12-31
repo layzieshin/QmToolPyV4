@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 from core.config.config_loader import QM_DB_PATH
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 from core.common.module_descriptor import ModuleDescriptor
 from core.common.module_auto_discovery import discover_meta_files, default_roots
 from core.common.db_interface import SQLiteRepository

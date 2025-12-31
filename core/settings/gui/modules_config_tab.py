@@ -23,7 +23,7 @@ from core.common.module_descriptor import ModuleDescriptor
 from core.common.module_registry import invalidate_registry_cache
 from core.common.module_repository import ModuleRepository
 from core.common.module_auto_discovery import default_roots
-from core.logging.logic.logger import logger
+from core.qm_logging.logic.logger import logger
 
 ROLES = ["Admin", "QMB", "User"]
 
