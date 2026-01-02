@@ -75,6 +75,7 @@ class WorkflowEngine:
         }
 
     # ----------------- Backwards / Out-of-band actions ----------------------
+    
     def can_back_to_draft(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
         return False
 
@@ -87,17 +88,19 @@ class WorkflowEngine:
         current_user_id: str | None,
         active: bool,
     ) -> bool:
-        # Abbrechen darf ADMIN/QMB oder der Starter, nur wenn der Workflow aktiv ist.
+        """Abort active workflow (ADMIN/QMB or workflow starter)"""
         if not active:
             return False
         r = _norm(roles)
         if {"ADMIN", "QMB"} & r:
             return True
-        if starter_user_id and current_user_id and str(starter_user_id).strip().lower() == str(current_user_id).strip().lower():
+        if starter_user_id and current_user_id and \
+           str(starter_user_id).strip().lower() == str(current_user_id).strip().lower():
             return True
         return False
 
     # ----------------- UX helpers (CTA texts / routing) ---------------------
+    
     @staticmethod
     def next_action(
         self,
