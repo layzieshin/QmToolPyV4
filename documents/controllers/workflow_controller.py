@@ -7,8 +7,8 @@ from __future__ import annotations
 from typing import Callable, Optional, Tuple
 
 from documents.repository.document_repository import DocumentRepository
-from documents.services.policy. workflow_policy import WorkflowPolicy
-from documents.services.policy. permission_policy import PermissionPolicy
+from documents.services.policy.workflow_policy import WorkflowPolicy
+from documents.services.policy.permission_policy import PermissionPolicy
 from documents.models.document_models import DocumentStatus
 
 
@@ -70,7 +70,7 @@ class WorkflowController:
 
         # Check if assignments are present
         assignees = self._repo.get_assignees(doc_id)
-        if not any(assignees. get(role) for role in ("AUTHOR", "REVIEWER", "APPROVER")):
+        if not any(assignees.get(role) for role in ("AUTHOR", "REVIEWER", "APPROVER")):
             if ensure_assignments_callback and callable(ensure_assignments_callback):
                 if not ensure_assignments_callback():
                     return False, "Rollenzuweisung abgebrochen."
@@ -124,14 +124,14 @@ class WorkflowController:
             starter_id = self._repo.get_workflow_starter(doc_id)
             user_id = self._get_user_id(user)
 
-            if not (starter_id and user_id and starter_id. lower() == user_id.lower()):
+            if not (starter_id and user_id and starter_id.lower() == user_id.lower()):
                 return False, "Keine Berechtigung zum Abbrechen des Workflows."
 
         # Abort workflow
         try:
             user_id = self._get_user_id(user)
             self._repo.set_workflow_active(doc_id, False, user_id)
-            self._repo.set_status(doc_id, DocumentStatus. DRAFT, user_id or "", reason)
+            self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
             return True, None
         except Exception as ex:
             return False, f"Workflow-Abbruch fehlgeschlagen: {ex}"
@@ -167,7 +167,7 @@ class WorkflowController:
             return False, "Dokument nicht gefunden."
 
         # Get allowed transitions
-        allowed_actions = self._wf_policy. allowed_transitions(record.status)
+        allowed_actions = self._wf_policy.allowed_transitions(record.status)
         if not allowed_actions:
             return False, "Keine zulässige Aktion verfügbar."
 
@@ -252,7 +252,7 @@ class WorkflowController:
         if not user:
             return False, "Kein Benutzer angemeldet."
 
-        if not self._perm_policy. can_perform(action_id="back_to_draft", roles=user_roles):
+        if not self._perm_policy.can_perform(action_id="back_to_draft", roles=user_roles):
             return False, "Keine Berechtigung."
 
         try:
@@ -292,7 +292,7 @@ class WorkflowController:
         if record.status == DocumentStatus.EFFECTIVE:
             action_id = "obsolete"
             target_status = DocumentStatus.OBSOLETE
-        elif record.status == DocumentStatus. OBSOLETE:
+        elif record.status == DocumentStatus.OBSOLETE:
             action_id = "archive"
             target_status = DocumentStatus.ARCHIVED
         else:

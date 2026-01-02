@@ -56,7 +56,7 @@ class WorkflowPolicy:
                 data = {}
 
         return cls(
-            transitions=data. get("workflow_transitions", []),
+            transitions=data.get("workflow_transitions", []),
             forbidden_transitions=data.get("forbidden_transitions", [])
         )
 

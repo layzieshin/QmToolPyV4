@@ -1,6 +1,6 @@
 """SQLite implementation of DatabaseAdapter.
 
-Uses core. common.db_interface for connection management.
+Uses core.common.db_interface for connection management.
 """
 
 from __future__ import annotations

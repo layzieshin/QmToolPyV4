@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import List, Optional
 
 from documents.models.document_models import DocumentRecord, DocumentStatus
-from documents.logic.repository import DocumentsRepository
 from documents.controllers.search_filter_controller import SearchFilterController
 
 

@@ -58,7 +58,7 @@ class TypeRegistry:
                 metadata=config
             )
 
-            registry. register(spec)
+            registry.register(spec)
 
         return registry
 

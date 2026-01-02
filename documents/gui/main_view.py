@@ -16,10 +16,10 @@ from typing import Any, Dict, Optional, List
 
 # Core services / i18n
 from core.common.app_context import AppContext, T  # type: ignore
-from core.settings. logic. settings_manager import SettingsManager  # type: ignore
+from core.settings.logic.settings_manager import SettingsManager  # type: ignore
 
 # Models
-from documents.models. document_models import DocumentRecord, DocumentStatus  # type: ignore
+from documents.models.document_models import DocumentRecord, DocumentStatus  # type: ignore
 
 # Controllers (NEW ARCHITECTURE!)
 from documents.controllers import (
@@ -41,11 +41,11 @@ from documents.repository.sqlite_document_repository import SQLiteDocumentReposi
 from documents.repository.repo_config import RepoConfig
 
 # Adapters
-from documents.adapters. sqlite_adapter import SQLiteAdapter
+from documents.adapters.sqlite_adapter import SQLiteAdapter
 from documents.adapters.filesystem_storage_adapter import FilesystemStorageAdapter
 
 # Services
-from documents.services. policy. permission_policy import PermissionPolicy
+from documents.services.policy.permission_policy import PermissionPolicy
 from documents.services.policy.workflow_policy import WorkflowPolicy
 from documents.services.policy.signature_policy import SignaturePolicy
 from documents.services.ui_state_service import UIStateService
@@ -57,7 +57,7 @@ except Exception:
     AssignRolesDialog = None  # type: ignore
 
 try:
-    from documents.gui. dialogs.metadata_dialog import MetadataDialog  # type: ignore
+    from documents.gui.dialogs.metadata_dialog import MetadataDialog  # type: ignore
 except Exception:
     MetadataDialog = None  # type: ignore
 
@@ -126,27 +126,17 @@ class DocumentsView(ttk.Frame):
 
         return SQLiteDocumentRepository(cfg, db_adapter=db_adapter, storage_adapter=storage_adapter)
 
-    def _init_rbac(self) -> Optional[Any]:
-        """Initialize RBAC service (optional)."""
-        try:
-            from documents.logic.rbac_service import RBACService
-            if not self._repo:
-                return None
-            db_path = self._repo._cfg.db_path
-            return RBACService(db_path, self._sm)
-        except Exception:
-            return None
 
     def _init_controllers(self) -> None:
         """Initialize all controllers with services (Controller Factory)."""
         if self._init_error or not self._repo:
             # Fallback:  no controllers
-            self. filter_ctrl = None
+            self.filter_ctrl = None
             self.list_ctrl = None
             self.details_ctrl = None
             self.creation_ctrl = None
             self.workflow_ctrl = None
-            self. assignment_ctrl = None
+            self.assignment_ctrl = None
             return
 
         # User provider
@@ -155,8 +145,8 @@ class DocumentsView(ttk.Frame):
         # === Load Policy Services from JSON ===
         base_dir = Path(__file__).resolve().parents[1]
 
-        self._permission_policy = PermissionPolicy. load_from_directory(base_dir)
-        self._workflow_policy = WorkflowPolicy. load_from_directory(base_dir)
+        self._permission_policy = PermissionPolicy.load_from_directory(base_dir)
+        self._workflow_policy = WorkflowPolicy.load_from_directory(base_dir)
         self._signature_policy = SignaturePolicy.load_from_directory(base_dir)
 
         # Create UI state service
@@ -171,7 +161,7 @@ class DocumentsView(ttk.Frame):
         self.filter_ctrl = SearchFilterController(repository=self._repo)
 
         # List controller
-        self. list_ctrl = DocumentListController(
+        self.list_ctrl = DocumentListController(
             repository=self._repo,
             filter_controller=self.filter_ctrl
         )
@@ -213,7 +203,7 @@ class DocumentsView(ttk.Frame):
         if self._init_error:
             ttk.Label(
                 self,
-                text=(T("documents. init_error") or "Problem bei der Modulinitialisierung:  ") + str(self._init_error),
+                text=(T("documents.init_error") or "Problem bei der Modulinitialisierung:  ") + str(self._init_error),
                 foreground="#b00020",
                 wraplength=780,
                 justify="left",
@@ -228,7 +218,7 @@ class DocumentsView(ttk.Frame):
                   font=("Segoe UI", 16, "bold")).grid(row=0, column=0, sticky="w")
 
         # Search
-        ttk.Label(header, text=(T("documents.filter. search") or "Suche")).grid(row=0, column=1, padx=(12, 4))
+        ttk.Label(header, text=(T("documents.filter.search") or "Suche")).grid(row=0, column=1, padx=(12, 4))
         self.e_search = ttk.Entry(header, width=28)
         self.e_search.grid(row=0, column=2, sticky="w")
         ttk.Button(header, text=(T("common.search") or "Suchen"), command=self._reload)\
@@ -265,7 +255,7 @@ class DocumentsView(ttk.Frame):
 
         # Sort
         ttk.Label(header, text=(T("documents.filter.sort") or "Sortierung")).grid(row=0, column=7, padx=(16, 4))
-        self.cb_sort = ttk. Combobox(
+        self.cb_sort = ttk.Combobox(
             header, width=26, state="readonly",
             values=[
                 "Aktualisiert (neueste zuerst)",
@@ -278,7 +268,7 @@ class DocumentsView(ttk.Frame):
         self.cb_sort.bind("<<ComboboxSelected>>", lambda e: self._reload())
 
         # Split panel (list | details)
-        body = ttk. Panedwindow(self, orient="horizontal")
+        body = ttk.Panedwindow(self, orient="horizontal")
         body.grid(row=1 if not self._init_error else 2, column=0, sticky="nsew", padx=12, pady=(4, 12))
 
         # Left:  list
@@ -290,9 +280,9 @@ class DocumentsView(ttk.Frame):
         # Toolbar above list
         listbar = ttk.Frame(left)
         listbar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
-        ttk.Button(listbar, text=T("documents.btn. new_from_tpl") or "Neu aus Vorlage", command=self._new_from_template)\
+        ttk.Button(listbar, text=T("documents.btn.new_from_tpl") or "Neu aus Vorlage", command=self._new_from_template)\
             .pack(side="left")
-        ttk.Button(listbar, text=T("documents. btn.import") or "Importieren", command=self._import_file)\
+        ttk.Button(listbar, text=T("documents.btn.import") or "Importieren", command=self._import_file)\
             .pack(side="left", padx=(6, 0))
         ttk.Button(listbar, text=T("documents.btn.edit_meta") or "Metadaten", command=self._edit_metadata)\
             .pack(side="left", padx=(6, 0))
@@ -306,17 +296,17 @@ class DocumentsView(ttk.Frame):
         _c = self.tree.column
         _h("id", text="ID");            _c("id", width=150, stretch=False, anchor="w")
         _h("title", text=T("documents.col.title") or "Titel");  _c("title", width=300, anchor="w")
-        _h("type", text=T("documents. col.type") or "Typ");      _c("type", width=80, anchor="center")
-        _h("status", text=T("documents.col. status") or "Status"); _c("status", width=110, anchor="center")
+        _h("type", text=T("documents.col.type") or "Typ");      _c("type", width=80, anchor="center")
+        _h("status", text=T("documents.col.status") or "Status"); _c("status", width=110, anchor="center")
         _h("ver", text=T("documents.col.version") or "Version");  _c("ver", width=80, anchor="center")
         _h("updated", text=T("documents.col.updated") or "Geändert"); _c("updated", width=150, anchor="center")
         _h("owner", text=T("documents.col.owner") or "Owner");  _c("owner", width=120, anchor="w")
-        _h("active", text=T("documents.col. active") or "Aktiv"); _c("active", width=60, anchor="center")
+        _h("active", text=T("documents.col.active") or "Aktiv"); _c("active", width=60, anchor="center")
 
         self.tree.bind("<<TreeviewSelect>>", lambda e: self._on_select())
 
         # Right: details (notebook with tabs)
-        right = ttk. Notebook(body)
+        right = ttk.Notebook(body)
         body.add(right, weight=2)
 
         self.tab_overview = ttk.Frame(right)
@@ -324,7 +314,7 @@ class DocumentsView(ttk.Frame):
         self._build_overview_tab(self.tab_overview)
 
         self.tab_comments = ttk.Frame(right)
-        right.add(self. tab_comments, text=T("documents.tab.comments") or "Kommentare")
+        right.add(self.tab_comments, text=T("documents.tab.comments") or "Kommentare")
         self._build_comments_tab(self.tab_comments)
 
         # Footer actions
@@ -334,7 +324,7 @@ class DocumentsView(ttk.Frame):
 
         self.btn_open = ttk.Button(footer, text=T("common.open") or "Öffnen", command=self._open_current)
         self.btn_copy = ttk.Button(footer, text=T("documents.btn.copy") or "Kopie erstellen", command=self._copy)
-        self.btn_assign_roles = ttk.Button(footer, text=T("documents.btn. assign") or "Rollen zuweisen",
+        self.btn_assign_roles = ttk.Button(footer, text=T("documents.btn.assign") or "Rollen zuweisen",
                                            command=lambda: self._assign_roles(force=True))
         self.btn_workflow = ttk.Button(footer, text=T("documents.btn. workflow. start") or "Workflow starten",
                                        command=self._toggle_workflow)

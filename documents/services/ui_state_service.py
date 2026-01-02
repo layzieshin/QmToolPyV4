@@ -6,7 +6,6 @@ Combines policy services to derive UI states (button enablement, etc.).
 from __future__ import annotations
 from typing import Optional, Set, Iterable
 
-from documents.dto.view_state import ViewState
 from documents.dto.controls_state import ControlsState
 from documents.enum.document_status import DocumentStatus
 from documents.services.policy.permission_policy import PermissionPolicy
@@ -146,17 +145,3 @@ class UIStateService:
             next_text=next_text,
         )
 
-    def build_state(self) -> ViewState:
-        """
-        Build a default view state (legacy method).
-
-        Returns:
-            ViewState with all flags disabled
-        """
-        return ViewState(
-            can_edit=False,
-            can_submit_review=False,
-            can_approve=False,
-            can_publish=False,
-            can_archive=False,
-        )

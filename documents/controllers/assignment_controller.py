@@ -3,15 +3,7 @@
 from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 
-from documents.logic.repository import DocumentsRepository
 from documents.dto.assignments import Assignments
-
-try:
-    from documents.logic.rbac_service import RBACService
-except Exception:
-    RBACService = None  # type: ignore
-
-
 class AssignmentController:
     """
     Manages role assignments per document.
@@ -22,7 +14,7 @@ class AssignmentController:
     - Validate assignments
     - Get available users
 
-    SRP: Assignment logic only, no workflow. 
+    SRP: Assignment logic only, no workflow.
     """
 
     def __init__(
@@ -41,7 +33,7 @@ class AssignmentController:
 
     def get_assignees(self, doc_id: str) -> Dict[str, List[str]]:
         """
-        Get current assignments. 
+        Get current assignments.
 
         Args:
             doc_id: Document ID
@@ -64,7 +56,7 @@ class AssignmentController:
             assignments: Assignments
     ) -> Tuple[bool, Optional[str]]:
         """
-        Save assignments. 
+        Save assignments.
 
         Args:
             doc_id: Document ID

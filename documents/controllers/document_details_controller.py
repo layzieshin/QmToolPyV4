@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional
 import os
 
-from documents.models. document_models import DocumentRecord, DocumentStatus
+from documents.models.document_models import DocumentRecord, DocumentStatus
 from documents.repository.document_repository import DocumentRepository
 from documents.services.ui_state_service import UIStateService
 from documents.dto.document_details import DocumentDetails
@@ -68,17 +68,17 @@ class DocumentDetailsController:
         actors = self._get_actual_actors(record)
 
         # Get comments
-        docx_comments = self. get_comments(doc_id)
+        docx_comments = self.get_comments(doc_id)
 
         # Determine actual file type
         path = record.current_file_path or ""
-        actual_ftype = os.path.splitext(path)[1][1:]. upper() if path else ""
+        actual_ftype = os.path.splitext(path)[1][1:].upper() if path else ""
 
         return DocumentDetails(
-            doc_id=record.doc_id. value,
-            title=record. title,
+            doc_id=record.doc_id.value,
+            title=record.title,
             doc_type=record.doc_type,
-            status=record.status.name if hasattr(record. status, "name") else str(record.status),
+            status=record.status.name if hasattr(record.status, "name") else str(record.status),
             version_label=f"{record.version_major}.{record.version_minor}",
             current_file_path=record.current_file_path,
 
@@ -124,10 +124,10 @@ class DocumentDetailsController:
         """
         user = self._user_provider()
         if not user:
-            return ControlsState. disabled()
+            return ControlsState.disabled()
 
         # Get workflow state
-        workflow_active = self._repo.is_workflow_active(record.doc_id. value)
+        workflow_active = self._repo.is_workflow_active(record.doc_id.value)
         workflow_starter_id = self._repo.get_workflow_starter(record.doc_id.value)
         owner_id = self._repo.get_owner(record.doc_id.value)
         user_id = self._get_user_id(user)

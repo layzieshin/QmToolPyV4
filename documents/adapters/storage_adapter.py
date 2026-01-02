@@ -93,7 +93,7 @@ class StorageAdapter(ABC):
 
         Args:
             doc_id: Document ID
-            pattern: Optional glob pattern (e.g., "*. docx")
+            pattern: Optional glob pattern (e.g., "*.docx")
 
         Returns:
             List of file paths/URIs

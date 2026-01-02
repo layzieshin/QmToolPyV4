@@ -12,7 +12,7 @@ class ControlsState:
     Immutable DTO - computed by DocumentDetailsController.
     """
 
-    can_open: bool
+    can_open:  bool
     can_copy: bool
     can_assign_roles: bool
     can_archive: bool

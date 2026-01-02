@@ -27,7 +27,7 @@ class DocumentDetails:
 
     # Metadata (from DOCX core properties)
     description: Optional[str] = None
-    documenttype: Optional[str] = None
+    documenttype:  Optional[str] = None
     actual_filetype: Optional[str] = None
     valid_by_date: Optional[str] = None
     last_modified: Optional[str] = None

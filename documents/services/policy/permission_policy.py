@@ -24,7 +24,7 @@ class PermissionPolicy:
             separation_rules: Separation of duties rules (e.g., {"no_self_review": true})
         """
         self._role_actions:  Dict[str, Set[str]] = {
-            role. strip().upper(): {str(a).strip().lower() for a in actions or []}
+            role.strip().upper(): {str(a).strip().lower() for a in actions or []}
             for role, actions in (role_actions or {}).items()
         }
         self._separation = {k: bool(v) for k, v in (separation_rules or {}).items()}
@@ -32,7 +32,7 @@ class PermissionPolicy:
     @classmethod
     def load_from_directory(cls, directory: str | Path) -> "PermissionPolicy":
         """
-        Load policy from documents_permissions_policy. json.
+        Load policy from documents_permissions_policy.json.
 
         Args:
             directory: Directory containing policy JSON files
@@ -46,8 +46,8 @@ class PermissionPolicy:
         data = {}
         if policy_file.exists():
             try:
-                with policy_file. open("r", encoding="utf-8") as f:
-                    data = json. load(f)
+                with policy_file.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
             except Exception:
                 data = {}
 
@@ -75,7 +75,7 @@ class PermissionPolicy:
 
         # Check if any user role has permission for this action
         for role in user_roles:
-            allowed_actions = self._role_actions. get(role, set())
+            allowed_actions = self._role_actions.get(role, set())
             if action in allowed_actions:
                 return True
 
@@ -121,7 +121,7 @@ class PermissionPolicy:
         action = (action_id or "").strip().lower()
 
         # No self-review rule
-        if action in ("review", "submit_review", "request_approval") and self._separation. get("no_self_review", False):
+        if action in ("review", "submit_review", "request_approval") and self._separation.get("no_self_review", False):
             if actor == owner:
                 return True
 

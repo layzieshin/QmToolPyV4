@@ -5,8 +5,6 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import os
 
 from documents.models.document_models import DocumentRecord
-from documents.logic.repository import DocumentsRepository
-
 
 class DocumentCreationController:
     """

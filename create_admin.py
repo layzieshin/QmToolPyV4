@@ -8,7 +8,6 @@ from usermanagement.logic.user_repository import UserRepository
 from core.models.user import UserRole
 
 from core.settings.logic.settings_manager import settings_manager
-
 def _seed_documents_admin(user_id: str) -> None:
     """Seed documents RBAC admin membership with the given user_id (ID-only)."""
     raw = str(settings_manager.get("documents", "rbac_admins", "") or "")

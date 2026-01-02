@@ -26,7 +26,7 @@ class SignaturePolicy:
     @classmethod
     def load_from_directory(cls, directory: str | Path) -> "SignaturePolicy":
         """
-        Load signature policy from documents_document_types. json.
+        Load signature policy from documents_document_types.json.
 
         Args:
             directory: Directory containing policy files
@@ -45,7 +45,7 @@ class SignaturePolicy:
             except Exception:
                 data = {}
 
-        return cls(document_types=data. get("document_types", {}))
+        return cls(document_types=data.get("document_types", {}))
 
     def required_roles(self, *, doc_type: str, action_id: str) -> List[str]:
         """
@@ -76,7 +76,7 @@ class SignaturePolicy:
         for sig in required_signatures:
             if isinstance(sig, str):
                 # Simple format: just action name
-                if sig. strip().lower() == action:
+                if sig.strip().lower() == action:
                     # Default role mapping
                     role = self._default_role_for_action(action)
                     if role:
@@ -123,4 +123,4 @@ class SignaturePolicy:
             "publish": "APPROVER",
         }
 
-        return mapping. get(action)
+        return mapping.get(action)
