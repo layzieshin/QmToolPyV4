@@ -135,11 +135,11 @@ class RBACService(DatabaseAccess):
 
     def approve_request(self, req_id: int) -> None:
         req = self._get(req_id)
-        # apply: add user (by username OR id) to each role list
+        # apply: add user_id to each role list (ID-only)
         for role in req.roles:
             key = _role_to_key(role)
             current = set(self.get_members(key))
-            current.add(req.username)  # store username (works fine & human-readable)
+                        current.add(req.requested_by)  # store user_id (ID-only)
             self.set_members(key, current)
         self._set_status(req_id, "APPROVED")
 

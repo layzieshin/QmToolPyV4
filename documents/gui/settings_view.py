@@ -231,12 +231,14 @@ class ManageRolesDialog(tk.Toplevel):
             label = u.get("username") or u.get("email") or u.get("id")
             self.lb_users.insert("end", label)
 
-    def _current_user_ident(self) -> str | None:
-        sel = self.lb_users.curselection()
-        if not sel:
-            return None
-        u = self._users[sel[0]]
-        return u.get("username") or u.get("email") or u.get("id")
+    def _current_user_ident(self) -> str:
+        """Return the current user identifier used in RBAC lists (ID-only)."""
+        try:
+            from core.common.app_context import AppContext
+            cu = AppContext.get_current_user()
+            return str(getattr(cu, "id", "") or "")
+        except Exception:
+            return ""
 
     def _on_user_select(self, _evt=None) -> None:
         ident = self._current_user_ident()
