@@ -1,0 +1,2 @@
+-- Documents SQLite schema placeholder.
+-- TODO: Define tables for documents, versions, audit events, and assignments.

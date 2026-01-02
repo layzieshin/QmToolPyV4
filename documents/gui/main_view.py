@@ -106,8 +106,8 @@ class DocumentsView(ttk.Frame):
                 T("documents.status.all") or "Alle",
                 T("documents.status.draft") or "Entwurf",
                 T("documents.status.review") or "Prüfung",
-                T("documents.status.approved") or "Genehmigt",
-                T("documents.status.effective") or "Wirksam",
+                T("documents.status.approved") or "Freigegeben",
+                T("documents.status.effective") or "Gültig",
                 T("documents.status.revision") or "Revision",
                 T("documents.status.obsolete") or "Obsolet",
                 T("documents.status.archived") or "Archiviert",
@@ -326,8 +326,8 @@ class DocumentsView(ttk.Frame):
         m = {
             (T("documents.status.draft") or "Entwurf"): DocumentStatus.DRAFT,
             (T("documents.status.review") or "Prüfung"): DocumentStatus.REVIEW,
-            (T("documents.status.approved") or "Genehmigt"): DocumentStatus.APPROVED,
-            (T("documents.status.effective") or "Wirksam"): DocumentStatus.EFFECTIVE,
+            (T("documents.status.approved") or "Freigegeben"): DocumentStatus.APPROVED,
+            (T("documents.status.effective") or "Gültig"): DocumentStatus.EFFECTIVE,
             (T("documents.status.revision") or "Revision"): DocumentStatus.REVISION,
             (T("documents.status.obsolete") or "Obsolet"): DocumentStatus.OBSOLETE,
             (T("documents.status.archived") or "Archiviert"): DocumentStatus.ARCHIVED,
@@ -396,7 +396,13 @@ class DocumentsView(ttk.Frame):
                 ver = f"{getattr(r, 'version_major', 1)}.{getattr(r, 'version_minor', 0)}"
                 updated = getattr(r, "updated_at", "") or ""
                 owner = getattr(r, "created_by", "") or ""
-                active = "✓" if r.status in (DocumentStatus.DRAFT, DocumentStatus.REVIEW, DocumentStatus.APPROVED) else ""
+                active = "✓" if r.status in (
+                    DocumentStatus.DRAFT,
+                    DocumentStatus.REVIEW,
+                    DocumentStatus.APPROVED,
+                    DocumentStatus.EFFECTIVE,
+                    DocumentStatus.REVISION,
+                ) else ""
                 self.tree.insert(
                     "", "end", iid=iid,
                     values=(iid, r.title or "", r.doc_type or "", r.status.name if hasattr(r.status, "name") else str(r.status),

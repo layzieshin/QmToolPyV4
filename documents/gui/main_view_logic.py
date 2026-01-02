@@ -17,6 +17,7 @@ import os
 import glob
 import shutil
 from datetime import datetime
+from pathlib import Path
 
 # --- External project modules (no tkinter imports here) ----------------------
 try:
@@ -37,6 +38,8 @@ except Exception:
 from documents.models.document_models import DocumentRecord, DocumentStatus  # type: ignore
 from documents.logic.repository import DocumentsRepository, RepoConfig  # type: ignore
 from documents.logic.workflow_engine import WorkflowEngine  # type: ignore
+from documents.logic.documents_policy import DocumentsPolicy  # type: ignore
+from documents.logic.permissions import ModulePermissions  # type: ignore
 
 try:
     from documents.logic.rbac_service import RBACService  # type: ignore
@@ -81,7 +84,10 @@ class DocumentsController:
         self._sm = settings_manager
         self._repo: Optional[DocumentsRepository] = None
         self._rbac: Optional[RBACService] = None  # type: ignore
-        self._wf = WorkflowEngine()
+        base_dir = Path(__file__).resolve().parents[1]
+        self._policy = DocumentsPolicy.load_from_directory(base_dir)
+        self._wf = WorkflowEngine(self._policy)
+        self._module_permissions = ModulePermissions(self._sm)
 
         self._active_cache: Dict[str, bool] = {}
         self._starter_cache: Dict[str, str] = {}
@@ -149,6 +155,16 @@ class DocumentsController:
         if _has("rbac_admins"): out.add("ADMIN")
         if _has("rbac_qmb"): out.add("QMB")
         return out
+
+    def _module_roles_of(self, user: Any) -> Set[str]:
+        roles: Set[str] = set()
+        if not user:
+            return roles
+        try:
+            roles = {r.upper() for r in (self._module_permissions.roles_for_user(user) or set())}
+        except Exception:
+            return set()
+        return roles & {"AUTHOR", "EDITOR", "REVIEWER", "APPROVER"}
 
     # --------------------------------------------------------------- repository
     def list_documents(self, text: Optional[str], status: Optional[DocumentStatus] = None, active_only: bool = False) -> List[DocumentRecord]:
@@ -291,11 +307,21 @@ class DocumentsController:
 
     def _is_workflow_active(self, doc: DocumentRecord) -> bool:
         """
-        Active by definition for non-DRAFT (REVIEW/APPROVED/EFFECTIVE).
+        Active by definition for non-DRAFT (REVIEW/APPROVED/EFFECTIVE/REVISION).
         For DRAFT we consult the repository-persisted flag, fallback to RAM cache.
         """
-        if doc.status != DocumentStatus.DRAFT:
+        active_statuses = {
+            DocumentStatus.REVIEW,
+            DocumentStatus.APPROVED,
+            DocumentStatus.EFFECTIVE,
+            DocumentStatus.REVISION,
+        }
+        if doc.status in active_statuses:
             return True
+        if doc.status in {DocumentStatus.OBSOLETE, DocumentStatus.ARCHIVED}:
+            return False
+        if doc.status != DocumentStatus.DRAFT:
+            return False
         # Persisted flag first
         if self._repo and hasattr(self._repo, "is_workflow_active"):
             try:
@@ -332,18 +358,43 @@ class DocumentsController:
         user = self._current_user()
         uid = (self._uid_from(user) or "")
         roles_global = self._global_roles_of(user)
+        roles_module = self._module_roles_of(user)
         assigned = self._assigned_roles(doc.doc_id.value, uid)
+        owner_id = self._doc_owner_id(doc)
         active = self._is_workflow_active(doc)
 
         can_open = bool(doc.current_file_path)
         can_copy = doc.status in {DocumentStatus.EFFECTIVE, (self._STATUS_OBSOLETE or DocumentStatus.EFFECTIVE)}
-        can_archive = (doc.status == DocumentStatus.EFFECTIVE) and bool({"ADMIN", "QMB"} & roles_global)
+        can_archive = False
+        if doc.status == DocumentStatus.EFFECTIVE:
+            can_archive = self._wf.can_action(
+                action_id="obsolete",
+                roles=roles_module,
+                assigned=assigned,
+                status=doc.status,
+                doc_type=doc.doc_type,
+                actor_id=uid,
+                owner_id=owner_id,
+            )
+        elif doc.status == (self._STATUS_OBSOLETE or DocumentStatus.OBSOLETE):
+            can_archive = self._wf.can_action(
+                action_id="archive",
+                roles=roles_module,
+                assigned=assigned,
+                status=doc.status,
+                doc_type=doc.doc_type,
+                actor_id=uid,
+                owner_id=owner_id,
+            )
 
         can_assign_roles = self.can_assign_roles(doc)
 
         if doc.status == DocumentStatus.DRAFT and not active:
             workflow_text = "Workflow starten"; can_toggle = True
             next_text = "Zur Prüfung einreichen"; can_next = False; can_back = False
+        elif not active:
+            workflow_text = "Kein aktiver Workflow"; can_toggle = False
+            next_text = "Weiter"; can_next = False; can_back = False
         else:
             workflow_text = "Workflow abbrechen"
             starter = (self._get_workflow_starter(doc) or "").strip().lower()
@@ -351,18 +402,25 @@ class DocumentsController:
             can_toggle = self._wf.can_abort_workflow(
                 roles=roles_global, status=doc.status, starter_user_id=starter, current_user_id=uid, active=True
             )
-            if doc.status == DocumentStatus.DRAFT:
-                next_text = "Zur Prüfung einreichen"
-                can_next = self._wf.can_submit_review(roles=roles_global, assigned=assigned, status=doc.status)
-            elif doc.status == DocumentStatus.REVIEW:
-                next_text = "Genehmigen"
-                can_next = self._wf.can_approve(roles=roles_global, assigned=assigned, status=doc.status)
-            elif doc.status == DocumentStatus.APPROVED:
-                next_text = "Veröffentlichen"
-                can_next = self._wf.can_publish(roles=roles_global, assigned=assigned, status=doc.status)
-            else:
-                next_text = "Weiter"; can_next = False
-            can_back = self._wf.can_back_to_draft(roles=roles_global, assigned=assigned, status=doc.status)
+            action_id = self._wf.next_action(
+                roles=roles_module,
+                assigned=assigned,
+                status=doc.status,
+                doc_type=doc.doc_type,
+                actor_id=uid,
+                owner_id=owner_id,
+            )
+            action_labels = {
+                "submit_review": "Zur Prüfung einreichen",
+                "approve": "Freigeben",
+                "publish": "Veröffentlichen",
+                "create_revision": "Revision erstellen",
+                "obsolete": "Außer Kraft setzen",
+                "archive": "Archivieren",
+            }
+            next_text = action_labels.get(action_id or "", "Weiter")
+            can_next = bool(action_id)
+            can_back = self._wf.can_back_to_draft(roles=roles_module, assigned=assigned, status=doc.status)
 
         return ControlsState(
             can_open=can_open,
@@ -457,14 +515,22 @@ class DocumentsController:
 
         user = self._current_user()
         uid = self._uid_from(user) or ""
-        roles_global = self._global_roles_of(user)
+        roles_module = self._module_roles_of(user)
         assigned = self._assigned_roles(doc.doc_id.value, uid)
+        owner_id = self._doc_owner_id(doc)
 
-        action_id = self._wf.next_action(roles=roles_global, assigned=assigned, status=doc.status)
+        action_id = self._wf.next_action(
+            roles=roles_module,
+            assigned=assigned,
+            status=doc.status,
+            doc_type=doc.doc_type,
+            actor_id=uid,
+            owner_id=owner_id,
+        )
         if not action_id:
             return False, "Kein nächster Schritt verfügbar."
 
-        requires_signature = self._wf.requires_signature_for(action_id)
+        requires_signature = self._wf.requires_signature_for(action_id, doc.doc_type)
         reason_for_signature: Optional[str] = None
 
         if requires_signature:
@@ -502,16 +568,21 @@ class DocumentsController:
             if not versioned:
                 return False, "Versionierte PDF konnte nicht abgelegt werden."
 
-        next_status = self._wf.next_status_for(action_id, doc.status)
+        next_status = self._wf.next_status_for(action_id, doc.status, doc.doc_type)
         if not next_status:
             return False, "Zielstatus nicht bestimmbar."
 
         status_reason = None
         try:
-            if self._wf.requires_reason_for(next_status) and callable(ask_reason):
+            if self._wf.requires_reason_for(action_id, next_status) and callable(ask_reason):
                 status_reason = ask_reason()
         except Exception:
             status_reason = None
+
+        if action_id == "create_revision":
+            ok, msg = self._repo.bump_minor_version(doc.doc_id.value, uid, status_reason)
+            if not ok:
+                return False, msg or "Revision konnte nicht angelegt werden."
 
         self._repo.set_status(doc.doc_id.value, next_status, uid, status_reason)
         return True, None
@@ -534,22 +605,38 @@ class DocumentsController:
         return True, ""
 
     def archive(self, doc: DocumentRecord, ask_reason: callable) -> Tuple[bool, str]:
-        status_target = self._STATUS_ARCHIVED or self._STATUS_OBSOLETE
-        if not status_target:
-            return False, "Kein Zielstatus ARCHIVED/OBSOLETE verfügbar."
         user = self._current_user()
-        roles_global = self._global_roles_of(user)
-        if not {"ADMIN", "QMB"} & roles_global:
-            return False, "Archivieren nur für ADMIN oder QMB."
-        if doc.status != DocumentStatus.EFFECTIVE:
-            return False, "Nur wirksame Dokumente können archiviert werden."
+        uid = self.current_user_id() or ""
+        roles_module = self._module_roles_of(user)
+        assigned = self._assigned_roles(doc.doc_id.value, uid)
+        owner_id = self._doc_owner_id(doc)
+
+        if doc.status == DocumentStatus.EFFECTIVE:
+            action_id = "obsolete"
+        elif doc.status == (self._STATUS_OBSOLETE or DocumentStatus.OBSOLETE):
+            action_id = "archive"
+        else:
+            return False, "Nur effektive oder obsolet gesetzte Dokumente können archiviert werden."
+
+        if not self._wf.can_action(
+            action_id=action_id,
+            roles=roles_module,
+            assigned=assigned,
+            status=doc.status,
+            doc_type=doc.doc_type,
+            actor_id=uid,
+            owner_id=owner_id,
+        ):
+            return False, "Archivierung nicht erlaubt."
 
         reason = ask_reason()
         if not reason: return False, "Abgebrochen."
         assert self._repo, "Controller not initialized"
 
-        uid = self.current_user_id() or ""
-        self._repo.set_status(doc.doc_id.value, status_target, uid, reason)
+        next_status = self._wf.next_status_for(action_id, doc.status, doc.doc_type)
+        if not next_status:
+            return False, "Zielstatus nicht bestimmbar."
+        self._repo.set_status(doc.doc_id.value, next_status, uid, reason)
         # Persistenter Flag ist ab Veröffentlichung egal; auf Nummer sicher setzen wir ihn aus:
         self._set_workflow_active(doc.doc_id.value, False)
 

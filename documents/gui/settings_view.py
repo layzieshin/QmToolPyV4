@@ -36,9 +36,9 @@ from documents.logic.rbac_service import RBACService
 class DocumentsSettingsTab(ttk.Frame):
     _FEATURE_ID = "documents"
 
-    def __init__(self, parent: tk.Misc, *, sm: SettingsManager) -> None:
+    def __init__(self, parent: tk.Misc, *, settings_manager: SettingsManager) -> None:
         super().__init__(parent)
-        self._sm = sm
+        self._sm = settings_manager
 
         self.columnconfigure(1, weight=1)
 
@@ -76,6 +76,7 @@ class DocumentsSettingsTab(ttk.Frame):
             ("Admins", "rbac_admins"),
             ("QMB", "rbac_qmb"),
             ("Authors", "rbac_authors"),
+            ("Editors", "rbac_editors"),
             ("Reviewers", "rbac_reviewers"),
             ("Approvers", "rbac_approvers"),
             ("Readers", "rbac_readers"),
@@ -117,6 +118,7 @@ class DocumentsSettingsTab(ttk.Frame):
             "rbac_admins": "",
             "rbac_qmb": "",
             "rbac_authors": "",
+            "rbac_editors": "",
             "rbac_reviewers": "",
             "rbac_approvers": "",
             "rbac_readers": "",
@@ -188,7 +190,7 @@ class DocumentsSettingsTab(ttk.Frame):
 # ---------------- Dialogs ----------------------------------------------------
 
 class ManageRolesDialog(tk.Toplevel):
-    ROLES = ("ADMIN", "QMB", "AUTHOR", "REVIEWER", "APPROVER")  # READER ist implizit
+    ROLES = ("ADMIN", "QMB", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER")  # READER ist implizit
 
     def __init__(self, parent: tk.Misc, *, service: RBACService) -> None:
         super().__init__(parent)
@@ -260,7 +262,7 @@ class ManageRolesDialog(tk.Toplevel):
 
 
 class RoleRequestDialog(tk.Toplevel):
-    ROLES = ("AUTHOR", "REVIEWER", "APPROVER", "QMB", "ADMIN")  # READER implizit
+    ROLES = ("AUTHOR", "EDITOR", "REVIEWER", "APPROVER", "QMB", "ADMIN")  # READER implizit
 
     def __init__(self, parent: tk.Misc, *, service: RBACService) -> None:
         super().__init__(parent)
@@ -362,6 +364,7 @@ def _role_to_key(role: str) -> str:
     if r == "ADMIN": return "rbac_admins"
     if r == "QMB": return "rbac_qmb"
     if r == "AUTHOR": return "rbac_authors"
+    if r == "EDITOR": return "rbac_editors"
     if r == "REVIEWER": return "rbac_reviewers"
     if r == "APPROVER": return "rbac_approvers"
     if r == "READER": return "rbac_readers"

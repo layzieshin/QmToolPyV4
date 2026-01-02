@@ -21,6 +21,11 @@ class DocumentStatus(Enum):
     OBSOLETE = "OBSOLETE"
     ARCHIVED = "ARCHIVED"
 
+    # Backward-compatible aliases
+    IN_REVIEW = "REVIEW"
+    APPROVAL = "APPROVED"
+    PUBLISHED = "EFFECTIVE"
+
 
 @dataclass(frozen=True)
 class DocumentId:
