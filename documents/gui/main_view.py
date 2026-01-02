@@ -1,12 +1,10 @@
 """
 DocumentsView – main list/detail UI for the Documents feature.
 
-This file is UI-only (SRP). All business logic lives in documents.gui.main_view_logic
-and documents.logic.repository. The view:
-- builds the list, details, comments UI
-- collects user input (filters, dialogs)
-- delegates actions to the controller (DocumentsController)
-- reacts to state by (de)activating buttons & labels
+REFACTORED VERSION with new architecture:
+- Uses Service Layer (WorkflowPolicy, PermissionPolicy, UIStateService)
+- Uses Repository with Adapters (DatabaseAdapter, StorageAdapter)
+- Controllers are fully injected with dependencies
 """
 
 from __future__ import annotations
@@ -14,17 +12,43 @@ from __future__ import annotations
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, Optional, List
 
 # Core services / i18n
 from core.common.app_context import AppContext, T  # type: ignore
-from core.settings.logic.settings_manager import SettingsManager  # type: ignore
+from core.settings. logic. settings_manager import SettingsManager  # type: ignore
 
 # Models
-from documents.models.document_models import DocumentRecord, DocumentStatus  # type: ignore
+from documents.models. document_models import DocumentRecord, DocumentStatus  # type: ignore
 
-# Controller / Logic
-from documents.gui.main_view_logic import DocumentsController, Assignments  # type: ignore
+# Controllers (NEW ARCHITECTURE!)
+from documents.controllers import (
+    SearchFilterController,
+    DocumentListController,
+    DocumentDetailsController,
+    DocumentCreationController,
+    WorkflowController,
+    AssignmentController,
+)
+
+# DTOs
+from documents.dto.assignments import Assignments
+from documents.dto.controls_state import ControlsState
+from documents.dto.document_details import DocumentDetails
+
+# Repository
+from documents.repository.sqlite_document_repository import SQLiteDocumentRepository
+from documents.repository.repo_config import RepoConfig
+
+# Adapters
+from documents.adapters. sqlite_adapter import SQLiteAdapter
+from documents.adapters.filesystem_storage_adapter import FilesystemStorageAdapter
+
+# Services
+from documents.services. policy. permission_policy import PermissionPolicy
+from documents.services.policy.workflow_policy import WorkflowPolicy
+from documents.services.policy.signature_policy import SignaturePolicy
+from documents.services.ui_state_service import UIStateService
 
 # Dialogs (optional – degrade gracefully if missing)
 try:
@@ -33,66 +57,178 @@ except Exception:
     AssignRolesDialog = None  # type: ignore
 
 try:
-    from documents.gui.dialogs.metadata_dialog import MetadataDialog  # type: ignore
+    from documents.gui. dialogs.metadata_dialog import MetadataDialog  # type: ignore
 except Exception:
     MetadataDialog = None  # type: ignore
 
-try:
-    from documents.gui.dialogs.change_note_dialog import ChangeNoteDialog  # type: ignore
-except Exception:
-    ChangeNoteDialog = None  # type: ignore
+from pathlib import Path
 
 
 class DocumentsView(ttk.Frame):
     """
-    Tkinter view. GUI only; keeps logic in the controller.
+    Main UI for Documents feature.
+
+    NEW Architecture:
+    - Renders UI only
+    - Delegates all actions to controllers
+    - Controllers use Services (Policy-driven)
+    - Repository uses Adapters (DB/Storage-agnostic)
     """
     _FEATURE_ID = "documents"
 
-    # ------------------------------------------------------------------ init
-    def __init__(self, parent: tk.Misc, *, settings_manager: SettingsManager) -> None:
+    # ================================================================== INIT
+    def __init__(self, parent:  tk.Misc, *, settings_manager: SettingsManager) -> None:
         super().__init__(parent)
 
         self._sm = settings_manager
-        self.ctrl = DocumentsController(settings_manager)
-        self._init_error: Optional[str] = None
+        self._init_error:  Optional[str] = None
+        self._loading:  bool = False  # Guard flag for reload
 
-        # Guard flag to suppress selection handling during reload
-        self._loading: bool = False
-
+        # Initialize repository with adapters
         try:
-            self.ctrl.init()
+            self._repo = self._init_repository()
+            self._rbac = self._init_rbac()
         except Exception as ex:
-            self._init_error = f"Initialization failed: {ex}"
+            self._init_error = f"Repository initialization failed: {ex}"
+            self._repo = None
+            self._rbac = None
 
+        # Initialize controllers with services (NEW!)
+        self._init_controllers()
+
+        # UI state
         self._rows: Dict[str, DocumentRecord] = {}
+        self._current_sort_mode: str = "updated"
+
+        # Build UI
         self._build_ui()
         self._reload()
         self._on_select()
 
-    # --------------------------------------------------------------- UI build
+    def _init_repository(self) -> SQLiteDocumentRepository:
+        """Initialize documents repository with adapters."""
+        base_dir = str(getattr(AppContext, "app_storage_dir", None) or os.getcwd())
+        root_path = self._sm.get(self._FEATURE_ID, "repository_root", os.path.join(base_dir, "documents_repo"))
+        db_path = os.path.join(root_path, "documents.db")
+
+        cfg = RepoConfig(
+            root_path=root_path,
+            db_path=db_path,
+            id_prefix=str(self._sm.get(self._FEATURE_ID, "id_prefix", "DOC")),
+            id_pattern=str(self._sm.get(self._FEATURE_ID, "id_pattern", "{YYYY}-{seq: 04d}")),
+            review_months=int(self._sm.get(self._FEATURE_ID, "review_cycle_months", 24)),
+            watermark_copy=str(self._sm.get(self._FEATURE_ID, "watermark_text", "KONTROLLKOPIE")),
+        )
+
+        # Create adapters (NEW!)
+        db_adapter = SQLiteAdapter(db_path)
+        storage_adapter = FilesystemStorageAdapter(root_path)
+
+        return SQLiteDocumentRepository(cfg, db_adapter=db_adapter, storage_adapter=storage_adapter)
+
+    def _init_rbac(self) -> Optional[Any]:
+        """Initialize RBAC service (optional)."""
+        try:
+            from documents.logic.rbac_service import RBACService
+            if not self._repo:
+                return None
+            db_path = self._repo._cfg.db_path
+            return RBACService(db_path, self._sm)
+        except Exception:
+            return None
+
+    def _init_controllers(self) -> None:
+        """Initialize all controllers with services (Controller Factory)."""
+        if self._init_error or not self._repo:
+            # Fallback:  no controllers
+            self. filter_ctrl = None
+            self.list_ctrl = None
+            self.details_ctrl = None
+            self.creation_ctrl = None
+            self.workflow_ctrl = None
+            self. assignment_ctrl = None
+            return
+
+        # User provider
+        user_provider = lambda: getattr(AppContext, "current_user", None)
+
+        # === Load Policy Services from JSON ===
+        base_dir = Path(__file__).resolve().parents[1]
+
+        self._permission_policy = PermissionPolicy. load_from_directory(base_dir)
+        self._workflow_policy = WorkflowPolicy. load_from_directory(base_dir)
+        self._signature_policy = SignaturePolicy.load_from_directory(base_dir)
+
+        # Create UI state service
+        ui_state_service = UIStateService(
+            permission_policy=self._permission_policy,
+            workflow_policy=self._workflow_policy
+        )
+
+        # === Initialize Controllers ===
+
+        # Filter controller
+        self.filter_ctrl = SearchFilterController(repository=self._repo)
+
+        # List controller
+        self. list_ctrl = DocumentListController(
+            repository=self._repo,
+            filter_controller=self.filter_ctrl
+        )
+
+        # Details controller (uses UIStateService!)
+        self.details_ctrl = DocumentDetailsController(
+            repository=self._repo,
+            ui_state_service=ui_state_service,
+            current_user_provider=user_provider
+        )
+
+        # Creation controller
+        self.creation_ctrl = DocumentCreationController(
+            repository=self._repo,
+            current_user_provider=user_provider
+        )
+
+        # Workflow controller (uses WorkflowPolicy + PermissionPolicy!)
+        self.workflow_ctrl = WorkflowController(
+            repository=self._repo,
+            workflow_policy=self._workflow_policy,
+            permission_policy=self._permission_policy,
+            current_user_provider=user_provider
+        )
+
+        # Assignment controller
+        self.assignment_ctrl = AssignmentController(
+            repository=self._repo,
+            rbac_service=self._rbac
+        )
+
+    # ================================================================== UI BUILD
     def _build_ui(self) -> None:
+        """Build complete UI structure."""
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
+        # Error banner (if init failed)
         if self._init_error:
             ttk.Label(
                 self,
-                text=(T("documents.init_error") or "Problem bei der Modulinitialisierung: ") + str(self._init_error),
+                text=(T("documents. init_error") or "Problem bei der Modulinitialisierung:  ") + str(self._init_error),
                 foreground="#b00020",
                 wraplength=780,
                 justify="left",
             ).grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 4))
 
+        # Header with search/filter
         header = ttk.Frame(self)
         header.grid(row=0 if not self._init_error else 1, column=0, sticky="ew", padx=12, pady=(12, 6))
         header.columnconfigure(10, weight=1)
 
-        ttk.Label(header, text=(T("documents.title") or "Document Control"),
+        ttk.Label(header, text=(T("documents.title") or "Dokumentenlenkung"),
                   font=("Segoe UI", 16, "bold")).grid(row=0, column=0, sticky="w")
 
         # Search
-        ttk.Label(header, text=(T("documents.filter.search") or "Suche")).grid(row=0, column=1, padx=(12, 4))
+        ttk.Label(header, text=(T("documents.filter. search") or "Suche")).grid(row=0, column=1, padx=(12, 4))
         self.e_search = ttk.Entry(header, width=28)
         self.e_search.grid(row=0, column=2, sticky="w")
         ttk.Button(header, text=(T("common.search") or "Suchen"), command=self._reload)\
@@ -129,7 +265,7 @@ class DocumentsView(ttk.Frame):
 
         # Sort
         ttk.Label(header, text=(T("documents.filter.sort") or "Sortierung")).grid(row=0, column=7, padx=(16, 4))
-        self.cb_sort = ttk.Combobox(
+        self.cb_sort = ttk. Combobox(
             header, width=26, state="readonly",
             values=[
                 "Aktualisiert (neueste zuerst)",
@@ -141,11 +277,11 @@ class DocumentsView(ttk.Frame):
         self.cb_sort.current(0)
         self.cb_sort.bind("<<ComboboxSelected>>", lambda e: self._reload())
 
-        # Split
-        body = ttk.Panedwindow(self, orient="horizontal")
+        # Split panel (list | details)
+        body = ttk. Panedwindow(self, orient="horizontal")
         body.grid(row=1 if not self._init_error else 2, column=0, sticky="nsew", padx=12, pady=(4, 12))
 
-        # Left: list
+        # Left:  list
         left = ttk.Frame(body)
         left.columnconfigure(0, weight=1)
         left.rowconfigure(1, weight=1)
@@ -154,11 +290,11 @@ class DocumentsView(ttk.Frame):
         # Toolbar above list
         listbar = ttk.Frame(left)
         listbar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
-        ttk.Button(listbar, text=T("documents.btn.new_from_tpl") or "Neu aus Vorlage", command=self._new_from_template)\
+        ttk.Button(listbar, text=T("documents.btn. new_from_tpl") or "Neu aus Vorlage", command=self._new_from_template)\
             .pack(side="left")
-        ttk.Button(listbar, text=T("documents.btn.import") or "Importieren", command=self._import_file)\
+        ttk.Button(listbar, text=T("documents. btn.import") or "Importieren", command=self._import_file)\
             .pack(side="left", padx=(6, 0))
-        ttk.Button(listbar, text=T("documents.btn.edit_meta") or "Metadaten", command=self._edit)\
+        ttk.Button(listbar, text=T("documents.btn.edit_meta") or "Metadaten", command=self._edit_metadata)\
             .pack(side="left", padx=(6, 0))
 
         # Tree/list
@@ -170,26 +306,26 @@ class DocumentsView(ttk.Frame):
         _c = self.tree.column
         _h("id", text="ID");            _c("id", width=150, stretch=False, anchor="w")
         _h("title", text=T("documents.col.title") or "Titel");  _c("title", width=300, anchor="w")
-        _h("type", text=T("documents.col.type") or "Typ");      _c("type", width=80, anchor="center")
-        _h("status", text=T("documents.col.status") or "Status"); _c("status", width=110, anchor="center")
+        _h("type", text=T("documents. col.type") or "Typ");      _c("type", width=80, anchor="center")
+        _h("status", text=T("documents.col. status") or "Status"); _c("status", width=110, anchor="center")
         _h("ver", text=T("documents.col.version") or "Version");  _c("ver", width=80, anchor="center")
         _h("updated", text=T("documents.col.updated") or "Geändert"); _c("updated", width=150, anchor="center")
         _h("owner", text=T("documents.col.owner") or "Owner");  _c("owner", width=120, anchor="w")
-        _h("active", text=T("documents.col.active") or "Aktiv"); _c("active", width=60, anchor="center")
+        _h("active", text=T("documents.col. active") or "Aktiv"); _c("active", width=60, anchor="center")
 
         self.tree.bind("<<TreeviewSelect>>", lambda e: self._on_select())
 
-        # Right: details
-        right = ttk.Notebook(body)
+        # Right: details (notebook with tabs)
+        right = ttk. Notebook(body)
         body.add(right, weight=2)
 
         self.tab_overview = ttk.Frame(right)
         right.add(self.tab_overview, text=T("documents.tab.overview") or "Übersicht")
-        self._build_overview(self.tab_overview)
+        self._build_overview_tab(self.tab_overview)
 
         self.tab_comments = ttk.Frame(right)
-        right.add(self.tab_comments, text=T("documents.tab.comments") or "Kommentare")
-        self._build_comments(self.tab_comments)
+        right.add(self. tab_comments, text=T("documents.tab.comments") or "Kommentare")
+        self._build_comments_tab(self.tab_comments)
 
         # Footer actions
         footer = ttk.Frame(self)
@@ -198,15 +334,15 @@ class DocumentsView(ttk.Frame):
 
         self.btn_open = ttk.Button(footer, text=T("common.open") or "Öffnen", command=self._open_current)
         self.btn_copy = ttk.Button(footer, text=T("documents.btn.copy") or "Kopie erstellen", command=self._copy)
-        self.btn_assign_roles = ttk.Button(footer, text=T("documents.btn.assign") or "Rollen zuweisen",
+        self.btn_assign_roles = ttk.Button(footer, text=T("documents.btn. assign") or "Rollen zuweisen",
                                            command=lambda: self._assign_roles(force=True))
-        self.btn_workflow = ttk.Button(footer, text=T("documents.btn.workflow.start") or "Workflow starten",
+        self.btn_workflow = ttk.Button(footer, text=T("documents.btn. workflow. start") or "Workflow starten",
                                        command=self._toggle_workflow)
         self.btn_next = ttk.Button(footer, text=T("documents.btn.next") or "Nächster Schritt",
                                    command=self._next_step)
-        self.btn_back_to_draft = ttk.Button(footer, text=T("documents.btn.back") or "Zurück zu Entwurf",
+        self.btn_back_to_draft = ttk.Button(footer, text=T("documents.btn. back") or "Zurück zu Entwurf",
                                             command=self._back_to_draft)
-        self.btn_archive = ttk.Button(footer, text=T("documents.btn.archive") or "Archivieren",
+        self.btn_archive = ttk.Button(footer, text=T("documents.btn. archive") or "Archivieren",
                                       command=self._archive)
         self.btn_refresh = ttk.Button(footer, text=T("common.reload") or "Aktualisieren",
                                       command=self._reload)
@@ -220,41 +356,36 @@ class DocumentsView(ttk.Frame):
         self.btn_archive.grid(row=0, column=6, padx=(0, 6))
         self.btn_refresh.grid(row=0, column=7, sticky="e")
 
-    # --------------------------------------------------------------- UI parts
-    def _build_overview(self, parent: tk.Misc) -> None:
-        """
-        Build the overview tab.
-        Changes in this version:
-        - Metadata block is rendered vertically (label above value, stacked).
-        """
+    def _build_overview_tab(self, parent: tk. Misc) -> None:
+        """Build overview tab (details display)."""
         parent.columnconfigure(1, weight=1)
 
         r = 0
-        ttk.Label(parent, text=T("documents.ov.id") or "Dokumenten-ID:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=(8, 2))
+        ttk.Label(parent, text=T("documents. ov.id") or "Dokumenten-ID:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=(8, 2))
         self.l_id = ttk.Label(parent, text="—"); self.l_id.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=(8, 2)); r += 1
 
         ttk.Label(parent, text=T("documents.ov.title") or "Titel:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_title = ttk.Label(parent, text="—"); self.l_title.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk.Label(parent, text=T("documents.ov.type") or "Typ:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
+        ttk.Label(parent, text=T("documents.ov. type") or "Typ:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_type = ttk.Label(parent, text="—"); self.l_type.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk.Label(parent, text=T("documents.ov.status") or "Status:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
+        ttk.Label(parent, text=T("documents.ov. status") or "Status:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_status = ttk.Label(parent, text="—"); self.l_status.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
         ttk.Label(parent, text=T("documents.ov.version") or "Version:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_version = ttk.Label(parent, text="—"); self.l_version.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk.Label(parent, text=T("documents.ov.updated") or "Geändert:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
+        ttk.Label(parent, text=T("documents. ov.updated") or "Geändert:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_updated = ttk.Label(parent, text="—"); self.l_updated.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
         ttk.Label(parent, text=T("documents.ov.path") or "Aktuelle Datei:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
-        self.l_path = ttk.Label(parent, text="—", justify="left", wraplength=560)
-        self.l_path.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
+        self.l_path = ttk. Label(parent, text="—", justify="left", wraplength=560)
+        self.l_path. grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk.Separator(parent).grid(row=r, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 6)); r += 1
+        ttk. Separator(parent).grid(row=r, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 6)); r += 1
 
-        # Current actors (effective) – unchanged (grid header + one data row)
+        # Current actors
         ttk.Label(parent, text=T("documents.ov.actors") or "Aktuelle Bearbeiter", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8,4), pady=(2,2)); r += 1
         grid = ttk.Frame(parent); grid.grid(row=r, column=0, columnspan=2, sticky="ew", padx=6); r += 1
         for i in range(6):
@@ -262,48 +393,43 @@ class DocumentsView(ttk.Frame):
 
         ttk.Label(grid, text=T("documents.role.editor") or "Bearbeiter").grid(row=0, column=0, sticky="w")
         ttk.Label(grid, text=T("documents.role.reviewer") or "Prüfer").grid(row=0, column=1, sticky="w")
-        ttk.Label(grid, text=T("documents.role.publisher") or "Freigeber").grid(row=0, column=2, sticky="w")
-        ttk.Label(grid, text=T("documents.role.editor_dt") or "Bearb.-Datum").grid(row=0, column=3, sticky="w")
-        ttk.Label(grid, text=T("documents.role.reviewer_dt") or "Prüf.-Datum").grid(row=0, column=4, sticky="w")
+        ttk.Label(grid, text=T("documents. role.publisher") or "Freigeber").grid(row=0, column=2, sticky="w")
+        ttk.Label(grid, text=T("documents. role.editor_dt") or "Bearb.-Datum").grid(row=0, column=3, sticky="w")
+        ttk.Label(grid, text=T("documents. role.reviewer_dt") or "Prüf.-Datum").grid(row=0, column=4, sticky="w")
         ttk.Label(grid, text=T("documents.role.publisher_dt") or "Freig.-Datum").grid(row=0, column=5, sticky="w")
 
-        self.l_exec_editor = ttk.Label(grid, text="—");        self.l_exec_editor.grid(row=1, column=0, sticky="w")
-        self.l_exec_reviewer = ttk.Label(grid, text="—");      self.l_exec_reviewer.grid(row=1, column=1, sticky="w")
-        self.l_exec_publisher = ttk.Label(grid, text="—");     self.l_exec_publisher.grid(row=1, column=2, sticky="w")
+        self.l_exec_editor = ttk.Label(grid, text="—");        self.l_exec_editor. grid(row=1, column=0, sticky="w")
+        self.l_exec_reviewer = ttk.Label(grid, text="—");      self.l_exec_reviewer. grid(row=1, column=1, sticky="w")
+        self.l_exec_publisher = ttk.Label(grid, text="—");     self.l_exec_publisher. grid(row=1, column=2, sticky="w")
         self.l_dt_editor = ttk.Label(grid, text="—");          self.l_dt_editor.grid(row=1, column=3, sticky="w")
-        self.l_dt_reviewer = ttk.Label(grid, text="—");        self.l_dt_reviewer.grid(row=1, column=4, sticky="w")
+        self.l_dt_reviewer = ttk.Label(grid, text="—");        self.l_dt_reviewer. grid(row=1, column=4, sticky="w")
         self.l_dt_publisher = ttk.Label(grid, text="—");       self.l_dt_publisher.grid(row=1, column=5, sticky="w")
 
         ttk.Separator(parent).grid(row=r, column=0, columnspan=2, sticky="ew", padx=8, pady=(12, 6)); r += 1
 
-        # -------------------- Metadata block (VERTICAL layout: label above value)
+        # Metadata (vertical layout)
         meta = ttk.Frame(parent)
         meta.grid(row=r, column=0, columnspan=2, sticky="ew", padx=6, pady=(0, 8))
         meta.columnconfigure(0, weight=1)
 
         def _mkrow_vertical(label_text: str) -> ttk.Label:
-            """
-            Create a vertical field: bold label on first line, value on second line.
-            Returns the ttk.Label that holds the value.
-            """
             row = ttk.Frame(meta)
             row.grid(sticky="ew", pady=(2, 4))
-            # Label (bold)
             ttk.Label(row, text=label_text + ":", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-            # Value (wrapped)
             val = ttk.Label(row, text="—", justify="left", wraplength=560)
             val.pack(anchor="w", padx=(12, 0))
             return val
 
-        self._meta_map: Dict[str, ttk.Label] = {
+        self._meta_map:  Dict[str, ttk.Label] = {
             "l_desc": _mkrow_vertical(T("documents.meta.description") or "Beschreibung"),
             "l_dtype": _mkrow_vertical(T("documents.meta.type") or "Dokumententyp"),
             "l_actual_ftype": _mkrow_vertical(T("documents.meta.actual_filetype") or "Dateityp (aktuell)"),
-            "l_valid": _mkrow_vertical(T("documents.meta.valid_by_date") or "Gültig bis"),
+            "l_valid":  _mkrow_vertical(T("documents.meta.valid_by_date") or "Gültig bis"),
             "l_lastmod": _mkrow_vertical(T("documents.meta.last_modified") or "Zuletzt geändert"),
         }
 
-    def _build_comments(self, parent: tk.Misc) -> None:
+    def _build_comments_tab(self, parent: tk.Misc) -> None:
+        """Build comments tab."""
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
 
@@ -321,190 +447,179 @@ class DocumentsView(ttk.Frame):
         self.tv_comments.column("preview", width=520, anchor="w")
         self.tv_comments.bind("<Double-1>", self._open_comment_detail)
 
-    # --------------------------------------------------------------- list ops
+    # ================================================================== LIST OPERATIONS
     def _status_from_combo(self) -> Optional[DocumentStatus]:
+        """Extract DocumentStatus from combo selection."""
         m = {
             (T("documents.status.draft") or "Entwurf"): DocumentStatus.DRAFT,
             (T("documents.status.review") or "Prüfung"): DocumentStatus.REVIEW,
-            (T("documents.status.approved") or "Freigegeben"): DocumentStatus.APPROVED,
+            (T("documents. status.approved") or "Freigegeben"): DocumentStatus.APPROVED,
             (T("documents.status.effective") or "Gültig"): DocumentStatus.EFFECTIVE,
-            (T("documents.status.revision") or "Revision"): DocumentStatus.REVISION,
+            (T("documents.status. revision") or "Revision"): DocumentStatus.REVISION,
             (T("documents.status.obsolete") or "Obsolet"): DocumentStatus.OBSOLETE,
             (T("documents.status.archived") or "Archiviert"): DocumentStatus.ARCHIVED,
         }
         txt = (self.cb_status.get() or "").strip()
         return m.get(txt, None)
 
-    def _apply_sort(self, items: List[DocumentRecord], sort_mode: str) -> List[DocumentRecord]:
-        mode = (sort_mode or "").lower()
-        if mode.startswith("status"):
-            order = {
-                DocumentStatus.DRAFT: 0,
-                DocumentStatus.REVIEW: 1,
-                DocumentStatus.APPROVED: 2,
-                DocumentStatus.EFFECTIVE: 3,
-                DocumentStatus.REVISION: 4,
-                DocumentStatus.OBSOLETE: 5,
-                DocumentStatus.ARCHIVED: 6,
-            }
-            return sorted(items, key=lambda r: order.get(r.status, 99))
-        if mode.startswith("titel") or mode.startswith("title"):
-            return sorted(items, key=lambda r: (r.title or "").lower())
-        # default: updated desc
-        return sorted(items, key=lambda r: (r.updated_at or ""), reverse=True)
-
     def _reload(self) -> None:
-        """Reload the list according to filters."""
-        if self._init_error:
+        """Reload list via DocumentListController."""
+        if self._init_error or not self. list_ctrl:
             return
         if self._loading:
             return
+
         self._loading = True
         try:
             # Clear table
-            try:
-                for iid in self.tree.get_children():
-                    self.tree.delete(iid)
-            except Exception:
-                pass
-            self._rows.clear()
+            for iid in self.tree.get_children():
+                self.tree.delete(iid)
+            self._rows. clear()
 
-            # Fetch
+            # Collect filters
             search = self.e_search.get().strip() or None
             status = self._status_from_combo()
             active_only = bool(self.var_active_only.get())
-            sort_mode = (self.cb_sort.get() or "").strip()
+            sort_mode_text = (self.cb_sort.get() or "").strip()
 
-            # IMPORTANT: controller signature is usually (text, status, active_only)
-            try:
-                rows: List[DocumentRecord] = self.ctrl.list_documents(search, status, active_only)
-            except TypeError:
-                # Fallback: some implementations may still use keywords or different order
-                try:
-                    rows = self.ctrl.list_documents(text=search, status=status, active_only=active_only)  # type: ignore
-                except Exception:
-                    rows = self.ctrl.list_documents(search, status)  # type: ignore
+            # Map to sort mode
+            if sort_mode_text. startswith("Status"):
+                sort_mode = "status"
+            elif sort_mode_text.startswith("Titel"):
+                sort_mode = "title"
+            else:
+                sort_mode = "updated"
 
-            # Local sort (controller/repo returns "updated desc" by default)
-            rows = self._apply_sort(rows, sort_mode)
+            self._current_sort_mode = sort_mode
 
-            # Fill
-            for r in rows:
-                iid = str(getattr(r.doc_id, "value", r.doc_id))
-                if iid.startswith("<class"):
-                    iid = str(r.doc_id.value if hasattr(r.doc_id, "value") else r.doc_id)
-                ver = f"{getattr(r, 'version_major', 1)}.{getattr(r, 'version_minor', 0)}"
-                updated = getattr(r, "updated_at", "") or ""
-                owner = getattr(r, "created_by", "") or ""
-                active = "✓" if r.status in (
+            # Load via controller
+            documents = self.list_ctrl.load_documents(
+                text=search,
+                status=status,
+                active_only=active_only,
+                sort_mode=sort_mode
+            )
+
+            # Fill tree
+            for rec in documents:
+                iid = str(rec. doc_id. value if hasattr(rec.doc_id, "value") else rec.doc_id)
+                ver = f"{rec.version_major}.{rec.version_minor}"
+                updated = str(rec.updated_at) if rec.updated_at else ""
+                owner = str(rec.created_by) if rec.created_by else ""
+                active = "✓" if rec.status in (
                     DocumentStatus.DRAFT,
                     DocumentStatus.REVIEW,
-                    DocumentStatus.APPROVED,
-                    DocumentStatus.EFFECTIVE,
+                    DocumentStatus. APPROVED,
+                    DocumentStatus. EFFECTIVE,
                     DocumentStatus.REVISION,
                 ) else ""
-                self.tree.insert(
+
+                self.tree. insert(
                     "", "end", iid=iid,
-                    values=(iid, r.title or "", r.doc_type or "", r.status.name if hasattr(r.status, "name") else str(r.status),
-                            ver, updated, owner, active)
+                    values=(
+                        iid,
+                        rec.title or "",
+                        rec. doc_type or "",
+                        rec.status. name if hasattr(rec.status, "name") else str(rec.status),
+                        ver,
+                        updated,
+                        owner,
+                        active
+                    )
                 )
-                self._rows[iid] = r
+                self._rows[iid] = rec
         finally:
             self._loading = False
+
         self._on_select()
 
-    # --------------------------------------------------------------- selection
+    # ================================================================== SELECTION
     def _selected_record(self) -> Optional[DocumentRecord]:
+        """Get currently selected document record."""
         sel = self.tree.selection()
         if not sel:
             return None
         iid = sel[0]
-        rec = self._rows.get(iid)
+        rec = self._rows. get(iid)
         if rec:
             return rec
-        try:
-            return self.ctrl.get_document(iid)
-        except Exception:
-            return None
+
+        # Fallback:  load from controller
+        if self. list_ctrl:
+            return self.list_ctrl.get_document(iid)
+        return None
 
     def _on_select(self) -> None:
+        """Handle selection change."""
         if self._loading:
             return
+
         rec = self._selected_record()
         self._fill_overview(rec)
         self._fill_comments(rec)
         self._refresh_controls(rec)
 
-    # --------------------------------------------------------------- details
+    # ================================================================== DETAILS RENDERING
     def _fill_overview(self, rec: Optional[DocumentRecord]) -> None:
+        """Fill overview tab with details from DocumentDetailsController."""
         def _set(lbl: ttk.Label, val: Any) -> None:
             lbl.configure(text=str(val) if val not in (None, "") else "—")
 
         if not rec:
+            # Clear all
             _set(self.l_id, "—"); _set(self.l_title, "—"); _set(self.l_type, "—")
             _set(self.l_status, "—"); _set(self.l_version, "—"); _set(self.l_updated, "—")
             _set(self.l_path, "—")
-            for k in self._meta_map.values():
-                k.configure(text="—")
+            for lbl in self._meta_map.values():
+                lbl.configure(text="—")
             for lbl in (self.l_exec_editor, self.l_exec_reviewer, self.l_exec_publisher,
                         self.l_dt_editor, self.l_dt_reviewer, self.l_dt_publisher):
-                lbl.configure(text="—")
+                lbl. configure(text="—")
             return
 
-        _set(self.l_id, getattr(rec.doc_id, "value", rec.doc_id))
-        _set(self.l_title, rec.title or "")
-        _set(self.l_type, rec.doc_type or "")
-        _set(self.l_status, rec.status.name if hasattr(rec.status, "name") else str(rec.status))
-        _set(self.l_version, f"{getattr(rec, 'version_major', 1)}.{getattr(rec, 'version_minor', 0)}")
-        _set(self.l_updated, getattr(rec, "updated_at", "") or "")
-        _set(self.l_path, getattr(rec, "current_file_path", "") or "")
+        # Get details via controller
+        if not self.details_ctrl:
+            return
 
-        # Effective actors for current step
-        try:
-            exec_info: Dict[str, Any] = {}
-            if hasattr(self.ctrl, "get_actual_actors"):
-                exec_info = self.ctrl.get_actual_actors(rec) or {}
-        except Exception:
-            exec_info = {}
+        details:  Optional[DocumentDetails] = self.details_ctrl.get_details(rec.doc_id.value)
+        if not details:
+            return
 
-        _set(self.l_exec_editor, exec_info.get("editor") or "—")
-        _set(self.l_exec_reviewer, exec_info.get("reviewer") or "—")
-        _set(self.l_exec_publisher, exec_info.get("publisher") or "—")
-        _set(self.l_dt_editor, exec_info.get("editor_dt") or "—")
-        _set(self.l_dt_reviewer, exec_info.get("reviewer_dt") or "—")
-        _set(self.l_dt_publisher, exec_info.get("publisher_dt") or "—")
+        # Basic fields
+        _set(self.l_id, details.doc_id)
+        _set(self.l_title, details.title)
+        _set(self.l_type, details.doc_type)
+        _set(self.l_status, details.status)
+        _set(self.l_version, details.version_label)
+        _set(self.l_updated, str(rec.updated_at) if rec.updated_at else "")
+        _set(self.l_path, details.current_file_path)
 
-        # Meta & docx-extracted info
-        details: Dict[str, Any] = {}
-        try:
-            if hasattr(self.ctrl, "get_document_details"):
-                details = self.ctrl.get_document_details(rec) or {}
-        except Exception:
-            details = {}
+        # Actors
+        _set(self.l_exec_editor, details.editor)
+        _set(self.l_exec_reviewer, details.reviewer)
+        _set(self.l_exec_publisher, details.publisher)
+        _set(self.l_dt_editor, details. editor_dt)
+        _set(self.l_dt_reviewer, details.reviewer_dt)
+        _set(self.l_dt_publisher, details.publisher_dt)
 
-        self._meta_map["l_desc"].configure(text=details.get("description") or "—")
-        self._meta_map["l_dtype"].configure(text=details.get("documenttype") or rec.doc_type or "—")
-        path = rec.current_file_path or ""
-        ftype = details.get("actual_filetype") or (os.path.splitext(path)[1][1:].upper() if path else "—")
-        self._meta_map["l_actual_ftype"].configure(text=ftype)
-        self._meta_map["l_valid"].configure(text=details.get("valid_by_date") or "—")
-        self._meta_map["l_lastmod"].configure(text=details.get("last_modified") or getattr(rec, "updated_at", "") or "—")
+        # Metadata
+        self._meta_map["l_desc"].configure(text=details.description or "—")
+        self._meta_map["l_dtype"].configure(text=details. documenttype or "—")
+        self._meta_map["l_actual_ftype"].configure(text=details.actual_filetype or "—")
+        self._meta_map["l_valid"].configure(text=details.valid_by_date or "—")
+        self._meta_map["l_lastmod"].configure(text=details.last_modified or "—")
 
     def _fill_comments(self, rec: Optional[DocumentRecord]) -> None:
-        try:
-            for i in self.tv_comments.get_children():
-                self.tv_comments.delete(i)
-        except Exception:
-            pass
-        if not rec:
+        """Fill comments tab."""
+        # Clear tree
+        for i in self.tv_comments.get_children():
+            self.tv_comments.delete(i)
+
+        if not rec or not self.details_ctrl:
             return
-        repo = getattr(self.ctrl, "_repo", None)
-        if not repo:
-            return
-        try:
-            comments = repo.list_comments(rec.doc_id.value)
-        except Exception:
-            comments = []
+
+        # Get comments via controller
+        comments = self.details_ctrl.get_comments(rec.doc_id. value)
 
         def preview(text: str, n: int = 40) -> str:
             text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
@@ -513,147 +628,452 @@ class DocumentsView(ttk.Frame):
         for c in (comments or []):
             try:
                 self.tv_comments.insert("", "end",
-                                        values=(c.get("author"), c.get("date"), preview(c.get("text", ""))))
+                                        values=(c. get("author"), c.get("date"), preview(c.get("text", ""))))
             except Exception:
                 continue
 
     def _open_comment_detail(self, event=None) -> None:
-        """Modal window with full comment text."""
+        """Show full comment in modal window."""
         if self._loading:
             return
+
         sel = self.tv_comments.selection()
         if not sel:
             return
+
         item = self.tv_comments.item(sel[0])
         vals = item.get("values") or []
         author = vals[0] if len(vals) > 0 else ""
         date = vals[1] if len(vals) > 1 else ""
-        full_text = ""
 
+        # Get full text
         rec = self._selected_record()
-        repo = getattr(self.ctrl, "_repo", None)
+        if not rec or not self.details_ctrl:
+            return
 
-        if repo and rec:
-            try:
-                for c in repo.list_comments(rec.doc_id.value):
-                    if (c.get("author") == author) and (c.get("date") == date):
-                        full_text = c.get("text") or ""
-                        break
-            except Exception:
-                pass
+        full_text = ""
+        comments = self.details_ctrl.get_comments(rec.doc_id.value)
+        for c in comments:
+            if (c.get("author") == author) and (c.get("date") == date):
+                full_text = c.get("text") or ""
+                break
 
-        if not full_text and len(vals) > 2:
-            full_text = str(vals[2])
-
+        # Show modal
         win = tk.Toplevel(self)
         win.title(T("documents.comments.detail") or "Kommentar")
         win.geometry("700x440")
         frm = ttk.Frame(win, padding=12); frm.pack(fill="both", expand=True)
         ttk.Label(frm, text=f"Author: {author or '—'}").pack(anchor="w")
-        ttk.Label(frm, text=f"Date:   {date or '—'}").pack(anchor="w")
+        ttk.Label(frm, text=f"Date:    {date or '—'}").pack(anchor="w")
         txt = tk.Text(frm, wrap="word", height=16)
         txt.pack(fill="both", expand=True, pady=(8, 0))
         txt.insert("1.0", full_text or "(kein Text)")
         txt.configure(state="disabled")
         ttk.Button(frm, text=T("common.close") or "Schließen", command=win.destroy).pack(anchor="e", pady=(8, 0))
 
-    # --------------------------------------------------------------- actions
+    # ================================================================== CONTROLS STATE
     def _refresh_controls(self, rec: Optional[DocumentRecord]) -> None:
+        """Update button states via DocumentDetailsController (NEW ARCHITECTURE!)."""
+        # Default:  all disabled
         for btn in [self.btn_workflow, self.btn_next, self.btn_back_to_draft, self.btn_archive, self.btn_open, self.btn_copy]:
             btn.configure(state="disabled")
         self.btn_assign_roles.configure(state="disabled")
 
-        if not rec:
+        if not rec or not self.details_ctrl:
+            self.btn_workflow.configure(text="Workflow")
+            self.btn_next. configure(text="Nächster Schritt")
             return
 
-        state = self.ctrl.compute_controls_state(rec)
+        # Get user roles (NEW:  using PermissionPolicy)
+        user = getattr(AppContext, "current_user", None)
+        user_roles = self._get_user_roles(user)
+        assigned_roles = self._get_assigned_roles(rec.doc_id.value, user)
 
+        # Compute state via controller (NEW!)
+        state:  ControlsState = self.details_ctrl. compute_controls_state(
+            rec,
+            user_roles=user_roles,
+            assigned_roles=assigned_roles
+        )
+
+        # Apply state
         self.btn_workflow.configure(text=state.workflow_text)
         self.btn_next.configure(text=state.next_text)
 
         self.btn_open.configure(state=("normal" if state.can_open else "disabled"))
-        self.btn_copy.configure(state=("normal" if state.can_copy else "disabled"))
-        # names aligned with controller state
-        self.btn_assign_roles.configure(
-            state=("normal" if state.can_assign_roles else "disabled")
-        )
-        self.btn_workflow.configure(
-            state=("normal" if state.can_toggle_workflow else "disabled")
-        )
+        self.btn_copy.configure(state=("normal" if state. can_copy else "disabled"))
+        self.btn_assign_roles.configure(state=("normal" if state.can_assign_roles else "disabled"))
+        self.btn_workflow.configure(state=("normal" if state.can_toggle_workflow else "disabled"))
         self.btn_next.configure(state=("normal" if state.can_next else "disabled"))
         self.btn_back_to_draft.configure(state=("normal" if state.can_back_to_draft else "disabled"))
         self.btn_archive.configure(state=("normal" if state.can_archive else "disabled"))
 
+    def _get_user_roles(self, user: object) -> list[str]:
+        """Get user's module roles (NEW: checks both global roles and module RBAC)."""
+        if not user:
+            return []
+
+        roles = []
+
+        # Check global roles from user object
+        if hasattr(user, 'roles'):
+            user_roles = getattr(user, 'roles', [])
+            if isinstance(user_roles, (list, set)):
+                for r in user_roles:
+                    role_name = str(r. name if hasattr(r, 'name') else r).upper()
+                    if role_name in ("ADMIN", "QMB", "AUTHOR", "REVIEWER", "APPROVER"):
+                        roles.append(role_name)
+
+        if hasattr(user, 'role'):
+            role = getattr(user, 'role', None)
+            if role:
+                role_name = str(role.name if hasattr(role, 'name') else role).upper()
+                if role_name in ("ADMIN", "QMB", "AUTHOR", "REVIEWER", "APPROVER"):
+                    if role_name not in roles:
+                        roles.append(role_name)
+
+        # TODO: Add module-specific RBAC check via PermissionPolicy
+
+        return roles
+
+    def _get_assigned_roles(self, doc_id: str, user: object) -> list[str]:
+        """Get user's assigned roles on this document."""
+        if not user or not self._repo:
+            return []
+
+        user_id = self._get_user_id_from_object(user)
+        if not user_id:
+            return []
+
+        assignees = self._repo.get_assignees(doc_id)
+        assigned = []
+
+        for role, users in assignees.items():
+            if user_id. lower() in [str(u).lower() for u in users]:
+                assigned.append(role)
+
+        return assigned
+
+    def _get_user_id_from_object(self, user: object) -> Optional[str]:
+        """Extract user ID from user object."""
+        for attr in ("id", "user_id", "uid"):
+            val = getattr(user, attr, None)
+            if val:
+                return str(val)
+        return None
+
+    # ================================================================== ACTIONS
     def _toggle_workflow(self) -> None:
+        """Toggle workflow (start or abort)."""
         rec = self._selected_record()
-        if not rec:
+        if not rec or not self.workflow_ctrl:
             return
 
-        st = self.ctrl.compute_controls_state(rec)
-        if "abbrechen" in st.workflow_text.lower() or "abort" in st.workflow_text.lower():
-            pwd = simpledialog.askstring(T("documents.ask.pwd.title") or "Passwort",
-                                         T("documents.ask.pwd") or "Bitte Passwort eingeben:",
-                                         parent=self, show="*")
+        # Check if abort or start
+        state = self.details_ctrl.compute_controls_state(
+            rec,
+            user_roles=self._get_user_roles(getattr(AppContext, "current_user", None)),
+            assigned_roles=self._get_assigned_roles(rec. doc_id.value, getattr(AppContext, "current_user", None))
+        )
+        is_abort = "abbrechen" in state.workflow_text. lower() or "abort" in state.workflow_text.lower()
+
+        if is_abort:
+            # Abort workflow
+            pwd = simpledialog.askstring(
+                T("documents.ask. pwd. title") or "Passwort",
+                T("documents.ask.pwd") or "Bitte Passwort eingeben:",
+                parent=self, show="*"
+            )
             if not pwd:
                 return
+
             reason = self._ask_reason(T("documents.reason.abort") or "Grund – Abbrechen")
             if reason is None:
                 return
-            ok, msg = self.ctrl.abort_workflow(rec, pwd, reason)
-        else:
-            ok = self.ctrl.start_workflow(rec, ensure_assignments=lambda: self._assign_roles(force=True))
-            msg = None
 
-        if not ok and msg:
-            messagebox.showerror(T("documents.workflow.err") or "Workflow", msg, parent=self)
+            user_roles = self._get_user_roles(getattr(AppContext, "current_user", None))
+            success, error_msg = self. workflow_ctrl.abort_workflow(
+                rec.doc_id.value, pwd, reason, user_roles=user_roles
+            )
+        else:
+            # Start workflow
+            user_roles = self._get_user_roles(getattr(AppContext, "current_user", None))
+            success, error_msg = self.workflow_ctrl.start_workflow(
+                rec.doc_id.value,
+                user_roles=user_roles,
+                ensure_assignments_callback=lambda: self._assign_roles(force=True)
+            )
+
+        if not success:
+            messagebox.showerror(T("documents.workflow.err") or "Workflow", error_msg or "Fehler", parent=self)
+
         self._reload()
 
     def _next_step(self) -> None:
+        """Execute next workflow step."""
         rec = self._selected_record()
-        if not rec:
+        if not rec or not self.workflow_ctrl:
             return
+
         reason = self._ask_reason(self.btn_next.cget("text"))
         if reason is None:
             return
-        ok, msg = self.ctrl.forward_transition(
-            rec,
-            ask_reason=lambda: reason,
-            sign_pdf=self._interactive_sign,  # MUST accept (pdf_path, reason) and return signed path or None
+
+        user = getattr(AppContext, "current_user", None)
+        user_roles = self._get_user_roles(user)
+        assigned_roles = self._get_assigned_roles(rec.doc_id.value, user)
+
+        success, error_msg = self.workflow_ctrl.forward_transition(
+            rec.doc_id.value,
+            reason,
+            user_roles=user_roles,
+            assigned_roles=assigned_roles,
+            sign_pdf_callback=self._interactive_sign
         )
-        if not ok and msg:
-            messagebox.showerror(T("documents.next.err") or "Fehler", msg, parent=self)
+
+        if not success:
+            messagebox.showerror(T("documents.next.err") or "Fehler", error_msg or "Fehler", parent=self)
+
         self._reload()
 
     def _back_to_draft(self) -> None:
+        """Revert to DRAFT."""
         rec = self._selected_record()
-        if not rec:
+        if not rec or not self.workflow_ctrl:
             return
+
         reason = self._ask_reason(T("documents.reason.back") or "Grund – Zurücksetzen")
         if reason is None:
             return
-        ok, msg = self.ctrl.backward_to_draft(rec, reason)
-        if not ok and msg:
-            messagebox.showerror(T("documents.back.err") or "Fehler", msg, parent=self)
+
+        user_roles = self._get_user_roles(getattr(AppContext, "current_user", None))
+        success, error_msg = self.workflow_ctrl.backward_to_draft(
+            rec. doc_id.value, reason, user_roles=user_roles
+        )
+
+        if not success:
+            messagebox.showerror(T("documents.back.err") or "Fehler", error_msg or "Fehler", parent=self)
+
         self._reload()
 
     def _archive(self) -> None:
+        """Archive document."""
         rec = self._selected_record()
-        if not rec:
+        if not rec or not self.workflow_ctrl:
             return
+
         reason = self._ask_reason(T("documents.reason.archive") or "Grund – Archivieren")
         if reason is None:
             return
-        ok, msg = self.ctrl.archive(rec, ask_reason=lambda: reason)
-        if not ok and msg:
-            messagebox.showerror(T("documents.archive.err") or "Fehler", msg, parent=self)
+
+        user_roles = self._get_user_roles(getattr(AppContext, "current_user", None))
+        success, error_msg = self.workflow_ctrl.archive(
+            rec.doc_id. value, reason, user_roles=user_roles
+        )
+
+        if not success:
+            messagebox.showerror(T("documents.archive.err") or "Fehler", error_msg or "Fehler", parent=self)
+
         self._reload()
 
-    # ----------------------------------------------------------- helper dialogs
+    # ================================================================== CREATION
+    def _new_from_template(self) -> None:
+        """Create document from template."""
+        if not self. creation_ctrl:
+            return
+
+        proj_root = os.path.abspath(os.getcwd())
+        tdir = os.path.join(proj_root, "templates")
+
+        if not os.path. isdir(tdir):
+            messagebox.showwarning(
+                title=(T("documents.tpl.missing. title") or "Keine Vorlagen"),
+                message=(T("documents. tpl.missing.msg") or "Ordner nicht gefunden:  ") + tdir,
+                parent=self
+            )
+            return
+
+        path = filedialog.askopenfilename(
+            parent=self,
+            title=(T("documents.tpl.choose") or "Vorlage wählen"),
+            initialdir=tdir,
+            filetypes=[("DOCX", "*.docx"), ("All", "*.*")]
+        )
+
+        if not path:
+            return
+
+        success, error_msg, record = self.creation_ctrl.create_from_template(path, doc_type="SOP")
+
+        if not success:
+            messagebox.showerror("Fehler", error_msg or "Fehler beim Erstellen", parent=self)
+            return
+
+        messagebox.showinfo(
+            title=(T("documents.tpl.created") or "Dokument erstellt"),
+            message=(T("documents.tpl.created.msg") or "Erstellt aus Vorlage: ") + (record. doc_id.value if record else ""),
+            parent=self
+        )
+        self._reload()
+
+    def _import_file(self) -> None:
+        """Import DOCX file."""
+        if not self.creation_ctrl:
+            return
+
+        path = filedialog.askopenfilename(
+            parent=self,
+            title=(T("documents.import.title") or "Dokument importieren"),
+            filetypes=[("DOCX", "*.docx"), ("All", "*.*")]
+        )
+
+        if not path:
+            return
+
+        success, error_msg, record = self.creation_ctrl.import_file(path, doc_type="SOP")
+
+        if not success:
+            messagebox.showerror("Fehler", error_msg or "Import fehlgeschlagen", parent=self)
+            return
+
+        messagebox.showinfo(
+            title=(T("documents.import. ok") or "Importiert"),
+            message=(T("documents.import.msg") or "Dokument angelegt: ") + (record.doc_id.value if record else ""),
+            parent=self
+        )
+        self._reload()
+
+    def _edit_metadata(self) -> None:
+        """Edit document metadata."""
+        if not self.creation_ctrl:
+            return
+
+        rec = self._selected_record()
+        if not rec:
+            return
+
+        if not MetadataDialog:
+            messagebox.showinfo("Metadata", "Metadata dialog not available.", parent=self)
+            return
+
+        allowed = [t. strip() for t in str(self._sm. get(self._FEATURE_ID, "allowed_types", "SOP,WI,FB,CL")).split(",")]
+        dlg = MetadataDialog(self, rec, allowed_types=allowed)
+        self. wait_window(dlg)
+        result = getattr(dlg, "result", None)
+
+        if result:
+            metadata = {
+                "title": result.title,
+                "doc_type": result.doc_type,
+                "area":  result.area,
+                "process": result.process,
+                "next_review":  result.next_review,
+            }
+            success, error_msg = self.creation_ctrl.update_metadata(rec.doc_id.value, metadata)
+
+            if not success:
+                messagebox.showerror("Fehler", error_msg or "Fehler beim Speichern", parent=self)
+            else:
+                self._reload()
+                self._on_select()
+
+    def _open_current(self) -> None:
+        """Open current document file."""
+        rec = self._selected_record()
+        if not rec:
+            return
+
+        path = rec.current_file_path
+        if not path or not os.path.isfile(path):
+            messagebox.showerror(
+                title=(T("documents.open.error") or "Öffnen fehlgeschlagen"),
+                message=T("documents.open.nofile") or "Datei nicht gefunden.",
+                parent=self
+            )
+            return
+
+        try:
+            if os.name == "nt":
+                os.startfile(path)  # type: ignore[attr-defined]
+            elif os.name == "posix":
+                import subprocess
+                subprocess. Popen(["xdg-open", path])
+            else:
+                messagebox.showinfo("Open", path, parent=self)
+        except Exception as ex:
+            messagebox.showerror(title=(T("documents.open.error") or "Open failed"), message=str(ex), parent=self)
+
+    def _copy(self) -> None:
+        """Copy EFFECTIVE document to destination."""
+        rec = self._selected_record()
+        if not rec or rec.status != DocumentStatus.EFFECTIVE:
+            return
+
+        dest_dir = filedialog.askdirectory(parent=self, title=(T("documents.copy.choose_dest") or "Zielordner wählen"))
+        if not dest_dir:
+            return
+
+        try:
+            out = self._repo.copy_to_destination(rec.doc_id.value, dest_dir)
+            if out:
+                messagebox.showinfo(
+                    title=(T("documents.copy.ok") or "Kopie erstellt"),
+                    message=(T("documents.copy.done") or "Kopie erstellt in: ") + out,
+                    parent=self
+                )
+        except Exception as ex:
+            messagebox.showerror("Copy", str(ex), parent=self)
+
+    # ================================================================== ASSIGNMENTS
+    def _assign_roles(self, force: bool = False) -> bool:
+        """Open role assignment dialog."""
+        rec = self._selected_record()
+        if not rec or not self.assignment_ctrl:
+            return False
+
+        current = self.assignment_ctrl.get_assignees(rec.doc_id. value)
+        users = self. assignment_ctrl.get_available_users()
+
+        if force or not any(current. get(k) for k in ("AUTHOR", "REVIEWER", "APPROVER")):
+            if AssignRolesDialog:
+                dlg = AssignRolesDialog(self, users=users, current=current)
+                self.wait_window(dlg)
+                result = getattr(dlg, "result", None)
+                if not result:
+                    return False
+
+                assignments = Assignments(
+                    authors=result.get("AUTHOR", []),
+                    reviewers=result.get("REVIEWER", []),
+                    approvers=result.get("APPROVER", [])
+                )
+            else:
+                # Fallback:  simple dialogs
+                authors = simpledialog.askstring("Rollen", "Bearbeiter (',' getrennt):", parent=self) or ""
+                reviewers = simpledialog.askstring("Rollen", "Prüfer (',' getrennt):", parent=self) or ""
+                approvers = simpledialog.askstring("Rollen", "Freigeber (',' getrennt):", parent=self) or ""
+                assignments = Assignments(
+                    authors=[s.strip() for s in authors.split(",") if s.strip()],
+                    reviewers=[s.strip() for s in reviewers.split(",") if s.strip()],
+                    approvers=[s.strip() for s in approvers.split(",") if s.strip()],
+                )
+
+            # Validate and save
+            success, error_msg = self.assignment_ctrl.set_assignees(rec.doc_id. value, assignments)
+            if not success:
+                messagebox.showerror(T("documents.assign.err") or "Fehler", error_msg or "Fehler", parent=self)
+                return False
+
+        return True
+
+    # ================================================================== HELPERS
     def _ask_reason(self, title: str) -> Optional[str]:
-        s = simpledialog.askstring(T("documents.ask.reason.title") or "Begründung",
-                                   (T("documents.ask.reason") or "Bitte eine kurze Begründung eingeben:")
-                                   + f"\n({title})",
-                                   parent=self)
+        """Ask for reason (change note)."""
+        s = simpledialog.askstring(
+            T("documents.ask.reason. title") or "Begründung",
+            (T("documents.ask.reason") or "Bitte eine kurze Begründung eingeben:") + f"\n({title})",
+            parent=self
+        )
         if s is None:
             return None
         s = s.strip()
@@ -661,23 +1081,14 @@ class DocumentsView(ttk.Frame):
             return None
         return s
 
-    # MUST accept (pdf_path, reason) -> Optional[str]
     def _interactive_sign(self, pdf_path: str, reason: str) -> Optional[str]:
-        """
-        Let the Signatur-Modul place & sign. We only ensure sane defaults for settings
-        to avoid Tk double-var cast errors if user-specific entries are missing.
-        """
+        """Interactive PDF signing via signature module."""
         try:
-            self._ensure_signature_defaults()
-        except Exception:
-            pass
-
-        try:
-            # Support both styles: AppContext.signature() or AppContext.signature object
             sig_factory_or_obj = getattr(AppContext, "signature", None)
             if sig_factory_or_obj is None:
                 messagebox.showerror("Signatur", "Signaturmodul nicht vorhanden.", parent=self)
                 return None
+
             sig_api = sig_factory_or_obj() if callable(sig_factory_or_obj) else sig_factory_or_obj
 
             try:
@@ -699,188 +1110,3 @@ class DocumentsView(ttk.Frame):
         except Exception as ex:
             messagebox.showerror("Signatur", str(ex), parent=self)
             return None
-
-    def _ensure_signature_defaults(self) -> None:
-        """
-        Populate missing numeric/text signature settings so the signature dialog's preview
-        does not try to cast "" to float. We do NOT modify the signature module itself.
-        """
-        user = getattr(AppContext, "current_user", None)
-        uid = getattr(user, "id", None)
-
-        namespaces = ["signature", "core_signature"]
-        defaults: Dict[str, Any] = {
-            "name_above": 2.0,
-            "date_above": 2.0,
-            "name": getattr(user, "display_name", None) or getattr(user, "name", "") or "",
-            "date_fmt": "%d.%m.%Y",
-            "reason_default": T("signature.default_reason") or "Genehmigt",
-        }
-
-        for ns in namespaces:
-            def _get(k: str, d: Any) -> Any:
-                if uid:
-                    return self._sm.get(ns, k, d, user_specific=True, user_id=uid)
-                return self._sm.get(ns, k, d)
-
-            dirty: List[Tuple[str, Any]] = []
-            for k, d in defaults.items():
-                v = _get(k, d)
-                if k in ("name_above", "date_above"):
-                    try:
-                        float(v)
-                    except Exception:
-                        dirty.append((k, d))
-                else:
-                    if v is None or v == "":
-                        dirty.append((k, d))
-
-            for k, v in dirty:
-                if uid:
-                    self._sm.set(ns, k, v, user_specific=True, user_id=uid)
-                else:
-                    self._sm.set(ns, k, v)
-
-    # ----------------------------------------------------------- repo passthroughs
-    def _open_current(self) -> None:
-        rec = self._selected_record()
-        if not rec:
-            return
-        try:
-            path = getattr(rec, "current_file_path", None)
-            if not path or not os.path.isfile(path):
-                messagebox.showerror(title=(T("documents.open.error") or "Öffnen fehlgeschlagen"),
-                                     message=T("documents.open.nofile") or "Datei nicht gefunden.",
-                                     parent=self)
-                return
-            if os.name == "nt":
-                os.startfile(path)  # type: ignore[attr-defined]
-            elif os.name == "posix":
-                import subprocess
-                subprocess.Popen(["xdg-open", path])
-            else:
-                messagebox.showinfo("Open", path, parent=self)
-        except Exception as ex:
-            messagebox.showerror(title=(T("documents.open.error") or "Open failed"), message=str(ex), parent=self)
-
-    def _import_file(self) -> None:
-        repo = getattr(self.ctrl, "_repo", None)
-        if not repo:
-            return
-        path = filedialog.askopenfilename(parent=self, title=(T("documents.import.title") or "Dokument importieren"),
-                                          filetypes=[("DOCX", "*.docx"), ("All", "*.*")])
-        if not path:
-            return
-        rec = repo.create_from_file(title=None, doc_type="SOP", user_id=self.ctrl.current_user_id(), src_file=path)
-        messagebox.showinfo(title=(T("documents.import.ok") or "Importiert"),
-                            message=(T("documents.import.msg") or "Dokument angelegt: ") + rec.doc_id.value, parent=self)
-        self._reload()
-
-    def _new_from_template(self) -> None:
-        repo = getattr(self.ctrl, "_repo", None)
-        if not repo:
-            return
-        proj_root = os.path.abspath(os.path.join(os.getcwd()))
-        tdir = os.path.join(proj_root, "templates")
-        if not os.path.isdir(tdir):
-            messagebox.showwarning(title=(T("documents.tpl.missing.title") or "Keine Vorlagen"),
-                                   message=(T("documents.tpl.missing.msg") or "Ordner nicht gefunden: ") + tdir, parent=self)
-            return
-        path = filedialog.askopenfilename(parent=self, title=(T("documents.tpl.choose") or "Vorlage wählen"),
-                                          initialdir=tdir, filetypes=[("DOCX", "*.docx"), ("All", "*.*")])
-        if not path:
-            return
-        rec = repo.create_from_file(title=None, doc_type="SOP", user_id=self.ctrl.current_user_id(), src_file=path)
-        messagebox.showinfo(title=(T("documents.tpl.created") or "Dokument erstellt"),
-                            message=(T("documents.tpl.created.msg") or "Erstellt aus Vorlage: ") + rec.doc_id.value,
-                            parent=self)
-        self._reload()
-
-    def _edit(self) -> None:
-        repo = getattr(self.ctrl, "_repo", None)
-        if not repo:
-            return
-        rec = self._selected_record()
-        if not rec:
-            return
-        if not MetadataDialog:
-            messagebox.showinfo("Metadata", "Metadata dialog not available.", parent=self)
-            return
-        allowed = [t.strip() for t in str(self._sm.get(self._FEATURE_ID, "allowed_types", "SOP,WI,FB,CL")).split(",")]
-        dlg = MetadataDialog(self, rec, allowed_types=allowed)  # type: ignore
-        self.wait_window(dlg)
-        result = getattr(dlg, "result", None)
-        if result:
-            repo.update_metadata(result, self.ctrl.current_user_id())
-            self._reload()
-            self._on_select()
-
-    def _copy(self) -> None:
-        repo = getattr(self.ctrl, "_repo", None)
-        if not repo:
-            return
-        rec = self._selected_record()
-        if not rec or rec.status != DocumentStatus.EFFECTIVE:
-            return
-        dest_dir = filedialog.askdirectory(parent=self, title=(T("documents.copy.choose_dest") or "Zielordner wählen"))
-        if not dest_dir:
-            return
-        try:
-            out = repo.copy_to_destination(rec.doc_id.value, dest_dir)
-            if out:
-                messagebox.showinfo(title=(T("documents.copy.ok") or "Kopie erstellt"),
-                                    message=(T("documents.copy.done") or "Kopie erstellt in: ") + out, parent=self)
-        except Exception as ex:
-            messagebox.showerror("Copy", str(ex), parent=self)
-
-    # --------------------------------------------------------------- roles
-    def _assign_roles(self, force: bool = False) -> bool:
-        """
-        Open role assignment dialog if needed. Returns True if assignments exist and are valid.
-        """
-        rec = self._selected_record()
-        if not rec:
-            return False
-
-        current = self.ctrl.get_assignees(rec.doc_id.value) or {}
-
-        # --- obtain users for the dialog (fallback to empty list) ---
-        users = []
-        try:
-            rbac = getattr(self.ctrl, "_rbac", None)
-            if rbac and hasattr(rbac, "list_users"):
-                users = rbac.list_users()
-        except Exception:
-            users = []
-
-        if force or not any(bool(current.get(k)) for k in ("authors", "reviewers", "approvers")):
-            if AssignRolesDialog:
-                # pass users explicitly (was missing before)
-                dlg = AssignRolesDialog(self, users=users, current=current)  # type: ignore
-                self.wait_window(dlg)
-                result = getattr(dlg, "result", None)
-                if not result:
-                    return False
-                a = Assignments(authors=result.get("authors"), reviewers=result.get("reviewers"), approvers=result.get("approvers"))
-            else:
-                authors = simpledialog.askstring("Rollen", "Bearbeiter (',' getrennt):", parent=self) or ""
-                reviewers = simpledialog.askstring("Rollen", "Prüfer (',' getrennt):", parent=self) or ""
-                approvers = simpledialog.askstring("Rollen", "Freigeber (',' getrennt):", parent=self) or ""
-                a = Assignments(
-                    authors=[s.strip() for s in authors.split(",") if s.strip()],
-                    reviewers=[s.strip() for s in reviewers.split(",") if s.strip()],
-                    approvers=[s.strip() for s in approvers.split(",") if s.strip()],
-                )
-
-            # Business rule: reviewer and approver must not be the same person
-            try:
-                ok, msg = self.ctrl.validate_assignments(a)
-            except TypeError:
-                ok, msg = self.ctrl.validate_assignments(a.reviewers or [], a.approvers or [])  # older signature
-            if not ok:
-                messagebox.showerror(T("documents.assign.err") or "Fehler", msg or "", parent=self)
-                return False
-
-            self.ctrl.set_assignees(rec.doc_id.value, a)
-
-        return True

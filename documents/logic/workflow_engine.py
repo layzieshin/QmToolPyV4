@@ -100,21 +100,21 @@ class WorkflowEngine:
         return False
 
     # ----------------- UX helpers (CTA texts / routing) ---------------------
-    
-    @staticmethod
+
+    # NACHHER (Zeile 104):
     def next_action(
-        self,
-        *,
-        roles: Iterable[str],
-        assigned: Iterable[str],
-        status: DocumentStatus,
-        doc_type: str,
-        actor_id: Optional[str] = None,
-        owner_id: Optional[str] = None,
+            self,
+            *,
+            roles: Iterable[str],
+            assigned: Iterable[str],
+            status: DocumentStatus,
+            doc_type: str,
+            actor_id: Optional[str] = None,
+            owner_id: Optional[str] = None,
     ) -> Optional[str]:
         """
         Suggest next forward action id for the 'Next' button.
-        Returns one of: 'submit_review' | 'approve' | 'publish' | 'create_revision' | 'obsolete' | 'archive' | None
+        Returns one of:  'submit_review' | 'approve' | 'publish' | 'create_revision' | 'obsolete' | 'archive' | None
         """
         actions = self.allowed_actions(
             roles=roles,

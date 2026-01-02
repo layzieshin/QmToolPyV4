@@ -48,6 +48,11 @@ class ModulePermissions:
         Resolve the set of module roles for the given user based on settings.
         Every logged-in user is at least READER.
         """
+        # ===== DEBUG START =====
+        print(f"\n--- ModulePermissions.roles_for_user() ---")
+        print(f"Input user: {user}")
+        # ===== DEBUG END =====
+
         roles: Set[str] = set()
         if user:
             roles.add(self.READER)  # default
@@ -55,16 +60,58 @@ class ModulePermissions:
         uid, uname, email = self._user_identifiers(user)
         idset = {s for s in [uid, uname, email] if s}
 
+        # ===== DEBUG START =====
+        print(f"Extracted identifiers: uid={uid}, uname={uname}, email={email}")
+        # ===== DEBUG END =====
+
         for role, key in self.ROLE_KEYS.items():
             if role == self.READER:
                 # handled above (implicit)
                 continue
             members = self._read_members(key)
+
+            # ===== DEBUG START =====
+            print(f"Checking role {role} (key={key}): members={members}")
+            # ===== DEBUG END =====
+
             if self._is_member(idset, members):
                 roles.add(role)
+                # ===== DEBUG START =====
+                print(f"  ✓ User IS member of {role}")
+                # ===== DEBUG END =====
+
+        # FALLBACK: Check global roles from user object
+        if hasattr(user, 'roles'):
+            global_roles = getattr(user, 'roles', [])
+            # ===== DEBUG START =====
+            print(f"Global roles from user. roles: {global_roles}")
+            # ===== DEBUG END =====
+
+            if isinstance(global_roles, (list, set, tuple)):
+                for r in global_roles:
+                    role_name = str(r.name if hasattr(r, 'name') else r).upper()
+                    if role_name in ("ADMIN", "QMB", "AUTHOR", "REVIEWER", "APPROVER"):
+                        roles.add(role_name)
+                        # ===== DEBUG START =====
+                        print(f"  ✓ Added global role:  {role_name}")
+                        # ===== DEBUG END =====
+
+        if hasattr(user, 'role'):
+            global_role = getattr(user, 'role', None)
+            if global_role:
+                role_name = str(global_role.name if hasattr(global_role, 'name') else global_role).upper()
+                if role_name in ("ADMIN", "QMB", "AUTHOR", "REVIEWER", "APPROVER"):
+                    roles.add(role_name)
+                    # ===== DEBUG START =====
+                    print(f"  ✓ Added global role from user.role: {role_name}")
+                    # ===== DEBUG END =====
+
+        # ===== DEBUG START =====
+        print(f"FINAL ROLES: {roles}")
+        print(f"--- End roles_for_user() ---\n")
+        # ===== DEBUG END =====
 
         return roles
-
     def has_any(self, user: object | None, required: Iterable[str]) -> bool:
         user_roles = self.roles_for_user(user)
         req = {r.upper() for r in required}

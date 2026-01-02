@@ -1,0 +1,7 @@
+{
+  "id": "usermanagement",
+  "label": "User Management",
+  "version": "1.0.0",
+  "main_class": "usermanagement.gui.user_view.UserManagementView",
+  "settings_class": "usermanagement.gui.user_settings_tab.UserSettingsTab"
+}

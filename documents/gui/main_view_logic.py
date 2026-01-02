@@ -476,7 +476,7 @@ class DocumentsController:
         # <-- NEU: harte Geschäftslogikprüfung
         ok, msg = self.validate_assignments(ass.get("REVIEWER") or [], ass.get("APPROVER") or [])
         if not ok:
-            # UI zeigt evtl. keine Nachricht – False reicht, um Start zu verhindern.
+            # UI zeigt evtl.keine Nachricht – False reicht, um Start zu verhindern.
             return False
 
         self._set_workflow_active(doc.doc_id.value, True, started_by=uid)

@@ -139,9 +139,8 @@ class RBACService(DatabaseAccess):
         for role in req.roles:
             key = _role_to_key(role)
             current = set(self.get_members(key))
-                        current.add(req.requested_by)  # store user_id (ID-only)
+            current.add(req.requested_by)  # store user_id (ID-only)
             self.set_members(key, current)
-        self._set_status(req_id, "APPROVED")
 
     def deny_request(self, req_id: int) -> None:
         self._set_status(req_id, "DENIED")
