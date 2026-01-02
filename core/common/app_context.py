@@ -75,6 +75,47 @@ class AppContext:
 
     current_user = None  # type: ignore[assignment]
 
+    # ---------- Session helpers ---------------------------------------
+    @classmethod
+    def get_current_user(cls):
+        """Return the currently authenticated user or None."""
+        return getattr(cls, "current_user", None)
+
+    @classmethod
+    def get_current_user_id(cls) -> str | None:
+        """Return a stable identifier for user-specific settings."""
+        user = cls.get_current_user()
+        if not user:
+            return None
+        # Prefer numeric/internal id if present.
+        uid = getattr(user, "id", None)
+        if uid is None:
+            return None
+        return str(uid)
+
+    @classmethod
+    def set_current_user(cls, user, *, reason: str | None = None) -> None:
+        """Set the current user. Reason is for future auditing/observers."""
+        cls.current_user = user  # keep legacy attribute
+        # If you already have update_language() in AppContext, call it here.
+        if hasattr(cls, "update_language"):
+            try:
+                cls.update_language()
+            except Exception:
+                # Never fail login/module instantiation because of i18n/settings.
+                pass
+
+    @classmethod
+    def clear_current_user(cls, *, reason: str | None = None) -> None:
+        """Clear the current user."""
+        cls.current_user = None
+        if hasattr(cls, "update_language"):
+            try:
+                cls.update_language()
+            except Exception:
+                pass
+
+
     # ---------- Service registry for DI -------------------------------
     services: dict[str, object] = {
         "log_controller": log_controller,

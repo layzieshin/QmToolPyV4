@@ -50,7 +50,7 @@ class LocaleManager:
 
         if LOCALE_TRACK_MISSING_KEYS and key not in self._missing_keys_logged:
             from core.common.app_context import AppContext  # noqa: WPS433
-            user = AppContext.current_user
+            user = AppContext.get_current_user()
             logger.log(
                 feature="Locale",
                 event="MissingKey",

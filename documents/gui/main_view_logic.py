@@ -141,13 +141,16 @@ class DocumentsController:
         return None
 
     def current_user_id(self) -> Optional[str]:
-        return self._uid_from(self._current_user())
+        """Return the current user id as string (ID-only)."""
+        u = self._current_user()
+        return str(getattr(u, "id", "")) if u else None
+
 
     def _global_roles_of(self, user: Any) -> Set[str]:
         out: Set[str] = set()
         if not user:
             return out
-        uid = (getattr(user, "username", None) or getattr(user, "email", None) or getattr(user, "id", None) or "").strip().lower()
+        uid = str(getattr(user, "id", "") or "").strip().lower()
         def _has(key: str) -> bool:
             raw = str(self._sm.get(self.FEATURE_ID, key, "") or "")
             parts = [p.strip().lower() for p in raw.replace(";", ",").split(",") if p.strip()]

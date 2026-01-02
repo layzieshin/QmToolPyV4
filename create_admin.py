@@ -7,6 +7,17 @@ from getpass import getpass
 from usermanagement.logic.user_repository import UserRepository
 from core.models.user import UserRole
 
+from core.settings.logic.settings_manager import settings_manager
+
+def _seed_documents_admin(user_id: str) -> None:
+    """Seed documents RBAC admin membership with the given user_id (ID-only)."""
+    raw = str(settings_manager.get("documents", "rbac_admins", "") or "")
+    parts = [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
+    if user_id not in parts:
+        parts.append(user_id)
+        settings_manager.set("documents", "rbac_admins", ", ".join(parts))
+
+
 repo = UserRepository()
 
 def read_input(prompt: str, hide: bool = False) -> str:
@@ -31,4 +42,8 @@ ok = repo.create_user(
     role=UserRole.ADMIN,
 )
 
+if ok:
+    user = repo.get_user_by_username(username)
+    if user:
+        _seed_documents_admin(str(getattr(user, "id", "")))
 print("✅  Admin angelegt" if ok else "❌  Benutzer existiert schon")
