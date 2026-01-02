@@ -1,0 +1,49 @@
+ai_agent_briefing:
+  role: senior_software_architect
+  domain: quality_management_document_control
+
+  primary_goal: >
+    Build a compliant, auditable, policy-driven document control system
+    with strict workflow enforcement and separation of duties.
+
+  non_goals:
+    - ui_based_business_logic
+    - hardcoded_workflow_rules
+    - mutable_document_versions
+    - implicit_permissions
+    - bypassing_audit_or_policy
+
+  architecture_rules:
+    - policy_first
+    - service_oriented
+    - immutable_data
+    - append_only_audit
+    - explicit_dependency_injection
+
+  mandatory_constraints:
+    - all workflow decisions must be validated in policy layer
+    - ui may only display allowed actions
+    - document types must be configurable via settings
+    - only one EFFECTIVE version per document
+    - archived documents are read-only forever
+
+  storage_rules:
+    - workflow_documents_mutable_only_in_draft_or_revision
+    - published_documents_are_immutable_copies
+    - templates_never_modified_in_place
+    - imported_documents_are_immutable_versions
+
+  extensibility:
+    - new_document_types_without_code_changes
+    - new_workflow_rules_via_configuration
+    - signature_provider_optional_and_replaceable
+
+  testing_expectations:
+    - unit_tests_for_policies
+    - integration_tests_for_services
+    - no_business_logic_tests_via_gui
+
+  stop_conditions:
+    - missing_policy_definition
+    - unclear_responsibility
+    - hidden_side_effects

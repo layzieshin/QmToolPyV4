@@ -1,0 +1,53 @@
+{
+  "workflow_transitions": [
+    {
+      "from": "DRAFT",
+      "to": "REVIEW",
+      "action": "submit_review",
+      "condition": "document_type.requires_review == true"
+    },
+    {
+      "from": "DRAFT",
+      "to": "APPROVED",
+      "action": "approve",
+      "condition": "document_type.requires_review == false"
+    },
+    {
+      "from": "REVIEW",
+      "to": "APPROVED",
+      "action": "approve"
+    },
+    {
+      "from": "APPROVED",
+      "to": "EFFECTIVE",
+      "action": "publish"
+    },
+    {
+      "from": "EFFECTIVE",
+      "to": "REVISION",
+      "action": "create_revision"
+    },
+    {
+      "from": "REVISION",
+      "to": "REVIEW",
+      "action": "submit_review",
+      "condition": "document_type.requires_review == true"
+    },
+    {
+      "from": "EFFECTIVE",
+      "to": "OBSOLETE",
+      "action": "obsolete",
+      "requirement": "obsoletion_reason_required"
+    },
+    {
+      "from": "OBSOLETE",
+      "to": "ARCHIVED",
+      "action": "archive"
+    }
+  ],
+  "forbidden_transitions": [
+    "EFFECTIVE -> DRAFT",
+    "REVIEW -> EFFECTIVE",
+    "ARCHIVED -> *"
+  ]
+}

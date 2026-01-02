@@ -1,0 +1,28 @@
+tests:
+  - name: self_review_forbidden
+    given:
+      role: Author
+      action: review
+    expect: denied
+
+  - name: single_effective_version
+    given:
+      document_has_effective_version: true
+      action: publish_new_version
+    expect: previous_version_obsoleted
+
+  - name: formblatt_self_approval_allowed
+    given:
+      document_type: FB
+      actor_roles: [Editor, Approver]
+    expect: allowed
+
+  - name: va_requires_all_signatures
+    given:
+      document_type: VA
+      step: publish
+    expect:
+      signatures_required:
+        - Editor
+        - Reviewer
+        - Approver

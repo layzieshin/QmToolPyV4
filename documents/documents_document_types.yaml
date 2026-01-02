@@ -1,0 +1,54 @@
+document_types:
+  VA:
+    requires_review: true
+    requires_approval: true
+    allow_self_approval: false
+    required_signatures:
+      - Editor
+      - Reviewer
+      - Approver
+
+  AA:
+    requires_review: false
+    requires_approval: false
+    allow_self_approval: false
+    required_signatures: []
+
+  LS:
+    requires_review: false
+    requires_approval: false
+    allow_self_approval: false
+    required_signatures: []
+
+  FB:
+    requires_review: false
+    requires_approval: true
+    allow_self_approval: true
+    required_signatures: []
+
+  extAA:
+    requires_review: false
+    requires_approval: false
+    allow_self_approval: false
+    required_signatures: []
+
+  OD:
+    requires_review: false
+    requires_approval: false
+    allow_self_approval: false
+    required_signatures: []
+
+  QMH:
+    requires_review: true
+    requires_approval: true
+    allow_self_approval: false
+    required_signatures:
+      - Editor
+      - Reviewer
+      - Approver
+
+  MM:
+    requires_review: false
+    requires_approval: false
+    allow_self_approval: false
+    required_signatures: []

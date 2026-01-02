@@ -1,0 +1,27 @@
+{
+  "separation_of_duties": {
+    "no_self_review": true,
+    "no_self_approval": true,
+    "approver_cannot_edit_effective": true
+  },
+  "role_permissions": {
+    "Author": [
+      "create_document",
+      "edit_draft",
+      "submit_review"
+    ],
+    "Editor": [
+      "edit_draft",
+      "edit_revision"
+    ],
+    "Reviewer": [
+      "review",
+      "comment"
+    ],
+    "Approver": [
+      "approve",
+      "publish",
+      "obsolete"
+    ]
+  }
+}

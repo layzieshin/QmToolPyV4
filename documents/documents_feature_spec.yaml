@@ -1,0 +1,86 @@
+documents_feature_spec:
+  version: 1.0
+  domain: document_control
+  compliance_targets:
+    - Rili-BÄK
+    - ISO-9001-inspired
+
+  role_systems:
+    system_roles:
+      - User
+      - Admin
+      - QMB
+
+    module_roles:
+      - Author
+      - Editor
+      - Reviewer
+      - Approver
+
+  ownership:
+    owner_required: true
+    owner_type: user_or_role
+    default_behavior: none
+
+  document_statuses:
+    - DRAFT
+    - REVIEW
+    - APPROVED
+    - EFFECTIVE
+    - REVISION
+    - OBSOLETE
+    - ARCHIVED
+
+  versioning:
+    scheme: major_minor
+    immutable_versions: true
+    single_effective_version: true
+    change_reason_required: true
+    impact_assessment_required: true
+
+  storage:
+    workflow_root: ./workflowdocuments
+    published_root: ./publisheddocuments
+    template_root: ./templatedocuments
+
+    workflow_layout: >
+      workflowdocuments/{doc_id}/v{major}.{minor}/
+
+    published_layout: >
+      publisheddocuments/{doc_type}/{doc_id}/v{major}.{minor}/
+
+    import_formats:
+      - pdf
+      - docx
+
+    template_formats:
+      - docx
+      - dotx
+
+  audit:
+    immutable: true
+    events:
+      - create
+      - edit
+      - status_transition
+      - review
+      - approval
+      - publish
+      - obsolete
+      - archive
+      - signature
+    export_supported: true
+
+  signatures:
+    integration_mode: interface
+    provider_optional: true
+    fallback: null_signature_service
+
+  external_documents:
+    supported: true
+    active: false
+    future_fields:
+      - source
+      - external_version
+      - applicability_review
+      - review_interval
