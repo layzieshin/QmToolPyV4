@@ -85,9 +85,13 @@ documents.role.reviewer	Prüfer	Reviewer
 documents.role.reviewer_dt	Prüf.-Datum	Reviewer date
 documents.status.all	Alle	All
 documents.status.approval	Freigabe	Approval
+documents.status.approved	Freigegeben	Approved
 documents.status.draft	Entwurf	Draft
+documents.status.effective	Gültig	Effective
 documents.status.obsolete	Obsolet	Obsolete
+documents.status.archived	Archiviert	Archived
 documents.status.published	Veröffentlicht	Published
+documents.status.revision	Revision	Revision
 documents.status.review	Prüfung	Review
 documents.tab.comments	Kommentare	Comments
 documents.tab.overview	Übersicht	Overview

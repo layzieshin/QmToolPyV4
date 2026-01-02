@@ -207,10 +207,15 @@ class DocumentsRepository(SQLiteRepository):
         raw_id = str(_col(row, "doc_id", "")); doc_id = DocumentId(value=raw_id)
         title = _col(row, "title", "") or ""; doc_type = _col(row, "doc_type", "") or ""
         raw_status = str(_col(row, "status", "DRAFT"))
-        try: status = DocumentStatus[raw_status]
+        status_map = {"IN_REVIEW": "REVIEW", "APPROVAL": "APPROVED", "PUBLISHED": "EFFECTIVE"}
+        mapped_status = status_map.get(raw_status.upper(), raw_status)
+        try:
+            status = DocumentStatus[mapped_status]
         except Exception:
-            try: status = DocumentStatus(raw_status)
-            except Exception: status = DocumentStatus.DRAFT
+            try:
+                status = DocumentStatus(mapped_status)
+            except Exception:
+                status = DocumentStatus.DRAFT
 
         if ("version_major" in row.keys() and _col(row, "version_major") is not None
             and "version_minor" in row.keys() and _col(row, "version_minor") is not None):
@@ -262,15 +267,15 @@ class DocumentsRepository(SQLiteRepository):
         has_wf_col = self._has_column("documents", "workflow_active")
 
         if active_only:
-            # Aktiv = IN_REVIEW/APPROVAL/PUBLISHED oder (DRAFT & workflow aktiv)
+            # Aktiv = REVIEW/APPROVED/EFFECTIVE/REVISION oder (DRAFT & workflow aktiv)
             if has_wf_col:
-                where.append("(d.status IN (?,?,?) OR (d.status=? AND d.workflow_active=1))")
-                args.extend(["IN_REVIEW", "APPROVAL", "PUBLISHED", "DRAFT"])
+                where.append("(d.status IN (?,?,?,?) OR (d.status=? AND d.workflow_active=1))")
+                args.extend(["REVIEW", "APPROVED", "EFFECTIVE", "REVISION", "DRAFT"])
                 q = "SELECT d.* FROM documents d"
             else:
                 # über workflow_state gehen
-                where.append("(d.status IN (?,?,?) OR (d.status=? AND COALESCE(ws.active,0)=1))")
-                args.extend(["IN_REVIEW", "APPROVAL", "PUBLISHED", "DRAFT"])
+                where.append("(d.status IN (?,?,?,?) OR (d.status=? AND COALESCE(ws.active,0)=1))")
+                args.extend(["REVIEW", "APPROVED", "EFFECTIVE", "REVISION", "DRAFT"])
                 q = "SELECT d.* FROM documents d LEFT JOIN workflow_state ws ON ws.doc_id=d.doc_id"
         else:
             q = "SELECT d.* FROM documents d"
@@ -499,6 +504,36 @@ class DocumentsRepository(SQLiteRepository):
                 pass
 
         self._log_status_change(doc_id, old_status, new_status_s, user_id, reason)
+        return True, None
+
+    def bump_minor_version(self, doc_id: str, user_id: Optional[str] = None, reason: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        rec = self.get(doc_id)
+        if not rec:
+            return False, f"Document not found: {doc_id}"
+        new_minor = int(rec.version_minor) + 1
+        new_label = f"{rec.version_major}.{new_minor}"
+        fields = {
+            "version_minor": new_minor,
+            "version_label": new_label,
+            "updated_at": _safe_iso_now(),
+        }
+        known = set(self._known_columns("documents"))
+        filtered = {k: v for k, v in fields.items() if k in known}
+        sets = [f"{k}=?" for k in filtered.keys()]
+        args = list(filtered.values()) + [doc_id]
+        self._conn.execute(f"UPDATE documents SET {', '.join(sets)} WHERE doc_id=?", args)
+        self._conn.commit()
+
+        if reason:
+            try:
+                self._conn.execute(
+                    "INSERT INTO comments(doc_id,author,date,text,version_label) VALUES(?,?,?,?,?)",
+                    (doc_id, user_id or "", _safe_iso_now(), reason, new_label),
+                )
+                self._conn.commit()
+            except Exception:
+                pass
+
         return True, None
 
     # ------------------------------ workflow persistence (dual-mode)

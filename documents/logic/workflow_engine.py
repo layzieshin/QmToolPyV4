@@ -3,17 +3,15 @@
 Workflow rules & guards for the Documents feature.
 
 - Stateless: pure permission/guard logic, no storage or UI here.
-- Uses fixed enums (DocumentStatus) and checks *both* global roles and
-  per-document assigned roles.
-- Keeps the set of transitions small & explicit.
-
-Canonical global roles: ADMIN, QMB
-Canonical assigned roles (per document): AUTHOR, REVIEWER, APPROVER
+- Policy-driven: uses configured transitions and permissions.
+- Uses module roles (Author/Editor/Reviewer/Approver) plus per-document assignments.
 """
 
 from __future__ import annotations
-from typing import Iterable, Set, Optional
+from typing import Iterable, Set, Optional, List
+
 from documents.models.document_models import DocumentStatus
+from documents.logic.documents_policy import DocumentsPolicy
 
 
 def _norm(s: Iterable[str]) -> Set[str]:
@@ -23,24 +21,62 @@ def _norm(s: Iterable[str]) -> Set[str]:
 class WorkflowEngine:
     """Stateless rules engine; repository persists resulting changes."""
 
+    def __init__(self, policy: DocumentsPolicy) -> None:
+        self._policy = policy
+
     # ----------------- Guards for standard forward actions -------------------
-    def can_submit_review(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
-        r, a = _norm(roles), _norm(assigned)
-        return (status == DocumentStatus.DRAFT) and ({"ADMIN", "QMB"} & r or "AUTHOR" in a)
+    def allowed_actions(
+        self,
+        *,
+        roles: Iterable[str],
+        assigned: Iterable[str],
+        status: DocumentStatus,
+        doc_type: str,
+        actor_id: Optional[str] = None,
+        owner_id: Optional[str] = None,
+    ) -> List[str]:
+        combined_roles = _norm(roles) | _norm(assigned)
+        actions: List[str] = []
+        for rule in self._policy.transitions_from(status, doc_type):
+            if not self._policy.action_allowed_for_roles(rule.action, combined_roles):
+                continue
+            if self._policy.violates_separation_of_duties(
+                action_id=rule.action,
+                actor_id=actor_id,
+                owner_id=owner_id,
+                doc_type=doc_type,
+            ):
+                continue
+            actions.append(rule.action)
+        return actions
 
-    def can_request_approval(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
-        r, a = _norm(roles), _norm(assigned)
-        return (status == DocumentStatus.IN_REVIEW) and ({"ADMIN", "QMB"} & r or "REVIEWER" in a)
-
-    def can_publish(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
-        r, a = _norm(roles), _norm(assigned)
-        return (status == DocumentStatus.APPROVAL) and ({"ADMIN", "QMB"} & r or "APPROVER" in a)
+    def can_action(
+        self,
+        *,
+        action_id: str,
+        roles: Iterable[str],
+        assigned: Iterable[str],
+        status: DocumentStatus,
+        doc_type: str,
+        actor_id: Optional[str] = None,
+        owner_id: Optional[str] = None,
+    ) -> bool:
+        action = (action_id or "").strip().lower()
+        return action in {
+            a.strip().lower()
+            for a in self.allowed_actions(
+                roles=roles,
+                assigned=assigned,
+                status=status,
+                doc_type=doc_type,
+                actor_id=actor_id,
+                owner_id=owner_id,
+            )
+        }
 
     # ----------------- Backwards / Out-of-band actions ----------------------
     def can_back_to_draft(self, *, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> bool:
-        # Rückwärts-Transition aus jedem Schritt außer Entwurf (ohne Signatur, aber mit Begründung).
-        r = _norm(roles)
-        return status != DocumentStatus.DRAFT and ({"ADMIN", "QMB"} & r)
+        return False
 
     def can_abort_workflow(
         self,
@@ -63,44 +99,40 @@ class WorkflowEngine:
 
     # ----------------- UX helpers (CTA texts / routing) ---------------------
     @staticmethod
-    def next_action(*, roles: Iterable[str], assigned: Iterable[str], status: DocumentStatus) -> Optional[str]:
+    def next_action(
+        self,
+        *,
+        roles: Iterable[str],
+        assigned: Iterable[str],
+        status: DocumentStatus,
+        doc_type: str,
+        actor_id: Optional[str] = None,
+        owner_id: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Suggest next forward action id for the 'Next' button.
-        Returns one of: 'submit_review' | 'request_approval' | 'publish' | None
+        Returns one of: 'submit_review' | 'approve' | 'publish' | 'create_revision' | 'obsolete' | 'archive' | None
         """
-        r, a = _norm(roles), _norm(assigned)
-        if status == DocumentStatus.DRAFT and ({"ADMIN", "QMB"} & r or "AUTHOR" in a):
-            return "submit_review"
-        if status == DocumentStatus.IN_REVIEW and ({"ADMIN", "QMB"} & r or "REVIEWER" in a):
-            return "request_approval"
-        if status == DocumentStatus.APPROVAL and ({"ADMIN", "QMB"} & r or "APPROVER" in a):
-            return "publish"
-        return None
+        actions = self.allowed_actions(
+            roles=roles,
+            assigned=assigned,
+            status=status,
+            doc_type=doc_type,
+            actor_id=actor_id,
+            owner_id=owner_id,
+        )
+        return actions[0] if actions else None
 
-    @staticmethod
-    def next_status_for(action_id: str, current: DocumentStatus) -> Optional[DocumentStatus]:
+    def next_status_for(self, action_id: str, current: DocumentStatus, doc_type: str) -> Optional[DocumentStatus]:
         aid = (action_id or "").strip().lower()
-        if aid == "submit_review" and current == DocumentStatus.DRAFT:
-            return DocumentStatus.IN_REVIEW
-        if aid == "request_approval" and current == DocumentStatus.IN_REVIEW:
-            return DocumentStatus.APPROVAL
-        if aid == "publish" and current == DocumentStatus.APPROVAL:
-            return DocumentStatus.PUBLISHED
+        for rule in self._policy.transitions_from(current, doc_type):
+            if rule.action.strip().lower() == aid:
+                return rule.to_status
         return None
 
-    @staticmethod
-    def requires_signature_for(action_id: str) -> bool:
-        """For forward actions we require a signature artifact."""
-        return (action_id or "").strip().lower() in {"submit_review", "request_approval", "publish"}
+    def requires_signature_for(self, action_id: str, doc_type: str) -> bool:
+        """For forward actions we require a signature artifact if policy mandates signatures."""
+        return bool(self._policy.required_signatures(doc_type, action_id))
 
-    @staticmethod
-    def requires_reason_for(status_or_action) -> bool:
-        """
-        Ask for a change note (reason) only on *negative* / out-of-band states.
-        The controller calls this with a status object.
-        """
-        try:
-            name = str(getattr(status_or_action, "name", status_or_action)).upper()
-        except Exception:
-            name = str(status_or_action).upper()
-        return name in {"ARCHIVED", "OBSOLETE"}
+    def requires_reason_for(self, action_id: str, target_status: DocumentStatus) -> bool:
+        return self._policy.requires_reason(action_id, target_status)

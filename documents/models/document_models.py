@@ -14,10 +14,17 @@ from typing import Optional, List
 
 class DocumentStatus(Enum):
     DRAFT = "DRAFT"
-    IN_REVIEW = "IN_REVIEW"
-    APPROVAL = "APPROVAL"
-    PUBLISHED = "PUBLISHED"
+    REVIEW = "REVIEW"
+    APPROVED = "APPROVED"
+    EFFECTIVE = "EFFECTIVE"
+    REVISION = "REVISION"
     OBSOLETE = "OBSOLETE"
+    ARCHIVED = "ARCHIVED"
+
+    # Backward-compatible aliases
+    IN_REVIEW = "REVIEW"
+    APPROVAL = "APPROVED"
+    PUBLISHED = "EFFECTIVE"
 
 
 @dataclass(frozen=True)

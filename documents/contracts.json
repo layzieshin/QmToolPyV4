@@ -29,11 +29,6 @@
         "name": "settings_manager",
         "interface": null,
         "required": true
-      },
-      {
-        "name": "sm",
-        "interface": null,
-        "required": true
       }
     ],
     "callbacks": [],

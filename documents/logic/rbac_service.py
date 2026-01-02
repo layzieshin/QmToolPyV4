@@ -188,6 +188,7 @@ def _role_to_key(role: str) -> str:
     if r == "ADMIN": return "rbac_admins"
     if r == "QMB": return "rbac_qmb"
     if r == "AUTHOR": return "rbac_authors"
+    if r == "EDITOR": return "rbac_editors"
     if r == "REVIEWER": return "rbac_reviewers"
     if r == "APPROVER": return "rbac_approvers"
     if r == "READER": return "rbac_readers"
