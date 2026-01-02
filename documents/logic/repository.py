@@ -262,15 +262,15 @@ class DocumentsRepository(SQLiteRepository):
         has_wf_col = self._has_column("documents", "workflow_active")
 
         if active_only:
-            # Aktiv = IN_REVIEW/APPROVAL/PUBLISHED oder (DRAFT & workflow aktiv)
+            # Aktiv = REVIEW/APPROVED/EFFECTIVE oder (DRAFT & workflow aktiv)
             if has_wf_col:
                 where.append("(d.status IN (?,?,?) OR (d.status=? AND d.workflow_active=1))")
-                args.extend(["IN_REVIEW", "APPROVAL", "PUBLISHED", "DRAFT"])
+                args.extend(["REVIEW", "APPROVED", "EFFECTIVE", "DRAFT"])
                 q = "SELECT d.* FROM documents d"
             else:
                 # über workflow_state gehen
                 where.append("(d.status IN (?,?,?) OR (d.status=? AND COALESCE(ws.active,0)=1))")
-                args.extend(["IN_REVIEW", "APPROVAL", "PUBLISHED", "DRAFT"])
+                args.extend(["REVIEW", "APPROVED", "EFFECTIVE", "DRAFT"])
                 q = "SELECT d.* FROM documents d LEFT JOIN workflow_state ws ON ws.doc_id=d.doc_id"
         else:
             q = "SELECT d.* FROM documents d"
