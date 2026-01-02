@@ -609,7 +609,10 @@ class DocumentsController:
                 return self._resolve_display_name(uid) or uid
             if "submit_review" in first_by_step:
                 u, dt = first_by_step["submit_review"]; out["editor"] = disp(u); out["editor_dt"] = dt
-            if "request_approval" in first_by_step:
+            # Support both old and new action names for backward compatibility
+            if "approve" in first_by_step:
+                u, dt = first_by_step["approve"]; out["reviewer"] = disp(u); out["reviewer_dt"] = dt
+            elif "request_approval" in first_by_step:
                 u, dt = first_by_step["request_approval"]; out["reviewer"] = disp(u); out["reviewer_dt"] = dt
             if "publish" in first_by_step:
                 u, dt = first_by_step["publish"]; out["publisher"] = disp(u); out["publisher_dt"] = dt
