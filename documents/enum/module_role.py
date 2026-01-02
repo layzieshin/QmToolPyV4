@@ -1,16 +1,19 @@
-"""Module role enumeration placeholder.
+"""documents/enum/module_role.py
+===========================
 
-TODO: Keep in sync with RBAC and policy definitions.
+Module roles for the documents feature.
+
+These roles are *document-scoped* (assigned per document), not global system roles.
 """
 from __future__ import annotations
 
 from enum import Enum
 
 
-class ModuleRole(Enum):
-    """Module roles for the documents feature."""
+class ModuleRole(str, Enum):
+    """Document-scoped module roles."""
 
     AUTHOR = "AUTHOR"
     EDITOR = "EDITOR"
     REVIEWER = "REVIEWER"
-    APPROVER = "APPROVER"
+    APPROVER = "FREIGEBER"

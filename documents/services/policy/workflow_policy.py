@@ -1,48 +1,99 @@
-"""Workflow policy service (no IO).
+"""documents/services/policy/workflow_policy.py
+================================================
 
-TODO: Implement workflow transition validation based on in-memory policy data.
+Workflow policy (no IO).
+
+This policy enforces the transition matrix defined in the integration analysis.
+It is independent from GUI and persistence.
+
+Transitions are evaluated based on:
+- current status
+- action id
+- document type spec (settings-driven)
+
+The policy does not decide *who* may perform actions; see PermissionPolicy.
 """
 from __future__ import annotations
 
-from typing import Iterable, List
+from dataclasses import dataclass
 
-from documents.dto.type_spec import TypeSpec
+from documents.dto.document_type_spec import DocumentTypeSpec
+from documents.enum.document_action import DocumentAction
 from documents.enum.document_status import DocumentStatus
 
 
+@dataclass(frozen=True, slots=True)
+class Transition:
+    """Single workflow transition definition."""
+
+    from_status: DocumentStatus
+    action: DocumentAction
+    to_status: DocumentStatus
+
+
+# Canonical transition matrix (hard enforced)
+TRANSITIONS: tuple[Transition, ...] = (
+    Transition(DocumentStatus.DRAFT, DocumentAction.SUBMIT_REVIEW, DocumentStatus.REVIEW),
+    Transition(DocumentStatus.DRAFT, DocumentAction.APPROVE, DocumentStatus.APPROVED),
+    Transition(DocumentStatus.REVIEW, DocumentAction.APPROVE, DocumentStatus.APPROVED),
+    Transition(DocumentStatus.APPROVED, DocumentAction.PUBLISH, DocumentStatus.EFFECTIVE),
+    Transition(DocumentStatus.EFFECTIVE, DocumentAction.CREATE_REVISION, DocumentStatus.REVISION),
+    Transition(DocumentStatus.REVISION, DocumentAction.SUBMIT_REVIEW, DocumentStatus.REVIEW),
+    Transition(DocumentStatus.EFFECTIVE, DocumentAction.OBSOLETE, DocumentStatus.OBSOLETE),
+    Transition(DocumentStatus.OBSOLETE, DocumentAction.ARCHIVE, DocumentStatus.ARCHIVED),
+)
+
+
 class WorkflowPolicy:
-    """Policy evaluation for workflow transitions."""
+    """Evaluate workflow transition rules."""
 
-    def __init__(self, *, type_spec: TypeSpec) -> None:
-        self._type_spec = type_spec
+    def can_transition(
+        self,
+        *,
+        status: DocumentStatus,
+        action_id: str,
+        type_spec: DocumentTypeSpec,
+    ) -> bool:
+        """Return True if the action is allowed and results in a valid next status."""
+        try:
+            _ = self.next_status(status=status, action_id=action_id, type_spec=type_spec)
+            return True
+        except ValueError:
+            return False
 
-    def allowed_transitions(self, status: DocumentStatus) -> List[str]:
-        """Return allowed action identifiers from the given status.
-
-        TODO: Read from policy configuration.
-        """
-        _ = status
-        return []
-
-    def next_status(self, *, action_id: str, status: DocumentStatus) -> DocumentStatus:
+    def next_status(
+        self,
+        *,
+        status: DocumentStatus,
+        action_id: str,
+        type_spec: DocumentTypeSpec,
+    ) -> DocumentStatus:
         """Resolve the next status for a given action.
 
-        TODO: Implement policy-driven mapping.
+        Raises:
+            ValueError: if the transition is not allowed.
         """
-        raise NotImplementedError("Workflow policy not implemented")
+        action = DocumentAction(action_id)
 
-    def requires_signature(self, action_id: str) -> bool:
-        """Determine whether signatures are required for the action.
+        # Type-gated transitions
+        if action is DocumentAction.SUBMIT_REVIEW and not type_spec.requires_review:
+            raise ValueError("Review is not enabled for this document type")
+        if action is DocumentAction.APPROVE and not type_spec.requires_approval:
+            raise ValueError("Approval is not enabled for this document type")
+        if action is DocumentAction.PUBLISH and not type_spec.requires_approval:
+            raise ValueError("Publish is not enabled for this document type")
 
-        TODO: Use type-specific requirements.
-        """
-        _ = action_id
-        return False
+        for t in TRANSITIONS:
+            if t.from_status == status and t.action == action:
+                return t.to_status
 
-    def requires_reason(self, action_id: str) -> bool:
-        """Determine whether a reason is required for the action.
+        raise ValueError(f"Transition not allowed: {status.value} --{action.value}--> ?")
 
-        TODO: Configure per action in policy.
-        """
-        _ = action_id
-        return False
+    def is_editable(self, *, status: DocumentStatus) -> bool:
+        """Return True if content/metadata may be edited in this status."""
+        return status in (DocumentStatus.DRAFT, DocumentStatus.REVISION)
+
+    def requires_reason(self, *, action_id: str) -> bool:
+        """Return True if a reason is required for the action."""
+        action = DocumentAction(action_id)
+        return action is DocumentAction.OBSOLETE
