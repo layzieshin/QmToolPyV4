@@ -106,9 +106,11 @@ class DocumentsView(ttk.Frame):
                 T("documents.status.all") or "Alle",
                 T("documents.status.draft") or "Entwurf",
                 T("documents.status.review") or "Prüfung",
-                T("documents.status.approval") or "Freigabe",
-                T("documents.status.published") or "Veröffentlicht",
+                T("documents.status.approved") or "Genehmigt",
+                T("documents.status.effective") or "Wirksam",
+                T("documents.status.revision") or "Revision",
                 T("documents.status.obsolete") or "Obsolet",
+                T("documents.status.archived") or "Archiviert",
             ],
         )
         self.cb_status.grid(row=0, column=5, sticky="w")
@@ -323,10 +325,12 @@ class DocumentsView(ttk.Frame):
     def _status_from_combo(self) -> Optional[DocumentStatus]:
         m = {
             (T("documents.status.draft") or "Entwurf"): DocumentStatus.DRAFT,
-            (T("documents.status.review") or "Prüfung"): DocumentStatus.IN_REVIEW,
-            (T("documents.status.approval") or "Freigabe"): DocumentStatus.APPROVAL,
-            (T("documents.status.published") or "Veröffentlicht"): DocumentStatus.PUBLISHED,
+            (T("documents.status.review") or "Prüfung"): DocumentStatus.REVIEW,
+            (T("documents.status.approved") or "Genehmigt"): DocumentStatus.APPROVED,
+            (T("documents.status.effective") or "Wirksam"): DocumentStatus.EFFECTIVE,
+            (T("documents.status.revision") or "Revision"): DocumentStatus.REVISION,
             (T("documents.status.obsolete") or "Obsolet"): DocumentStatus.OBSOLETE,
+            (T("documents.status.archived") or "Archiviert"): DocumentStatus.ARCHIVED,
         }
         txt = (self.cb_status.get() or "").strip()
         return m.get(txt, None)
@@ -336,10 +340,12 @@ class DocumentsView(ttk.Frame):
         if mode.startswith("status"):
             order = {
                 DocumentStatus.DRAFT: 0,
-                DocumentStatus.IN_REVIEW: 1,
-                DocumentStatus.APPROVAL: 2,
-                DocumentStatus.PUBLISHED: 3,
-                DocumentStatus.OBSOLETE: 4,
+                DocumentStatus.REVIEW: 1,
+                DocumentStatus.APPROVED: 2,
+                DocumentStatus.EFFECTIVE: 3,
+                DocumentStatus.REVISION: 4,
+                DocumentStatus.OBSOLETE: 5,
+                DocumentStatus.ARCHIVED: 6,
             }
             return sorted(items, key=lambda r: order.get(r.status, 99))
         if mode.startswith("titel") or mode.startswith("title"):
@@ -390,7 +396,7 @@ class DocumentsView(ttk.Frame):
                 ver = f"{getattr(r, 'version_major', 1)}.{getattr(r, 'version_minor', 0)}"
                 updated = getattr(r, "updated_at", "") or ""
                 owner = getattr(r, "created_by", "") or ""
-                active = "✓" if r.status in (DocumentStatus.DRAFT, DocumentStatus.IN_REVIEW, DocumentStatus.APPROVAL) else ""
+                active = "✓" if r.status in (DocumentStatus.DRAFT, DocumentStatus.REVIEW, DocumentStatus.APPROVED) else ""
                 self.tree.insert(
                     "", "end", iid=iid,
                     values=(iid, r.title or "", r.doc_type or "", r.status.name if hasattr(r.status, "name") else str(r.status),
@@ -808,7 +814,7 @@ class DocumentsView(ttk.Frame):
         if not repo:
             return
         rec = self._selected_record()
-        if not rec or rec.status != DocumentStatus.PUBLISHED:
+        if not rec or rec.status != DocumentStatus.EFFECTIVE:
             return
         dest_dir = filedialog.askdirectory(parent=self, title=(T("documents.copy.choose_dest") or "Zielordner wählen"))
         if not dest_dir:

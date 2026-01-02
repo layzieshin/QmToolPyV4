@@ -2,7 +2,7 @@
 Module-local RBAC (Role Based Access Control) for the Documents feature.
 
 Independently maps users to canonical module roles:
-  ADMIN, QMB, AUTHOR, REVIEWER, APPROVER, READER
+  ADMIN, QMB, AUTHOR, EDITOR, REVIEWER, APPROVER, READER
 
 Membership is configured via SettingsManager under the "documents" feature
 and can be maintained via a user-picker dialog in settings (see settings_view).
@@ -24,6 +24,7 @@ class ModulePermissions:
     ADMIN = "ADMIN"
     QMB = "QMB"
     AUTHOR = "AUTHOR"
+    EDITOR = "EDITOR"
     REVIEWER = "REVIEWER"
     APPROVER = "APPROVER"
     READER = "READER"
@@ -32,6 +33,7 @@ class ModulePermissions:
         ADMIN: "rbac_admins",
         QMB: "rbac_qmb",
         AUTHOR: "rbac_authors",
+        EDITOR: "rbac_editors",
         REVIEWER: "rbac_reviewers",
         APPROVER: "rbac_approvers",
         READER: "rbac_readers",

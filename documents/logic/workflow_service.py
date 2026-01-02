@@ -1,4 +1,10 @@
 # documents/logic/workflow_service.py
+"""
+Orchestrates lifecycle transitions for documents.
+
+Implements the policy-driven workflow defined in documents_workflow_transitions.json
+Considers both global roles (ADMIN/QMB) and per-document assignments (AUTHOR/EDITOR/REVIEWER/APPROVER)
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,18 +26,17 @@ class TransitionResult:
 class WorkflowService:
     """
     Orchestrates lifecycle transitions, considering both:
-    - global roles (ADMIN/QMB/AUTHOR/REVIEWER/APPROVER)
-    - per-document assignments (assignees['AUTHOR'/'REVIEWER'/'APPROVER'])
+    - global roles (ADMIN/QMB/AUTHOR/EDITOR/REVIEWER/APPROVER)
+    - per-document assignments (assignees['AUTHOR'/'EDITOR'/'REVIEWER'/'APPROVER'])
 
     Public guard methods (used by GUI):
-        can_submit_to_review(...)
-        can_request_approval(...)
+        can_submit_review(...)
+        can_approve(...)
         can_publish(...)
+        can_create_revision(...)
+        can_obsolete(...)
+        can_archive(...)
         can_back_to_draft(...)
-
-    The guards accept only roles+status (backward compatible),
-    but if you also pass doc_id and actor/user_id they will include
-    per-document assignments for a more accurate decision.
     """
 
     def __init__(self, *, repository, permissions) -> None:
@@ -105,24 +110,48 @@ class WorkflowService:
 
     # ---- internal guards (need assigned roles) ------------------------------
 
-    def _can_submit_to_review(self, *, roles: Set[str], assigned: Set[str], status: DocumentStatus) -> bool:
-        return status == DocumentStatus.DRAFT and (
-            self._has_any(roles, {"AUTHOR", "QMB", "ADMIN"}) or ("AUTHOR" in assigned)
+    def _can_submit_review(self, *, roles: Set[str], assigned: Set[str], status: DocumentStatus) -> bool:
+        """DRAFT -> REVIEW or REVISION -> REVIEW"""
+        return status in (DocumentStatus.DRAFT, DocumentStatus.REVISION) and (
+            self._has_any(roles, {"AUTHOR", "EDITOR", "QMB", "ADMIN"}) or 
+            ({"AUTHOR", "EDITOR"} & assigned)
         )
 
-    def _can_request_approval(self, *, roles: Set[str], assigned: Set[str], status: DocumentStatus) -> bool:
-        return status == DocumentStatus.IN_REVIEW and (
-            self._has_any(roles, {"REVIEWER", "QMB", "ADMIN"}) or ("REVIEWER" in assigned)
-        )
+    def _can_approve(self, *, roles: Set[str], assigned: Set[str], status: DocumentStatus, 
+                    requires_review: bool = True) -> bool:
+        """REVIEW -> APPROVED or DRAFT -> APPROVED (if no review required)"""
+        if status == DocumentStatus.REVIEW:
+            return self._has_any(roles, {"APPROVER", "QMB", "ADMIN"}) or ("APPROVER" in assigned)
+        if status == DocumentStatus.DRAFT and not requires_review:
+            return self._has_any(roles, {"APPROVER", "QMB", "ADMIN"}) or ("APPROVER" in assigned)
+        return False
 
     def _can_publish(self, *, roles: Set[str], assigned: Set[str], status: DocumentStatus) -> bool:
-        return status == DocumentStatus.APPROVAL and (
+        """APPROVED -> EFFECTIVE"""
+        return status == DocumentStatus.APPROVED and (
             self._has_any(roles, {"APPROVER", "QMB", "ADMIN"}) or ("APPROVER" in assigned)
         )
 
+    def _can_create_revision(self, *, roles: Set[str], assigned: Set[str], status: DocumentStatus) -> bool:
+        """EFFECTIVE -> REVISION"""
+        return status == DocumentStatus.EFFECTIVE and (
+            self._has_any(roles, {"AUTHOR", "EDITOR", "QMB", "ADMIN"}) or 
+            ({"AUTHOR", "EDITOR"} & assigned)
+        )
+
+    def _can_obsolete(self, *, roles: Set[str], assigned: Set[str], status: DocumentStatus) -> bool:
+        """EFFECTIVE -> OBSOLETE"""
+        return status == DocumentStatus.EFFECTIVE and (
+            self._has_any(roles, {"APPROVER", "QMB", "ADMIN"}) or ("APPROVER" in assigned)
+        )
+
+    def _can_archive(self, *, roles: Set[str], status: DocumentStatus) -> bool:
+        """OBSOLETE -> ARCHIVED (ADMIN/QMB only)"""
+        return status == DocumentStatus.OBSOLETE and self._has_any(roles, {"QMB", "ADMIN"})
+
     # ---- PUBLIC guards (used by GUI; doc_id/actor optional) -----------------
 
-    def can_submit_to_review(
+    def can_submit_review(
         self,
         *,
         roles: Set[str],
@@ -136,13 +165,14 @@ class WorkflowService:
             aid = user_id or self._user_id_of(actor)
             if aid:
                 assigned = self._assigned_roles(doc_id, aid)
-        return self._can_submit_to_review(roles=roles, assigned=assigned, status=status)
+        return self._can_submit_review(roles=roles, assigned=assigned, status=status)
 
-    def can_request_approval(
+    def can_approve(
         self,
         *,
         roles: Set[str],
         status: DocumentStatus,
+        requires_review: bool = True,
         doc_id: Optional[str] = None,
         actor: object | None = None,
         user_id: Optional[str] = None,
@@ -152,7 +182,7 @@ class WorkflowService:
             aid = user_id or self._user_id_of(actor)
             if aid:
                 assigned = self._assigned_roles(doc_id, aid)
-        return self._can_request_approval(roles=roles, assigned=assigned, status=status)
+        return self._can_approve(roles=roles, assigned=assigned, status=status, requires_review=requires_review)
 
     def can_publish(
         self,
@@ -170,15 +200,57 @@ class WorkflowService:
                 assigned = self._assigned_roles(doc_id, aid)
         return self._can_publish(roles=roles, assigned=assigned, status=status)
 
+    def can_create_revision(
+        self,
+        *,
+        roles: Set[str],
+        status: DocumentStatus,
+        doc_id: Optional[str] = None,
+        actor: object | None = None,
+        user_id: Optional[str] = None,
+    ) -> bool:
+        assigned: Set[str] = set()
+        if doc_id:
+            aid = user_id or self._user_id_of(actor)
+            if aid:
+                assigned = self._assigned_roles(doc_id, aid)
+        return self._can_create_revision(roles=roles, assigned=assigned, status=status)
+
+    def can_obsolete(
+        self,
+        *,
+        roles: Set[str],
+        status: DocumentStatus,
+        doc_id: Optional[str] = None,
+        actor: object | None = None,
+        user_id: Optional[str] = None,
+    ) -> bool:
+        assigned: Set[str] = set()
+        if doc_id:
+            aid = user_id or self._user_id_of(actor)
+            if aid:
+                assigned = self._assigned_roles(doc_id, aid)
+        return self._can_obsolete(roles=roles, assigned=assigned, status=status)
+
+    def can_archive(
+        self,
+        *,
+        roles: Set[str],
+        status: DocumentStatus,
+    ) -> bool:
+        return self._can_archive(roles=roles, status=status)
+
     def can_back_to_draft(self, *, roles: Set[str], status: DocumentStatus) -> bool:
-        return status != DocumentStatus.DRAFT and self._has_any(
-            roles, {"AUTHOR", "REVIEWER", "APPROVER", "QMB", "ADMIN"}
-        )
+        """Allow back to draft only for non-final states and only for ADMIN/QMB"""
+        if status in (DocumentStatus.EFFECTIVE, DocumentStatus.OBSOLETE, DocumentStatus.ARCHIVED):
+            return False
+        return status != DocumentStatus.DRAFT and self._has_any(roles, {"QMB", "ADMIN"})
 
     # ---- actions ------------------------------------------------------------
 
-    def submit_to_review(self, *, doc_id: str, actor: object | None,
-                         user_id: str, reason: str, signed_pdf_path: str) -> TransitionResult:
+    def submit_review(self, *, doc_id: str, actor: object | None,
+                     user_id: str, reason: str, signed_pdf_path: str) -> TransitionResult:
+        """DRAFT -> REVIEW or REVISION -> REVIEW"""
         if not doc_id:
             return TransitionResult(False, "doc_id is required.")
         rec = self._repo.get(doc_id)
@@ -189,11 +261,10 @@ class WorkflowService:
 
         actor_id = user_id or self._user_id_of(actor)
         roles = self.roles_of(actor)
-        # Make sure we have an AUTHOR if none set (fresh import)
         self._ensure_author_assigned(doc_id, actor_id)
         assigned = self._assigned_roles(doc_id, actor_id)
 
-        if not self._can_submit_to_review(roles=roles, assigned=assigned, status=rec.status):
+        if not self._can_submit_review(roles=roles, assigned=assigned, status=rec.status):
             return TransitionResult(False, "Not allowed to submit to review.")
 
         pdf = self._repo.generate_review_pdf(doc_id)
@@ -205,11 +276,13 @@ class WorkflowService:
         if not self._repo.attach_signed_pdf(doc_id, signed_pdf_path, "submit_review", actor_id, reason):
             return TransitionResult(False, "Could not attach signed PDF for review.")
 
-        self._repo.set_status(doc_id, DocumentStatus.IN_REVIEW, actor_id, reason)
-        return TransitionResult(True, "Submitted to review.", DocumentStatus.IN_REVIEW)
+        self._repo.set_status(doc_id, DocumentStatus.REVIEW, actor_id, reason)
+        return TransitionResult(True, "Submitted to review.", DocumentStatus.REVIEW)
 
-    def request_approval(self, *, doc_id: str, actor: object | None,
-                         user_id: str, reason: str, signed_pdf_path: str) -> TransitionResult:
+    def approve(self, *, doc_id: str, actor: object | None,
+               user_id: str, reason: str, signed_pdf_path: str, 
+               requires_review: bool = True) -> TransitionResult:
+        """REVIEW -> APPROVED or DRAFT -> APPROVED (if no review required)"""
         if not doc_id:
             return TransitionResult(False, "doc_id is required.")
         rec = self._repo.get(doc_id)
@@ -217,23 +290,25 @@ class WorkflowService:
             return TransitionResult(False, "Document not found.")
         if not isinstance(reason, str) or not reason.strip():
             return TransitionResult(False, "Reason is required.")
+        
         actor_id = user_id or self._user_id_of(actor)
         roles = self.roles_of(actor)
         assigned = self._assigned_roles(doc_id, actor_id)
 
-        if not self._can_request_approval(roles=roles, assigned=assigned, status=rec.status):
-            return TransitionResult(False, "Not allowed to request approval.")
+        if not self._can_approve(roles=roles, assigned=assigned, status=rec.status, requires_review=requires_review):
+            return TransitionResult(False, "Not allowed to approve.")
         if not (signed_pdf_path and isinstance(signed_pdf_path, str)):
             return TransitionResult(False, "Signed PDF is missing.")
 
-        if not self._repo.attach_signed_pdf(doc_id, signed_pdf_path, "request_approval", actor_id, reason):
+        if not self._repo.attach_signed_pdf(doc_id, signed_pdf_path, "approve", actor_id, reason):
             return TransitionResult(False, "Could not attach signed PDF for approval.")
 
-        self._repo.set_status(doc_id, DocumentStatus.APPROVAL, actor_id, reason)
-        return TransitionResult(True, "Moved to approval.", DocumentStatus.APPROVAL)
+        self._repo.set_status(doc_id, DocumentStatus.APPROVED, actor_id, reason)
+        return TransitionResult(True, "Document approved.", DocumentStatus.APPROVED)
 
     def publish(self, *, doc_id: str, actor: object | None,
                 user_id: str, reason: str, signed_pdf_path: str) -> TransitionResult:
+        """APPROVED -> EFFECTIVE"""
         if not doc_id:
             return TransitionResult(False, "doc_id is required.")
         rec = self._repo.get(doc_id)
@@ -241,6 +316,7 @@ class WorkflowService:
             return TransitionResult(False, "Document not found.")
         if not isinstance(reason, str) or not reason.strip():
             return TransitionResult(False, "Reason is required.")
+        
         actor_id = user_id or self._user_id_of(actor)
         roles = self.roles_of(actor)
         assigned = self._assigned_roles(doc_id, actor_id)
@@ -257,11 +333,82 @@ class WorkflowService:
         if not self._repo.attach_signed_pdf(doc_id, signed_pdf_path, "publish", actor_id, reason):
             return TransitionResult(False, "Could not attach signed PDF for publish step.")
 
-        self._repo.set_status(doc_id, DocumentStatus.PUBLISHED, actor_id, reason)
-        return TransitionResult(True, "Document published.", DocumentStatus.PUBLISHED)
+        self._repo.set_status(doc_id, DocumentStatus.EFFECTIVE, actor_id, reason)
+        return TransitionResult(True, "Document published.", DocumentStatus.EFFECTIVE)
+
+    def create_revision(self, *, doc_id: str, actor: object | None,
+                       user_id: str, reason: str) -> TransitionResult:
+        """EFFECTIVE -> REVISION"""
+        if not doc_id:
+            return TransitionResult(False, "doc_id is required.")
+        rec = self._repo.get(doc_id)
+        if not rec:
+            return TransitionResult(False, "Document not found.")
+        if not isinstance(reason, str) or not reason.strip():
+            return TransitionResult(False, "Reason for revision is required.")
+        
+        actor_id = user_id or self._user_id_of(actor)
+        roles = self.roles_of(actor)
+        assigned = self._assigned_roles(doc_id, actor_id)
+
+        if not self._can_create_revision(roles=roles, assigned=assigned, status=rec.status):
+            return TransitionResult(False, "Not allowed to create revision.")
+
+        self._repo.set_status(doc_id, DocumentStatus.REVISION, actor_id, reason)
+        
+        # Restore DOCX for editing if available
+        if hasattr(self._repo, "restore_docx_after_backward"):
+            try:
+                self._repo.restore_docx_after_backward(doc_id)
+            except Exception as ex:
+                return TransitionResult(True, f"Revision created (DOCX auto-restore failed: {ex})", DocumentStatus.REVISION)
+
+        return TransitionResult(True, "Revision created.", DocumentStatus.REVISION)
+
+    def obsolete(self, *, doc_id: str, actor: object | None,
+                user_id: str, reason: str) -> TransitionResult:
+        """EFFECTIVE -> OBSOLETE (requires obsoletion reason)"""
+        if not doc_id:
+            return TransitionResult(False, "doc_id is required.")
+        rec = self._repo.get(doc_id)
+        if not rec:
+            return TransitionResult(False, "Document not found.")
+        if not isinstance(reason, str) or not reason.strip():
+            return TransitionResult(False, "Obsoletion reason is required.")
+        
+        actor_id = user_id or self._user_id_of(actor)
+        roles = self.roles_of(actor)
+        assigned = self._assigned_roles(doc_id, actor_id)
+
+        if not self._can_obsolete(roles=roles, assigned=assigned, status=rec.status):
+            return TransitionResult(False, "Not allowed to obsolete.")
+
+        self._repo.set_status(doc_id, DocumentStatus.OBSOLETE, actor_id, reason)
+        return TransitionResult(True, "Document obsoleted.", DocumentStatus.OBSOLETE)
+
+    def archive(self, *, doc_id: str, actor: object | None,
+               user_id: str, reason: str) -> TransitionResult:
+        """OBSOLETE -> ARCHIVED (ADMIN/QMB only)"""
+        if not doc_id:
+            return TransitionResult(False, "doc_id is required.")
+        rec = self._repo.get(doc_id)
+        if not rec:
+            return TransitionResult(False, "Document not found.")
+        if not isinstance(reason, str) or not reason.strip():
+            return TransitionResult(False, "Archive reason is required.")
+        
+        actor_id = user_id or self._user_id_of(actor)
+        roles = self.roles_of(actor)
+
+        if not self._can_archive(roles=roles, status=rec.status):
+            return TransitionResult(False, "Not allowed to archive.")
+
+        self._repo.set_status(doc_id, DocumentStatus.ARCHIVED, actor_id, reason)
+        return TransitionResult(True, "Document archived.", DocumentStatus.ARCHIVED)
 
     def back_to_draft(self, *, doc_id: str, actor: object | None,
                       user_id: str, reason: str) -> TransitionResult:
+        """Reset to DRAFT from non-final states (ADMIN/QMB only)"""
         if not doc_id:
             return TransitionResult(False, "doc_id is required.")
         if not (isinstance(reason, str) and reason.strip()):

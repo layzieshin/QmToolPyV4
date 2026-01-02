@@ -291,7 +291,7 @@ class DocumentsController:
 
     def _is_workflow_active(self, doc: DocumentRecord) -> bool:
         """
-        Active by definition for non-DRAFT (IN_REVIEW/APPROVAL/PUBLISHED).
+        Active by definition for non-DRAFT (REVIEW/APPROVED/EFFECTIVE).
         For DRAFT we consult the repository-persisted flag, fallback to RAM cache.
         """
         if doc.status != DocumentStatus.DRAFT:
@@ -336,8 +336,8 @@ class DocumentsController:
         active = self._is_workflow_active(doc)
 
         can_open = bool(doc.current_file_path)
-        can_copy = doc.status in {DocumentStatus.PUBLISHED, (self._STATUS_OBSOLETE or DocumentStatus.PUBLISHED)}
-        can_archive = (doc.status == DocumentStatus.PUBLISHED) and bool({"ADMIN", "QMB"} & roles_global)
+        can_copy = doc.status in {DocumentStatus.EFFECTIVE, (self._STATUS_OBSOLETE or DocumentStatus.EFFECTIVE)}
+        can_archive = (doc.status == DocumentStatus.EFFECTIVE) and bool({"ADMIN", "QMB"} & roles_global)
 
         can_assign_roles = self.can_assign_roles(doc)
 
@@ -354,10 +354,10 @@ class DocumentsController:
             if doc.status == DocumentStatus.DRAFT:
                 next_text = "Zur Prüfung einreichen"
                 can_next = self._wf.can_submit_review(roles=roles_global, assigned=assigned, status=doc.status)
-            elif doc.status == DocumentStatus.IN_REVIEW:
-                next_text = "Freigabe einholen"
-                can_next = self._wf.can_request_approval(roles=roles_global, assigned=assigned, status=doc.status)
-            elif doc.status == DocumentStatus.APPROVAL:
+            elif doc.status == DocumentStatus.REVIEW:
+                next_text = "Genehmigen"
+                can_next = self._wf.can_approve(roles=roles_global, assigned=assigned, status=doc.status)
+            elif doc.status == DocumentStatus.APPROVED:
                 next_text = "Veröffentlichen"
                 can_next = self._wf.can_publish(roles=roles_global, assigned=assigned, status=doc.status)
             else:
@@ -541,8 +541,8 @@ class DocumentsController:
         roles_global = self._global_roles_of(user)
         if not {"ADMIN", "QMB"} & roles_global:
             return False, "Archivieren nur für ADMIN oder QMB."
-        if doc.status != DocumentStatus.PUBLISHED:
-            return False, "Nur veröffentlichte Dokumente können archiviert werden."
+        if doc.status != DocumentStatus.EFFECTIVE:
+            return False, "Nur wirksame Dokumente können archiviert werden."
 
         reason = ask_reason()
         if not reason: return False, "Abgebrochen."
@@ -609,7 +609,10 @@ class DocumentsController:
                 return self._resolve_display_name(uid) or uid
             if "submit_review" in first_by_step:
                 u, dt = first_by_step["submit_review"]; out["editor"] = disp(u); out["editor_dt"] = dt
-            if "request_approval" in first_by_step:
+            # Support both old and new action names for backward compatibility
+            if "approve" in first_by_step:
+                u, dt = first_by_step["approve"]; out["reviewer"] = disp(u); out["reviewer_dt"] = dt
+            elif "request_approval" in first_by_step:
                 u, dt = first_by_step["request_approval"]; out["reviewer"] = disp(u); out["reviewer_dt"] = dt
             if "publish" in first_by_step:
                 u, dt = first_by_step["publish"]; out["publisher"] = disp(u); out["publisher_dt"] = dt
@@ -731,7 +734,7 @@ class DocumentsController:
     # ------------------------------------------------------------ public API
     def list_published_documents(self) -> List[Dict[str, Any]]:
         assert self._repo, "Controller not initialized"
-        recs = self._repo.list(status=DocumentStatus.PUBLISHED, text=None)
+        recs = self._repo.list(status=DocumentStatus.EFFECTIVE, text=None)
         out: List[Dict[str, Any]] = []
         for r in recs:
             version = getattr(r, "version_label", None) or f"{getattr(r, 'version_major', 1)}.{getattr(r, 'version_minor', 0)}"
