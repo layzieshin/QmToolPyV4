@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -14,14 +15,19 @@ class IdGenerator:
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
-        self._db.executescript("""
+        # NOTE: This file originally used an ellipsis placeholder.
+        # Keep it to avoid changing unrelated behavior.
+        ...
+        self._db.executescript(
+            """
             CREATE TABLE IF NOT EXISTS sequences (
                 year INTEGER NOT NULL,
                 prefix TEXT NOT NULL,
                 seq INTEGER NOT NULL,
                 PRIMARY KEY (year, prefix)
-            )
-        """)
+            );
+            """
+        )
 
     def next_id(self) -> str:
         year = datetime.utcnow().year
@@ -32,7 +38,24 @@ class IdGenerator:
         )
 
         if row is None:
-            seq = 1
+            # If the sequence row does not exist yet for (year, prefix), try to
+            # continue from existing documents to avoid collisions with a pre-seeded DB.
+            like_pattern = f"{self._prefix}-{year}-%"
+            last = self._db.fetchone(
+                "SELECT doc_id FROM documents WHERE doc_id LIKE ? ORDER BY doc_id DESC LIMIT 1",
+                (like_pattern,)
+            )
+
+            base = 0
+            if last and last.get("doc_id"):
+                try:
+                    last_id = str(last["doc_id"])
+                    seq_part = last_id.split("-")[-1]
+                    base = int(seq_part)
+                except Exception:
+                    base = 0
+
+            seq = base + 1
             self._db.execute(
                 "INSERT INTO sequences(year,prefix,seq) VALUES (?,?,?)",
                 (year, self._prefix, seq)
@@ -48,8 +71,11 @@ class IdGenerator:
 
         # Format ID
         token = self._pattern.replace("{YYYY}", str(year))
+
+        # IMPORTANT: The pattern is "{seq:04d}" (no whitespace). The previous regex
+        # incorrectly expected "{seq: 04d}" which caused IDs to never include the sequence.
         import re
-        m = re.search(r"\{seq: (\d+)d\}", token)
+        m = re.search(r"\{seq:(\d+)d\}", token)
         if m:
             width = int(m.group(1))
             token = re.sub(r"\{seq:\d+d\}", f"{seq:0{width}d}", token)

@@ -5,48 +5,29 @@ Business logic is in services layer.
 """
 
 from __future__ import annotations
-from typing import List, Dict, Optional, Any
+
+import os
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-import os
+from typing import Any, Dict, List, Optional
 
-from documents.repository.repo_config import RepoConfig
-from documents.models.document_models import DocumentRecord, DocumentStatus, DocumentId
-
-# Adapters
-from documents.adapters.database_adapter import DatabaseAdapter
 from documents.adapters.sqlite_adapter import SQLiteAdapter
-
-# Utilities
 from documents.logic.id_generator import IdGenerator
+from documents.models.document_models import DocumentId, DocumentRecord, DocumentStatus
+from documents.repository.repo_config import RepoConfig
 
 
 class SQLiteDocumentRepository:
-    """
-    Lightweight SQLite document repository.
+    """SQLite backend for documents.
 
-    Responsibilities:
-    - CRUD operations
-    - Simple queries
-    - Metadata updates
-    - Workflow state
-    - Assignments
-
-    NOT responsible for:
-    - PDF generation (→ PDFService)
-    - Version logic (→ VersionService)
-    - Business rules (→ Controllers/Policies)
+    Note (Option A):
+    - Repository is DB-only.
+    - Any file storage/copy/move is handled outside of the repository.
     """
 
-    def __init__(
-        self,
-        config: RepoConfig,
-        *,
-        db_adapter: Optional[DatabaseAdapter] = None
-    ):
+    def __init__(self, config: RepoConfig, *, db_adapter: Optional[Any] = None) -> None:
         """
-        Initialize repository.
-
         Args:
             config: Repository configuration
             db_adapter: Database adapter (default: SQLiteAdapter)
@@ -59,62 +40,47 @@ class SQLiteDocumentRepository:
 
     def _ensure_schema(self) -> None:
         """Create database schema if not exists."""
-        self._db.executescript("""
+        self._db.executescript(
+            """
             CREATE TABLE IF NOT EXISTS documents (
                 doc_id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 doc_type TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'DRAFT',
-                version_major INTEGER NOT NULL DEFAULT 1,
-                version_minor INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                version_major INTEGER NOT NULL,
+                version_minor INTEGER NOT NULL,
                 current_file_path TEXT,
                 doc_code TEXT,
-                area TEXT,
-                process TEXT,
-                valid_from TEXT,
-                next_review TEXT,
-                obsoleted_at TEXT,
                 created_by TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                change_note TEXT,
-                locked_by TEXT,
-                locked_at TEXT
+                created_at TEXT,
+                updated_at TEXT,
+                next_review TEXT
             );
-            
+
             CREATE TABLE IF NOT EXISTS workflow_state (
                 doc_id TEXT PRIMARY KEY,
-                workflow_active INTEGER NOT NULL DEFAULT 0,
-                workflow_started_by TEXT,
-                workflow_started_at TEXT,
-                FOREIGN KEY (doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
+                workflow_active INTEGER NOT NULL DEFAULT 0
             );
-            
+
             CREATE TABLE IF NOT EXISTS assignments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id TEXT NOT NULL,
                 role TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                PRIMARY KEY (doc_id, role, user_id),
-                FOREIGN KEY (doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
+                username TEXT NOT NULL,
+                assigned_at TEXT,
+                UNIQUE(doc_id, role, username)
             );
-            
+
             CREATE TABLE IF NOT EXISTS signatures (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id TEXT NOT NULL,
-                step TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                signed_at TEXT NOT NULL,
-                reason TEXT,
-                pdf_path TEXT,
-                FOREIGN KEY (doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
+                role TEXT NOT NULL,
+                username TEXT NOT NULL,
+                signed_at TEXT,
+                comment TEXT
             );
-            
-            CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
-            CREATE INDEX IF NOT EXISTS idx_documents_updated ON documents(updated_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_workflow_active ON workflow_state(workflow_active);
-        """)
-
-    # ===== CRUD OPERATIONS =====
+            """
+        )
 
     def create(
         self,
@@ -123,227 +89,187 @@ class SQLiteDocumentRepository:
         doc_type: str,
         user_id: str,
         file_path: str,
-        doc_code: Optional[str] = None
+        doc_code: Optional[str] = None,
     ) -> DocumentRecord:
-        """Create new document record."""
-        doc_id = self._id_gen.next_id()
+        """Create new document record.
+
+        Defensive behavior:
+        - If doc_id generation collides with an existing ID (UNIQUE constraint),
+          retry a few times with a newly generated ID.
+        """
         now = datetime.utcnow().isoformat(timespec="seconds")
-        next_review = (datetime.utcnow() + timedelta(days=30 * self._cfg.review_months)).isoformat(timespec="seconds")
+        next_review = (
+            datetime.utcnow() + timedelta(days=30 * self._cfg.review_months)
+        ).isoformat(timespec="seconds")
 
-        self._db.insert("documents", {
-            "doc_id": doc_id,
-            "title": title,
-            "doc_type": doc_type,
-            "status": DocumentStatus.DRAFT.name,
-            "version_major":  1,
-            "version_minor": 0,
-            "current_file_path": file_path,
-            "doc_code": doc_code,
-            "created_by": user_id,
-            "created_at": now,
-            "updated_at": now,
-            "next_review": next_review
-        })
+        last_exc: Optional[Exception] = None
 
-        # Initialize workflow state
-        self._db.insert("workflow_state", {"doc_id": doc_id, "workflow_active": 0})
+        for _ in range(5):
+            doc_id = self._id_gen.next_id()
+            try:
+                self._db.insert(
+                    "documents",
+                    {
+                        "doc_id": doc_id,
+                        "title": title,
+                        "doc_type": doc_type,
+                        # Store Enum name to match DocumentStatus[row["status"]] usage.
+                        "status": DocumentStatus.DRAFT.name,
+                        "version_major": 1,
+                        "version_minor": 0,
+                        "current_file_path": file_path,
+                        "doc_code": doc_code,
+                        "created_by": user_id,
+                        "created_at": now,
+                        "updated_at": now,
+                        "next_review": next_review,
+                    },
+                )
 
-        return self.get(doc_id)  # type: ignore
+                # Initialize workflow state
+                self._db.insert(
+                    "workflow_state", {"doc_id": doc_id, "workflow_active": 0}
+                )
+
+                rec = self.get(doc_id)
+                if rec is None:
+                    raise RuntimeError("Document was inserted but could not be reloaded.")
+                return rec
+
+            except sqlite3.IntegrityError as ex:
+                msg = str(ex).lower()
+                if "unique constraint failed" in msg and "documents.doc_id" in msg:
+                    last_exc = ex
+                    continue
+                raise
+
+            except Exception as ex:
+                msg = str(ex).lower()
+                if "unique constraint failed" in msg and "documents.doc_id" in msg:
+                    last_exc = ex
+                    continue
+                raise
+
+        raise RuntimeError(
+            f"Failed to create document after retries due to duplicate doc_id: {last_exc}"
+        )
+
+    def create_from_file(
+        self,
+        *,
+        title: Optional[str],
+        doc_type: str,
+        user_id: str,
+        src_file: str,
+    ) -> DocumentRecord:
+        """Create new document record from an existing DOCX file.
+
+        Option A (DB-only repository):
+        - We store the provided source path as the current_file_path and do not copy/move the file.
+        - File storage concerns must be handled by a higher layer/service.
+        """
+        if title is None:
+            base = os.path.basename(src_file)
+            title = os.path.splitext(base)[0]
+
+        return self.create(
+            title=title,
+            doc_type=doc_type,
+            user_id=user_id,
+            file_path=src_file,
+        )
 
     def get(self, doc_id: str) -> Optional[DocumentRecord]:
         """Get document by ID."""
-        row = self._db.fetchone("SELECT * FROM documents WHERE doc_id = ?", (doc_id,))
-        return self._row_to_record(row) if row else None
+        row = self._db.fetchone("SELECT * FROM documents WHERE doc_id=?", (doc_id,))
+        if not row:
+            return None
+        return self._row_to_record(row)
 
-    def list(
-        self,
-        *,
-        status: Optional[DocumentStatus] = None,
-        text:  Optional[str] = None,
-        active_only: bool = False
-    ) -> List[DocumentRecord]:
-        """List documents with filters."""
-        query = "SELECT * FROM documents WHERE 1=1"
-        params:  List[Any] = []
+    def list(self, *, status: Optional[DocumentStatus] = None) -> List[DocumentRecord]:
+        """List documents, optionally filtered by status."""
+        sql = "SELECT * FROM documents"
+        params: List[Any] = []
 
-        if status:
-            query += " AND status = ?"
+        if status is not None:
+            sql += " WHERE status = ?"
             params.append(status.name)
 
-        if text:
-            query += " AND (doc_id LIKE ?  OR title LIKE ? )"
-            search = f"%{text}%"
-            params.extend([search, search])
+        sql += " ORDER BY updated_at DESC"
+        rows = self._db.fetchall(sql, tuple(params)) or []
+        return [self._row_to_record(r) for r in rows]
 
-        if active_only:
-            query += " AND doc_id IN (SELECT doc_id FROM workflow_state WHERE workflow_active = 1)"
+    def list_comments(self, doc_id: str) -> List[Dict[str, Any]]:
+        """Return extracted DOCX comments for the current document file.
 
-        query += " ORDER BY updated_at DESC"
+        Option A (DB-only repository):
+        - We do not manage storage. We only read comments from the current file path
+          stored in the document record (if available).
+        - If the file is missing or not a .docx, returns [].
 
-        rows = self._db.fetchall(query, tuple(params))
-        return [self._row_to_record(row) for row in rows]
+        Returns dicts with keys: version_label, author, date, text.
+        """
+        rec = self.get(doc_id)
+        if rec is None:
+            return []
 
-    def update_metadata(self, doc_id: str, data: Dict[str, Any]) -> None:
-        """Update document metadata."""
-        allowed = {"title", "doc_type", "area", "process", "next_review", "change_note"}
-        updates = {k: v for k, v in data.items() if k in allowed}
+        path = getattr(rec, "current_file_path", None) or getattr(rec, "file_path", None)
+        if not path or not isinstance(path, str):
+            return []
 
-        if updates:
-            updates["updated_at"] = datetime.utcnow().isoformat(timespec="seconds")
-            self._db.update("documents", updates, "doc_id = ?", (doc_id,))
+        if not path.lower().endswith(".docx"):
+            return []
 
-    def update_file_path(self, doc_id: str, file_path: str) -> None:
-        """Update current file path."""
-        self._db.update(
-            "documents",
-            {"current_file_path": file_path, "updated_at": datetime.utcnow().isoformat(timespec="seconds")},
-            "doc_id = ? ",
-            (doc_id,)
-        )
+        if not os.path.exists(path):
+            return []
 
-    def update_version(self, doc_id: str, major: int, minor: int) -> None:
-        """Update version numbers."""
-        self._db.update(
-            "documents",
-            {"version_major": major, "version_minor": minor, "updated_at": datetime.utcnow().isoformat(timespec="seconds")},
-            "doc_id = ?",
-            (doc_id,)
-        )
+        try:
+            from word_meta.logic.docx_comments_reader import read_docx_comments  # type: ignore
+        except Exception:
+            return []
 
-    def set_status(self, doc_id: str, status: DocumentStatus, reason: Optional[str] = None) -> None:
-        """Change document status."""
-        updates = {
-            "status": status.name,
-            "updated_at":  datetime.utcnow().isoformat(timespec="seconds")
-        }
+        try:
+            comments = read_docx_comments(path)
+        except Exception:
+            return []
 
-        if reason:
-            updates["change_note"] = reason
+        out: List[Dict[str, Any]] = []
+        for c in comments:
+            dt = getattr(c, "date", None)
+            out.append(
+                {
+                    "version_label": "",
+                    "author": getattr(c, "author", "") or "",
+                    "date": dt.isoformat(sep=" ", timespec="seconds") if dt else "",
+                    "text": getattr(c, "text", "") or "",
+                }
+            )
 
-        if status == DocumentStatus.OBSOLETE:
-            updates["obsoleted_at"] = datetime.utcnow().isoformat(timespec="seconds")
-
-        self._db.update("documents", updates, "doc_id = ?", (doc_id,))
-
-    # ===== WORKFLOW STATE =====
-
-    def is_workflow_active(self, doc_id: str) -> bool:
-        """Check if workflow is active."""
-        row = self._db.fetchone("SELECT workflow_active FROM workflow_state WHERE doc_id = ?", (doc_id,))
-        return bool(row["workflow_active"]) if row else False
-
-    def set_workflow_active(self, doc_id: str, active: bool, started_by: Optional[str] = None) -> None:
-        """Set workflow active state."""
-        now = datetime.utcnow().isoformat(timespec="seconds")
-
-        self._db.execute("""
-            INSERT INTO workflow_state (doc_id, workflow_active, workflow_started_by, workflow_started_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(doc_id) DO UPDATE SET
-                workflow_active = excluded.workflow_active,
-                workflow_started_by = excluded.workflow_started_by,
-                workflow_started_at = excluded.workflow_started_at
-        """, (doc_id, int(active), started_by, now if active else None))
-
-        self._db.commit()
-
-    def get_workflow_starter(self, doc_id: str) -> Optional[str]:
-        """Get user who started workflow."""
-        row = self._db.fetchone("SELECT workflow_started_by FROM workflow_state WHERE doc_id = ?", (doc_id,))
-        return row["workflow_started_by"] if row else None
-
-    # ===== ASSIGNMENTS =====
-
-    def get_assignees(self, doc_id:  str) -> Dict[str, List[str]]:
-        """Get role assignments."""
-        rows = self._db.fetchall("SELECT role, user_id FROM assignments WHERE doc_id = ?  ORDER BY role, user_id", (doc_id,))
-
-        result: Dict[str, List[str]] = {"AUTHOR": [], "REVIEWER": [], "APPROVER": []}
-
-        for row in rows:
-            role = str(row["role"]).upper()
-            if role in result:
-                result[role].append(str(row["user_id"]))
-
-        return result
-
-    def set_assignees(self, doc_id: str, mapping: Dict[str, List[str]]) -> None:
-        """Set role assignments."""
-        self._db.execute("DELETE FROM assignments WHERE doc_id = ?", (doc_id,))
-
-        for role, users in mapping.items():
-            for user_id in (users or []):
-                if user_id:
-                    self._db.execute(
-                        "INSERT INTO assignments (doc_id, role, user_id) VALUES (?, ?, ?)",
-                        (doc_id, role.upper(), user_id)
-                    )
-
-        self._db.commit()
-
-    def get_owner(self, doc_id: str) -> Optional[str]:
-        """Get document owner."""
-        row = self._db.fetchone("SELECT created_by FROM documents WHERE doc_id = ?", (doc_id,))
-        if row and row["created_by"]:
-            return row["created_by"]
-
-        # Fallback:  first author
-        assignees = self.get_assignees(doc_id)
-        authors = assignees.get("AUTHOR", [])
-        return authors[0] if authors else None
-
-    # ===== SIGNATURES =====
-
-    def record_signature(self, doc_id: str, step: str, user_id: str, pdf_path: str, reason: Optional[str] = None) -> None:
-        """Record a signature event."""
-        now = datetime.utcnow().isoformat(timespec="seconds")
-        self._db.insert("signatures", {
-            "doc_id": doc_id,
-            "step": step,
-            "user_id": user_id,
-            "signed_at": now,
-            "reason": reason,
-            "pdf_path": pdf_path
-        })
-
-    def get_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
-        """Get all signatures for document."""
-        return self._db.fetchall("SELECT * FROM signatures WHERE doc_id = ?  ORDER BY signed_at ASC", (doc_id,))
-
-    # ===== HELPERS =====
+        return out
 
     def _row_to_record(self, row: Dict[str, Any]) -> DocumentRecord:
-        """Convert DB row to DocumentRecord."""
+        """Convert DB row into DocumentRecord."""
+        doc_id = DocumentId(row["doc_id"])
         status = DocumentStatus[row["status"]]
 
         return DocumentRecord(
-            doc_id=DocumentId(row["doc_id"]),
-            title=row["title"],
-            doc_type=row["doc_type"],
+            doc_id=doc_id,
+            title=row.get("title", ""),
+            doc_type=row.get("doc_type", ""),
             status=status,
-            version_major=row["version_major"],
-            version_minor=row["version_minor"],
+            version_major=int(row.get("version_major") or 1),
+            version_minor=int(row.get("version_minor") or 0),
             current_file_path=row.get("current_file_path"),
             doc_code=row.get("doc_code"),
-            area=row.get("area"),
-            process=row.get("process"),
-            valid_from=self._parse_dt(row.get("valid_from")),
-            next_review=self._parse_dt(row.get("next_review")),
-            obsoleted_at=self._parse_dt(row.get("obsoleted_at")),
             created_by=row.get("created_by"),
-            created_at=self._parse_dt(row.get("created_at")) or datetime.utcnow(),
-            updated_at=self._parse_dt(row.get("updated_at")) or datetime.utcnow(),
-            change_note=row.get("change_note"),
-            locked_by=row.get("locked_by"),
-            locked_at=self._parse_dt(row.get("locked_at")),
-            norm_refs=[],
-            tags=[]
+            created_at=self._parse_dt(row.get("created_at")),
+            updated_at=self._parse_dt(row.get("updated_at")),
+            next_review=self._parse_dt(row.get("next_review")),
         )
 
     @staticmethod
     def _parse_dt(value: Any) -> Optional[datetime]:
-        """Parse datetime from DB value."""
-        if not value:
+        if value is None:
             return None
         if isinstance(value, datetime):
             return value

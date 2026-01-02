@@ -10,6 +10,7 @@ REFACTORED VERSION with new architecture:
 from __future__ import annotations
 
 import os
+import logging
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from typing import Any, Dict, Optional, List
@@ -40,9 +41,9 @@ from documents.dto.document_details import DocumentDetails
 from documents.repository.sqlite_document_repository import SQLiteDocumentRepository
 from documents.repository.repo_config import RepoConfig
 
+
 # Adapters
 from documents.adapters.sqlite_adapter import SQLiteAdapter
-from documents.adapters.filesystem_storage_adapter import FilesystemStorageAdapter
 
 # Services
 from documents.services.policy.permission_policy import PermissionPolicy
@@ -62,6 +63,7 @@ except Exception:
     MetadataDialog = None  # type: ignore
 
 from pathlib import Path
+logger = logging.getLogger(__name__)
 
 
 class DocumentsView(ttk.Frame):
@@ -89,6 +91,7 @@ class DocumentsView(ttk.Frame):
             self._repo = self._init_repository()
             self._rbac = self._init_rbac()
         except Exception as ex:
+            logger.exception("DocumentsView initialization failed")
             self._init_error = f"Repository initialization failed: {ex}"
             self._repo = None
             self._rbac = None
@@ -122,10 +125,19 @@ class DocumentsView(ttk.Frame):
 
         # Create adapters (NEW!)
         db_adapter = SQLiteAdapter(db_path)
-        storage_adapter = FilesystemStorageAdapter(root_path)
 
-        return SQLiteDocumentRepository(cfg, db_adapter=db_adapter, storage_adapter=storage_adapter)
+        # NOTE: StorageAdapter integration is not yet finalized. For now the repository
+        # remains DB-only and file operations must be handled elsewhere.
+        return SQLiteDocumentRepository(cfg, db_adapter=db_adapter)
 
+    def _init_rbac(self) -> None:
+        """Initialize optional RBAC service.
+
+        The RBAC integration for the Documents module is currently optional. The
+        AssignmentController can operate without an RBAC service (it will skip
+        user discovery).
+        """
+        return None
 
     def _init_controllers(self) -> None:
         """Initialize all controllers with services (Controller Factory)."""

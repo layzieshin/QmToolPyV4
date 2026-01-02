@@ -42,7 +42,7 @@ ok = repo.create_user(
 )
 
 if ok:
-    user = repo.get_user_by_username(username)
+    user = repo.get_user(username)
     if user:
         _seed_documents_admin(str(getattr(user, "id", "")))
 print("✅  Admin angelegt" if ok else "❌  Benutzer existiert schon")
