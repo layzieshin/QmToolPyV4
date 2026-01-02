@@ -66,7 +66,7 @@ class TranslationManager:
 
         if LOCALE_TRACK_MISSING_KEYS and (label, lang) not in self._missing_keys_logged:
             from core.common.app_context import AppContext    # noqa: WPS433
-            user = AppContext.current_user
+            user = AppContext.get_current_user()
             logger.log(
                 feature="Locale",
                 event="MissingKey",
@@ -84,5 +84,16 @@ translations = TranslationManager()
 def T(label: str) -> str:
     """Global verwendbare Übersetzungsfunktion mit AppContext-Verknüpfung."""
     from core.common.app_context import AppContext  # noqa: WPS433
-    lang = AppContext.settings_manager.get("app", "language", user_specific=True, fallback="de")
+
+    user_id = None
+    if hasattr(AppContext, "get_current_user_id"):
+        user_id = AppContext.get_current_user_id()
+
+    lang = AppContext.settings_manager.get(
+        "app",
+        "language",
+        fallback="de",
+        user_specific=bool(user_id),
+        user_id=user_id,
+    )
     return translations.t(label, lang)

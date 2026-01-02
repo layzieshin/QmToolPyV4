@@ -123,7 +123,7 @@ class FillDictionaryView(tk.Toplevel):
     # ---------------------------- Save -------------------------------- #
     def _save(self):
         # lese Tabelle zurück in dict
-        user = AppContext.current_user
+        user = AppContext.get_current_user()
         data = {}
         for item in self._table.get_children():
             vals = self._table.item(item)["values"]
@@ -141,7 +141,7 @@ class FillDictionaryView(tk.Toplevel):
         tmp.replace(LABELS_FILE)
 
         translations.load_file(LABELS_FILE)          # Reload in Memory
-        user = AppContext.current_user
+        user = AppContext.get_current_user()
         logger.log(
             feature="Locale",
             event="DictUpdated",
