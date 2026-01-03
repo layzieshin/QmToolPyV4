@@ -40,7 +40,7 @@ class SQLiteDocumentRepository:
         self._db = db_adapter or SQLiteAdapter(config.db_path)
 
         # Cache for column names (populated lazily)
-        self._table_columns_cache:  Dict[str, Set[str]] = {}
+        self._table_columns_cache: Dict[str, Set[str]] = {}
 
         self._ensure_schema()
         self._id_gen = IdGenerator(self._db, config.id_prefix, config.id_pattern)
@@ -65,7 +65,8 @@ class SQLiteDocumentRepository:
                 created_by TEXT,
                 created_at TEXT,
                 updated_at TEXT,
-                next_review TEXT
+                next_review TEXT,
+                signing_pdf_path TEXT
             );
 
             CREATE TABLE IF NOT EXISTS workflow_state (
@@ -89,6 +90,7 @@ class SQLiteDocumentRepository:
 
         # Run migrations for existing tables
         self._migrate_workflow_state()
+        self._migrate_documents_signing_pdf()
 
     def _ensure_assignments_table(self) -> None:
         """Ensure assignments table exists with compatible structure."""
@@ -158,6 +160,26 @@ class SQLiteDocumentRepository:
             except Exception as ex:
                 logger.debug(f"workflow_state migration skipped: {ex}")
 
+    def _migrate_documents_signing_pdf(self) -> None:
+        """Add signing_pdf_path column to documents if missing.
+
+        This column is the single source of truth for the current signing PDF
+        that is passed along the signing chain. It must be cleared on workflow abort.
+        """
+        columns = self._get_table_columns("documents")
+        if "signing_pdf_path" in columns:
+            return
+
+        try:
+            self._db.executescript(
+                "ALTER TABLE documents ADD COLUMN signing_pdf_path TEXT;"
+            )
+            self._table_columns_cache.pop("documents", None)
+            logger.info("Migrated documents: added signing_pdf_path column")
+        except Exception as ex:
+            # SQLite raises if the column already exists (race) or table is missing.
+            logger.debug(f"documents migration skipped: {ex}")
+
     # =========================================================================
     # CRUD Operations
     # =========================================================================
@@ -177,7 +199,7 @@ class SQLiteDocumentRepository:
             datetime.utcnow() + timedelta(days=30 * self._cfg.review_months)
         ).isoformat(timespec="seconds")
 
-        last_exc:  Optional[Exception] = None
+        last_exc: Optional[Exception] = None
 
         for _ in range(5):
             doc_id = self._id_gen.next_id()
@@ -188,7 +210,7 @@ class SQLiteDocumentRepository:
                         "doc_id": doc_id,
                         "title": title,
                         "doc_type": doc_type,
-                        "status": DocumentStatus.DRAFT. name,
+                        "status": DocumentStatus.DRAFT.name,
                         "version_major": 1,
                         "version_minor": 0,
                         "current_file_path": file_path,
@@ -201,19 +223,21 @@ class SQLiteDocumentRepository:
                 )
 
                 # Initialize workflow state
-                self._db. insert(
+                self._db.insert(
                     "workflow_state",
-                    {"doc_id": doc_id, "workflow_active": 0}
+                    {"doc_id": doc_id, "workflow_active": 0},
                 )
 
-                rec = self. get(doc_id)
+                rec = self.get(doc_id)
                 if rec is None:
-                    raise RuntimeError("Document was inserted but could not be reloaded.")
+                    raise RuntimeError(
+                        "Document was inserted but could not be reloaded."
+                    )
                 return rec
 
             except sqlite3.IntegrityError as ex:
                 msg = str(ex).lower()
-                if "unique constraint failed" in msg and "documents. doc_id" in msg:
+                if "unique constraint failed" in msg and "documents.doc_id" in msg:
                     last_exc = ex
                     continue
                 raise
@@ -226,7 +250,8 @@ class SQLiteDocumentRepository:
                 raise
 
         raise RuntimeError(
-            f"Failed to create document after retries due to duplicate doc_id: {last_exc}"
+            "Failed to create document after retries due to duplicate doc_id: "
+            f"{last_exc}"
         )
 
     def create_from_file(
@@ -235,7 +260,7 @@ class SQLiteDocumentRepository:
         title: Optional[str],
         doc_type: str,
         user_id: str,
-        src_file:  str,
+        src_file: str,
     ) -> DocumentRecord:
         """Create new document record from an existing DOCX file."""
         if title is None:
@@ -280,7 +305,7 @@ class SQLiteDocumentRepository:
         else:
             sql = "SELECT * FROM documents WHERE 1=1"
 
-        params:  List[Any] = []
+        params: List[Any] = []
 
         # Status filter
         if status is not None:
@@ -294,7 +319,7 @@ class SQLiteDocumentRepository:
         if text and text.strip():
             search_term = f"%{text.strip()}%"
             if active_only:
-                sql += " AND (d.title LIKE ? OR d. doc_code LIKE ?  OR d.doc_id LIKE ?)"
+                sql += " AND (d.title LIKE ? OR d.doc_code LIKE ? OR d.doc_id LIKE ?)"
             else:
                 sql += " AND (title LIKE ? OR doc_code LIKE ? OR doc_id LIKE ?)"
             params.extend([search_term, search_term, search_term])
@@ -310,7 +335,7 @@ class SQLiteDocumentRepository:
             sql += " ORDER BY updated_at DESC"
 
         try:
-            rows = self._db. fetchall(sql, tuple(params)) or []
+            rows = self._db.fetchall(sql, tuple(params)) or []
             return [self._row_to_record(r) for r in rows]
         except Exception as ex:
             logger.error(f"Error in list(): {ex}")
@@ -320,11 +345,7 @@ class SQLiteDocumentRepository:
     # Metadata Update
     # =========================================================================
 
-    def update_metadata(
-        self,
-        data: Dict[str, Any],
-        user_id: str,
-    ) -> None:
+    def update_metadata(self, data: Dict[str, Any], user_id: str) -> None:
         """Update document metadata."""
         doc_id = data.get("doc_id")
         if not doc_id:
@@ -335,7 +356,7 @@ class SQLiteDocumentRepository:
 
         # Collect updateable fields
         allowed_fields = {"title", "doc_type", "doc_code", "next_review"}
-        updates:  Dict[str, Any] = {}
+        updates: Dict[str, Any] = {}
         for key in allowed_fields:
             if key in data:
                 updates[key] = data[key]
@@ -343,9 +364,9 @@ class SQLiteDocumentRepository:
         if not updates:
             return
 
-        updates["updated_at"] = datetime. utcnow().isoformat(timespec="seconds")
+        updates["updated_at"] = datetime.utcnow().isoformat(timespec="seconds")
 
-        set_clause = ", ".join(f"{k} = ?" for k in updates. keys())
+        set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
         values = list(updates.values()) + [doc_id]
 
         sql = f"UPDATE documents SET {set_clause} WHERE doc_id = ?"
@@ -360,7 +381,7 @@ class SQLiteDocumentRepository:
         self,
         doc_id: str,
         status: DocumentStatus,
-        user_id:  str,
+        user_id: str,
         reason: Optional[str] = None,
     ) -> None:
         """Change document status."""
@@ -390,7 +411,7 @@ class SQLiteDocumentRepository:
         if not rec:
             return False, f"Document not found: {doc_id}"
 
-        new_minor = rec. version_minor + 1
+        new_minor = rec.version_minor + 1
         now = datetime.utcnow().isoformat(timespec="seconds")
 
         self._db.execute(
@@ -434,7 +455,7 @@ class SQLiteDocumentRepository:
             )
             if not row:
                 return False
-            return bool(row. get("workflow_active", 0))
+            return bool(row.get("workflow_active", 0))
         except Exception as ex:
             logger.error(f"Error checking workflow_active: {ex}")
             return False
@@ -497,12 +518,12 @@ class SQLiteDocumentRepository:
     # Assignments
     # =========================================================================
 
-    def get_assignees(self, doc_id:  str) -> Dict[str, List[str]]:
+    def get_assignees(self, doc_id: str) -> Dict[str, List[str]]:
         """Get role assignments."""
-        result:  Dict[str, List[str]] = {
+        result: Dict[str, List[str]] = {
             "AUTHOR": [],
-            "REVIEWER":  [],
-            "APPROVER":  [],
+            "REVIEWER": [],
+            "APPROVER": [],
         }
 
         user_col = self._get_assignments_user_column()
@@ -511,14 +532,16 @@ class SQLiteDocumentRepository:
         try:
             # Build query based on available columns
             if has_assigned_at:
-                sql = f"SELECT role, {user_col} FROM assignments WHERE doc_id = ?  ORDER BY assigned_at"
+                sql = (
+                    f"SELECT role, {user_col} FROM assignments WHERE doc_id = ?  ORDER BY assigned_at"
+                )
             else:
                 sql = f"SELECT role, {user_col} FROM assignments WHERE doc_id = ?"
 
             rows = self._db.fetchall(sql, (doc_id,))
 
             for row in rows or []:
-                role = (row. get("role") or "").upper()
+                role = (row.get("role") or "").upper()
                 user_value = row.get(user_col) or ""
                 if role in result and user_value:
                     result[role].append(user_value)
@@ -528,11 +551,7 @@ class SQLiteDocumentRepository:
 
         return result
 
-    def set_assignees(
-        self,
-        doc_id: str,
-        mapping: Dict[str, List[str]],
-    ) -> None:
+    def set_assignees(self, doc_id: str, mapping: Dict[str, List[str]]) -> None:
         """Set role assignments."""
         user_col = self._get_assignments_user_column()
         has_assigned_at = self._assignments_has_assigned_at()
@@ -540,7 +559,7 @@ class SQLiteDocumentRepository:
 
         try:
             # Clear existing assignments for this document
-            self._db. execute("DELETE FROM assignments WHERE doc_id = ?", (doc_id,))
+            self._db.execute("DELETE FROM assignments WHERE doc_id = ?", (doc_id,))
 
             # Insert new assignments
             for role, usernames in mapping.items():
@@ -550,11 +569,11 @@ class SQLiteDocumentRepository:
                         data = {
                             "doc_id": doc_id,
                             "role": role_upper,
-                            user_col: username. strip(),
+                            user_col: username.strip(),
                         }
                         if has_assigned_at:
                             data["assigned_at"] = now
-                        self._db. insert("assignments", data)
+                        self._db.insert("assignments", data)
         except Exception as ex:
             logger.error(f"Error setting assignees: {ex}")
             raise
@@ -594,7 +613,7 @@ class SQLiteDocumentRepository:
             return []
 
         try:
-            from word_meta. logic.docx_comments_reader import read_docx_comments
+            from word_meta.logic.docx_comments_reader import read_docx_comments
         except Exception:
             return []
 
@@ -603,14 +622,14 @@ class SQLiteDocumentRepository:
         except Exception:
             return []
 
-        out:  List[Dict[str, Any]] = []
+        out: List[Dict[str, Any]] = []
         for c in comments:
             dt = getattr(c, "date", None)
             out.append(
                 {
                     "version_label": "",
                     "author": getattr(c, "author", "") or "",
-                    "date": dt. isoformat(sep=" ", timespec="seconds") if dt else "",
+                    "date": dt.isoformat(sep=" ", timespec="seconds") if dt else "",
                     "text": getattr(c, "text", "") or "",
                 }
             )
@@ -618,12 +637,10 @@ class SQLiteDocumentRepository:
         return out
 
     def get_docx_comments_for_version(
-        self,
-        doc_id: str,
-        version_label: Optional[str] = None,
+        self, doc_id: str, version_label: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Get DOCX comments for specific version."""
-        return self. list_comments(doc_id)
+        return self.list_comments(doc_id)
 
     # =========================================================================
     # PDF Operations (Stubs)
@@ -632,6 +649,54 @@ class SQLiteDocumentRepository:
     def generate_review_pdf(self, doc_id: str) -> Optional[str]:
         """Generate PDF for review."""
         return None
+
+    # =========================================================================
+    # Signing PDF (Single Source of Truth)
+    # =========================================================================
+
+    def get_signing_pdf(self, doc_id: str) -> Optional[str]:
+        """Return the current signing PDF path for the document, if any."""
+        try:
+            row = self._db.fetchone(
+                "SELECT signing_pdf_path FROM documents WHERE doc_id=?",
+                (doc_id,),
+            )
+            if not row:
+                return None
+            return row.get("signing_pdf_path")
+        except Exception as ex:
+            logger.error(f"Error getting signing_pdf_path: {ex}")
+            return None
+
+    def set_signing_pdf(self, doc_id: str, pdf_path: str) -> None:
+        """Persist the current signing PDF path for the document."""
+        if not self.exists(doc_id):
+            raise ValueError(f"Document not found: {doc_id}")
+
+        try:
+            self._db.execute(
+                "UPDATE documents SET signing_pdf_path = ? WHERE doc_id = ?",
+                (pdf_path, doc_id),
+            )
+            self._db.commit()
+        except Exception as ex:
+            logger.error(f"Error setting signing_pdf_path: {ex}")
+            raise
+
+    def clear_signing_pdf(self, doc_id: str) -> None:
+        """Clear signing PDF reference for the document (e.g. on workflow abort)."""
+        if not self.exists(doc_id):
+            return
+
+        try:
+            self._db.execute(
+                "UPDATE documents SET signing_pdf_path = NULL WHERE doc_id = ?",
+                (doc_id,),
+            )
+            self._db.commit()
+        except Exception as ex:
+            logger.error(f"Error clearing signing_pdf_path: {ex}")
+            raise
 
     def attach_signed_pdf(
         self,
@@ -672,24 +737,78 @@ class SQLiteDocumentRepository:
         doc_id: str,
         dest_dir: str,
     ) -> Optional[str]:
-        """Copy controlled document to destination."""
+        """Copy controlled document to destination.
+
+        Robust Windows implementation:
+        - Validates dest_dir strictly (must be an existing directory or creatable).
+        - Retries on Windows sharing violations / transient errors.
+        - Does NOT use mkstemp(dir=dest_dir) and does NOT use os.replace()
+          (both can trigger WinError 87 depending on path quirks).
+        """
         rec = self.get(doc_id)
         if not rec:
             return None
 
-        src_path = rec.current_file_path
+        # Prefer signing PDF if available (single source of truth), else fallback.
+        src_path = None
+        try:
+            signing_pdf = self.get_signing_pdf(doc_id)
+        except Exception:
+            signing_pdf = None
+
+        if signing_pdf and os.path.isfile(signing_pdf):
+            src_path = signing_pdf
+        else:
+            src_path = rec.current_file_path
+
         if not src_path or not os.path.isfile(src_path):
+            return None
+
+        if not isinstance(dest_dir, str) or not dest_dir.strip():
+            logger.error("copy_to_destination: dest_dir is empty or not a string")
+            return None
+
+        dest_dir = os.path.expandvars(os.path.expanduser(dest_dir.strip()))
+
+        # dest_dir MUST be a directory (askdirectory should provide that, but we enforce it)
+        try:
+            os.makedirs(dest_dir, exist_ok=True)
+        except Exception as ex:
+            logger.error(f"copy_to_destination: invalid dest_dir={dest_dir!r}: {ex}")
+            return None
+
+        if not os.path.isdir(dest_dir):
+            logger.error(f"copy_to_destination: dest_dir is not a directory: {dest_dir!r}")
             return None
 
         basename = os.path.basename(src_path)
         dest_path = os.path.join(dest_dir, basename)
 
-        try:
-            shutil.copy2(src_path, dest_path)
-            return dest_path
-        except Exception as ex:
-            logger.error(f"Error copying to destination: {ex}")
-            return None
+        # Defensive: Windows doesn't like trailing spaces/dots in path segments
+        # (Should not happen, but avoids WinError 87 if it does.)
+        dest_path = dest_path.rstrip(" .")
+
+        import time
+
+        last_ex: Optional[Exception] = None
+
+        for attempt in range(1, 9):
+            try:
+                shutil.copy2(src_path, dest_path)
+                return dest_path
+            except Exception as ex:
+                last_ex = ex
+                # Helpful diagnostics (repr shows hidden characters)
+                logger.warning(
+                    "copy_to_destination retry %s/8 failed: %s | src=%r | dest_dir=%r | dest=%r",
+                    attempt, ex, src_path, dest_dir, dest_path
+                )
+                time.sleep(0.2 * attempt)
+
+        logger.error(f"Error copying to destination after retries: {last_ex}")
+        return None
+
+
 
     # =========================================================================
     # File Management
@@ -725,7 +844,7 @@ class SQLiteDocumentRepository:
 
         return DocumentRecord(
             doc_id=doc_id,
-            title=row. get("title", ""),
+            title=row.get("title", ""),
             doc_type=row.get("doc_type", ""),
             status=status,
             version_major=int(row.get("version_major") or 1),
@@ -734,8 +853,8 @@ class SQLiteDocumentRepository:
             doc_code=row.get("doc_code"),
             created_by=row.get("created_by"),
             created_at=self._parse_dt(row.get("created_at")),
-            updated_at=self._parse_dt(row. get("updated_at")),
-            next_review=self._parse_dt(row. get("next_review")),
+            updated_at=self._parse_dt(row.get("updated_at")),
+            next_review=self._parse_dt(row.get("next_review")),
         )
 
     @staticmethod

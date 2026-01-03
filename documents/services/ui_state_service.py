@@ -4,7 +4,7 @@ Uses STRING comparison for status to avoid enum class mismatch.
 """
 
 from __future__ import annotations
-from typing import Optional, Set, Iterable, Any
+from typing import Optional, Iterable, Any
 import logging
 
 from documents.dto.controls_state import ControlsState
@@ -22,7 +22,7 @@ class UIStateService:
     def build_controls_state(
         self,
         *,
-        status: Any,  # Akzeptiert Enum oder String
+        status: Any,  # Accepts Enum or String
         doc_type: str,
         user_roles: Iterable[str],
         assigned_roles: Iterable[str],
@@ -45,13 +45,15 @@ class UIStateService:
         for r in assigned_roles:
             expanded_roles.add(str(r).upper())
 
-        logger.debug(f"UIState: status={status_name}, user_roles={user_roles_set}, expanded={expanded_roles}")
+        logger.debug(
+            f"UIState: status={status_name}, user_roles={user_roles_set}, expanded={expanded_roles}"
+        )
 
         # === Basic Actions ===
         can_open = can_open_file
         can_copy = (status_name == "EFFECTIVE")
 
-        # === Assignment - nur ADMIN/QMB/Owner/Workflow-Starter ===
+        # === Assignment - only ADMIN/QMB/Owner/Workflow-Starter ===
         can_assign_roles = False
         if status_name == "DRAFT":
             can_assign_roles = self._perm_policy.can_assign_roles(
@@ -66,7 +68,7 @@ class UIStateService:
         if status_name == "EFFECTIVE":
             can_archive = self._perm_policy.can_perform(action_id="obsolete", roles=expanded_roles)
         elif status_name == "OBSOLETE":
-            can_archive = self._perm_policy. can_perform(action_id="archive", roles=expanded_roles)
+            can_archive = self._perm_policy.can_perform(action_id="archive", roles=expanded_roles)
 
         # === Workflow Toggle ===
         if status_name == "DRAFT" and not workflow_active:
@@ -94,6 +96,23 @@ class UIStateService:
         can_next = False
 
         for action in allowed_actions:
+            action_norm = str(action).strip().lower()
+
+            # HARD GATE: action requires the corresponding assigned module role
+            # (prevents "everyone can forward" even if system roles expand broadly)
+            required_role = {
+                "submit_review": "AUTHOR",
+                "approve": "REVIEWER",
+                "publish": "APPROVER",
+            }.get(action_norm)
+
+            is_admin = bool({"ADMIN", "QMB"} & user_roles_set)
+            if required_role and (not is_admin) and (required_role not in expanded_roles):
+                logger.debug(
+                    f"Action {action} blocked: missing assigned role {required_role}"
+                )
+                continue
+
             if self._perm_policy.can_perform(action_id=action, roles=expanded_roles):
                 # Check separation of duties
                 if user_id and owner_id:
@@ -105,19 +124,20 @@ class UIStateService:
                     ):
                         logger.debug(f"Action {action} blocked by separation of duties")
                         continue
+
                 next_action = action
                 can_next = True
                 break
 
         action_labels = {
             "submit_review": "Zur Prüfung einreichen",
-            "approve": "Freigeben",
-            "publish":  "Veröffentlichen",
+            "approve": "Akzeptieren",   # <- FIX: was previously "Freigeben" in your description
+            "publish": "Freigeben",
             "create_revision": "Revision erstellen",
             "obsolete": "Außer Kraft setzen",
             "archive": "Archivieren",
         }
-        next_text = action_labels.get(next_action or "", "Nächster Schritt")
+        next_text = action_labels.get(str(next_action or ""), "Nächster Schritt")
 
         # === Back to Draft ===
         can_back_to_draft = False
@@ -138,15 +158,17 @@ class UIStateService:
             next_text=next_text,
         )
 
-        logger.debug(f"Controls:  can_next={can_next}, can_back={can_back_to_draft}, can_workflow={can_toggle_workflow}")
+        logger.debug(
+            f"Controls: can_next={can_next}, can_back={can_back_to_draft}, can_workflow={can_toggle_workflow}"
+        )
         return result
 
     def _to_status_name(self, status: Any) -> str:
         """Convert any status to uppercase string."""
         if status is None:
             return ""
-        if hasattr(status, 'name'):
+        if hasattr(status, "name"):
             return str(status.name).upper()
-        if hasattr(status, 'value'):
-            return str(status. value).upper()
+        if hasattr(status, "value"):
+            return str(status.value).upper()
         return str(status).strip().upper()

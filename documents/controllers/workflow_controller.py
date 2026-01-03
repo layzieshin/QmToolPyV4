@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class WorkflowController:
-    """Orchestriert Workflow-Transitionen mit Signatur-Unterstützung."""
+    """Orchestrates workflow transitions with signature support."""
 
     def __init__(
         self,
@@ -18,7 +18,7 @@ class WorkflowController:
         repository,
         workflow_policy,
         permission_policy,
-        current_user_provider:  Callable[[], Optional[object]],
+        current_user_provider: Callable[[], Optional[object]],
     ) -> None:
         self._repo = repository
         self._wf_policy = workflow_policy
@@ -42,37 +42,27 @@ class WorkflowController:
         if not record:
             return False, "Dokument nicht gefunden."
 
-        status_name = self._to_status_name(record. status)
-        if status_name != "DRAFT":
-            return False, f"Workflow kann nur für Entwürfe gestartet werden (aktuell: {status_name})."
+        if self._repo.is_workflow_active(doc_id):
+            return False, "Workflow ist bereits aktiv."
 
-        all_roles = self._perm_policy.expand_roles(user_roles)
-        if assigned_roles:
-            all_roles.update(r.upper() for r in assigned_roles)
+        # Ensure assignments exist if requested (UI hook)
+        if ensure_assignments_callback and callable(ensure_assignments_callback):
+            try:
+                ok = ensure_assignments_callback()
+            except Exception as ex:
+                logger.error(f"Ensure assignments callback failed: {ex}")
+                ok = False
+            if not ok:
+                return False, "Zuweisungen sind unvollständig."
 
-        if not self._perm_policy.can_perform(action_id="start_workflow", roles=all_roles):
-            return False, "Keine Berechtigung zum Starten des Workflows."
-
-        assignees = self._repo.get_assignees(doc_id)
-        has_approver = bool(assignees. get("APPROVER"))
-
-        if not has_approver:
-            if ensure_assignments_callback and callable(ensure_assignments_callback):
-                if not ensure_assignments_callback():
-                    return False, "Rollenzuweisung abgebrochen."
-                assignees = self._repo.get_assignees(doc_id)
-                has_approver = bool(assignees.get("APPROVER"))
-
-            if not has_approver:
-                return False, "Mindestens ein Freigeber (Approver) muss zugewiesen sein."
+        user_id = self._get_user_id(user)
 
         try:
-            user_id = self._get_user_id(user)
-            self._repo.set_workflow_active(doc_id, True, user_id)
-            logger. info(f"Workflow started for {doc_id} by {user_id}")
+            self._repo.set_workflow_active(doc_id, True, started_by=user_id or "")
+            logger.info(f"Workflow started for {doc_id} by {user_id}")
             return True, None
         except Exception as ex:
-            logger.error(f"Workflow start failed:  {ex}")
+            logger.error(f"Workflow start failed: {ex}")
             return False, f"Workflow-Start fehlgeschlagen: {ex}"
 
     def abort_workflow(
@@ -84,7 +74,7 @@ class WorkflowController:
         assigned_roles: Optional[List[str]] = None,
         password: Optional[str] = None
     ) -> Tuple[bool, Optional[str]]:
-        """Abort workflow."""
+        """Abort workflow and cleanup signing artifact."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
@@ -114,8 +104,18 @@ class WorkflowController:
 
         try:
             self._repo.set_workflow_active(doc_id, False)
-            from documents.enum. document_status import DocumentStatus
-            self._repo.set_status(doc_id, DocumentStatus. DRAFT, user_id or "", reason)
+            from documents.enum.document_status import DocumentStatus
+            self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
+
+            # Cleanup signing PDF (single active artifact) on abort
+            try:
+                signing_pdf_path = self._repo.get_signing_pdf(doc_id)
+                self._repo.clear_signing_pdf(doc_id)
+                if signing_pdf_path and os.path.isfile(signing_pdf_path):
+                    os.remove(signing_pdf_path)
+            except Exception as cleanup_ex:
+                logger.warning(f"Signing PDF cleanup failed: {cleanup_ex}")
+
             logger.info(f"Workflow aborted for {doc_id} by {user_id}")
             return True, None
         except Exception as ex:
@@ -158,7 +158,7 @@ class WorkflowController:
                     action_id=action,
                     actor_id=user_id or "",
                     owner_id=owner_id or "",
-                    doc_type=record. doc_type
+                    doc_type=record.doc_type
                 ):
                     permitted_action = action
                     break
@@ -170,17 +170,44 @@ class WorkflowController:
             if not reason or not reason.strip():
                 return False, "Begründung erforderlich für diese Aktion."
 
+        # HARD GATE: only assigned users may perform forward actions that represent the signing chain.
+        # Mapping is aligned with SignaturePolicy default roles.
+        required_role = {
+            "submit_review": "AUTHOR",
+            "approve": "REVIEWER",
+            "publish": "APPROVER",
+        }.get(str(permitted_action).strip().lower())
+
+        user_roles_set = {str(r).upper() for r in user_roles}
+        is_admin = bool({"ADMIN", "QMB"} & user_roles_set)
+
+        if required_role and (not is_admin) and (required_role not in all_roles):
+            return False, f"Keine Berechtigung: Rolle '{required_role}' ist für diesen Schritt nicht zugewiesen."
+
+        # Determine target status early (needed for signing artifact rules)
+        next_status_name = self._wf_policy.next_status(
+            action_id=permitted_action,
+            status=record.status
+        )
+        if not next_status_name:
+            return False, f"Kein Zielstatus für Aktion '{permitted_action}' definiert."
+
+        # Convert DOCX->PDF only on DRAFT -> REVIEW transition
+        is_draft_to_review = (
+            self._to_status_name(record.status) == "DRAFT"
+            and str(next_status_name).upper() == "REVIEW"
+        )
+
         # Check if signature required
-        requires_sig = self._wf_policy. requires_signature(permitted_action, record.doc_type)
+        requires_sig = self._wf_policy.requires_signature(permitted_action, record.doc_type)
 
         if requires_sig:
-            # Generate PDF for signing
-            pdf_path = self._generate_pdf_for_signing(doc_id, record)
+            # Generate/get PDF for signing
+            pdf_path = self._generate_pdf_for_signing(doc_id, record, is_draft_to_review)
 
             if not pdf_path:
                 return False, "PDF-Generierung für Signierung fehlgeschlagen."
 
-            # Sign PDF via callback
             signed_path = None
             if sign_pdf_callback and callable(sign_pdf_callback):
                 try:
@@ -192,7 +219,14 @@ class WorkflowController:
             if not signed_path:
                 return False, "Signierung abgebrochen oder fehlgeschlagen."
 
-            # Attach signed PDF
+            # Persist current signing PDF (single source of truth)
+            try:
+                self._repo.set_signing_pdf(doc_id, signed_path)
+            except Exception as ex:
+                logger.error(f"Failed to persist signing PDF path: {ex}")
+                return False, f"Signiertes PDF konnte nicht persistiert werden: {ex}"
+
+            # Attach signed PDF (metadata)
             try:
                 success, msg = self._repo.attach_signed_pdf(
                     doc_id, signed_path, permitted_action, user_id or "", reason or ""
@@ -203,21 +237,18 @@ class WorkflowController:
                 logger.error(f"Attach signed PDF failed: {ex}")
                 return False, f"Signierte PDF konnte nicht gespeichert werden: {ex}"
 
-        # Get next status
-        next_status_name = self._wf_policy.next_status(
-            action_id=permitted_action,
-            status=record.status
-        )
-        if not next_status_name:
-            return False, f"Kein Zielstatus für Aktion '{permitted_action}' definiert."
-
         try:
             from documents.enum.document_status import DocumentStatus
-            next_status = DocumentStatus[next_status_name]
 
-            self._repo.set_status(doc_id, next_status, user_id or "", reason or "")
+            # Set new status
+            self._repo.set_status(
+                doc_id,
+                DocumentStatus[str(next_status_name).upper()],
+                user_id or "",
+                reason or ""
+            )
 
-            if next_status_name == "EFFECTIVE":
+            if str(next_status_name).upper() == "EFFECTIVE":
                 self._repo.bump_minor_version(doc_id, user_id or "", reason)
 
             logger.info(f"Transition to {next_status_name} for {doc_id} by {user_id}")
@@ -227,8 +258,6 @@ class WorkflowController:
             logger.error(f"Transition failed: {ex}")
             return False, f"Status-Update fehlgeschlagen: {ex}"
 
-
-
     def backward_to_draft(
         self,
         doc_id: str,
@@ -237,11 +266,10 @@ class WorkflowController:
         user_roles: List[str],
         assigned_roles: Optional[List[str]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """Revert to DRAFT."""
+        """Backward transition to draft."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
-
         if not reason or not reason.strip():
             return False, "Begründung erforderlich."
 
@@ -249,150 +277,82 @@ class WorkflowController:
         if not record:
             return False, "Dokument nicht gefunden."
 
-        status_name = self._to_status_name(record.status)
-        if status_name in ("EFFECTIVE", "OBSOLETE", "ARCHIVED"):
-            return False, f"Zurücksetzen nicht möglich für Status '{status_name}'."
-
-        if status_name == "DRAFT":
-            return False, "Dokument ist bereits im Entwurf-Status."
-
+        # Basic permission gate
         all_roles = self._perm_policy.expand_roles(user_roles)
         if assigned_roles:
             all_roles.update(r.upper() for r in assigned_roles)
 
-        if not self._perm_policy. can_perform(action_id="back_to_draft", roles=all_roles):
-            return False, "Keine Berechtigung zum Zurücksetzen."
-
-        try:
-            from documents.enum.document_status import DocumentStatus
-            user_id = self._get_user_id(user)
-            self._repo.set_status(doc_id, DocumentStatus. DRAFT, user_id or "", reason)
-            logger.info(f"Reset to DRAFT for {doc_id} by {user_id}")
-            return True, None
-        except Exception as ex:
-            logger. error(f"Reset failed: {ex}")
-            return False, f"Zurücksetzen fehlgeschlagen: {ex}"
-
-    def archive(
-        self,
-        doc_id: str,
-        reason:  str,
-        *,
-        user_roles: List[str],
-        assigned_roles: Optional[List[str]] = None
-    ) -> Tuple[bool, Optional[str]]:
-        """Archive document."""
-        user = self._user_provider()
-        if not user:
-            return False, "Kein Benutzer angemeldet."
-
-        if not reason or not reason.strip():
-            return False, "Begründung erforderlich."
-
-        record = self._repo.get(doc_id)
-        if not record:
-            return False, "Dokument nicht gefunden."
-
-        status_name = self._to_status_name(record.status)
-
-        if status_name == "EFFECTIVE":
-            action_id = "obsolete"
-            target_status_name = "OBSOLETE"
-        elif status_name == "OBSOLETE":
-            action_id = "archive"
-            target_status_name = "ARCHIVED"
-        else:
-            return False, "Nur gültige oder obsolete Dokumente können archiviert werden."
-
-        all_roles = self._perm_policy.expand_roles(user_roles)
-        if assigned_roles:
-            all_roles.update(r.upper() for r in assigned_roles)
-
-        if not self._perm_policy.can_perform(action_id=action_id, roles=all_roles):
+        if not self._perm_policy.can_perform(action_id="back_to_draft", roles=all_roles):
             return False, "Keine Berechtigung."
 
+        user_id = self._get_user_id(user)
+
         try:
             from documents.enum.document_status import DocumentStatus
-            target_status = DocumentStatus[target_status_name]
-            user_id = self._get_user_id(user)
-            self._repo.set_status(doc_id, target_status, user_id or "", reason)
-            logger.info(f"Archive ({action_id}) for {doc_id} by {user_id}")
+            self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
             return True, None
         except Exception as ex:
-            logger.error(f"Archive failed: {ex}")
-            return False, f"Archivierung fehlgeschlagen: {ex}"
-
-    # =========================================================================
-    # Private Helpers
-    # =========================================================================
+            logger.error(f"Back to draft failed: {ex}")
+            return False, f"Rücksetzung fehlgeschlagen: {ex}"
 
     def _generate_pdf_for_signing(self, doc_id: str, record, is_draft_to_review: bool) -> Optional[str]:
         """
         Generate or get PDF for signing.
 
-        - Convert DOCX to PDF only if transitioning from DRAFT to REVIEW.
-        - Reuse existing signed PDF if available.
+        Rules:
+        - Convert DOCX to PDF ONLY if transitioning from DRAFT to REVIEW.
+        - Otherwise ALWAYS reuse the current signing PDF stored in the repository.
         """
-        # Check if a signed PDF already exists
-        signed_pdf_path = self._repo.get_signed_pdf(doc_id)
-        if signed_pdf_path and os.path.isfile(signed_pdf_path):
-            logger.debug(f"Using existing signed PDF: {signed_pdf_path}")
-            return signed_pdf_path
+        # Always reuse existing signing PDF (single source of truth)
+        signing_pdf_path = self._repo.get_signing_pdf(doc_id)
+        if signing_pdf_path and os.path.isfile(signing_pdf_path):
+            logger.debug(f"Using existing signing PDF: {signing_pdf_path}")
+            return signing_pdf_path
 
-        # Only convert DOCX to PDF if transitioning from DRAFT to REVIEW
-        if is_draft_to_review:
-            file_path = getattr(record, 'current_file_path', None)
-            if not file_path or not os.path.isfile(file_path):
-                logger.error(f"No valid file path for document {doc_id}")
-                return None
+        # Only convert DOCX->PDF on DRAFT->REVIEW
+        if not is_draft_to_review:
+            logger.debug("No conversion allowed: not a DRAFT->REVIEW transition and no signing PDF exists.")
+            return None
 
-            if file_path.lower().endswith(('.doc', '.docx')):
-                try:
-                    from documents.logic.doc_convert import convert_to_pdf
-                    temp_dir = tempfile.gettempdir()
-                    base_name = os.path.splitext(os.path.basename(file_path))[0]
-                    pdf_output = os.path.join(temp_dir, f"{base_name}_{doc_id}_review.pdf")
-                    result = convert_to_pdf(file_path, pdf_output)
-                    if result and os.path.isfile(result):
-                        logger.info(f"Converted DOCX to PDF: {result}")
-                        return result
-                except Exception as ex:
-                    logger.error(f"DOCX to PDF conversion failed: {ex}")
-            else:
-                logger.error("File is not a DOCX and cannot be converted.")
-        else:
-            logger.debug("No conversion needed as this is not a DRAFT to REVIEW transition.")
+        file_path = getattr(record, "current_file_path", None)
+        if not file_path or not os.path.isfile(file_path):
+            logger.error(f"No valid file path for document {doc_id}")
+            return None
+
+        if not file_path.lower().endswith((".doc", ".docx")):
+            logger.error("File is not a DOCX and cannot be converted.")
+            return None
+
+        try:
+            from documents.logic.doc_convert import convert_to_pdf
+            temp_dir = tempfile.gettempdir()
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            pdf_output = os.path.join(temp_dir, f"{base_name}_{doc_id}_review.pdf")
+            result = convert_to_pdf(file_path, pdf_output)
+            if result and os.path.isfile(result):
+                logger.info(f"Converted DOCX to PDF: {result}")
+                return result
+        except Exception as ex:
+            logger.error(f"DOCX to PDF conversion failed: {ex}")
 
         return None
 
-    def abort_workflow(self, doc_id: str, reason: str, *, user_roles: List[str],
-                       assigned_roles: Optional[List[str]] = None) -> Tuple[bool, Optional[str]]:
-        """Abort workflow and delete signed PDFs."""
-        success, message = super().abort_workflow(doc_id, reason, user_roles=user_roles, assigned_roles=assigned_roles)
-        if success:
-            try:
-                self._repo.delete_signed_pdfs(doc_id)
-                logger.info(f"Deleted signed PDFs for {doc_id}")
-            except Exception as ex:
-                logger.error(f"Failed to delete signed PDFs: {ex}")
-        return success, message
-
-    def _get_user_id(self, user: object) -> Optional[str]:
-        """Extract user ID."""
-        if not user:
-            return None
-        for attr in ("id", "user_id", "uid", "username"):
+    @staticmethod
+    def _get_user_id(user: object) -> Optional[str]:
+        """Try to read user identifier from user object."""
+        for attr in ("user_id", "id", "username", "name"):
             val = getattr(user, attr, None)
             if val:
                 return str(val)
         return None
 
-    def _to_status_name(self, status: Any) -> str:
-        """Convert status to string."""
+    @staticmethod
+    def _to_status_name(status: Any) -> str:
+        """Normalize status to canonical name."""
         if status is None:
             return ""
-        if hasattr(status, 'name'):
+        if hasattr(status, "name"):
             return str(status.name).upper()
-        if hasattr(status, 'value'):
-            return str(status. value).upper()
-        return str(status).strip().upper()
+        if hasattr(status, "value"):
+            return str(status.value).upper()
+        return str(status).upper()

@@ -943,20 +943,19 @@ class DocumentsView(ttk.Frame):
         if not rec or not self.workflow_ctrl:
             return
 
-        # Check if abort or start
         state = self.details_ctrl.compute_controls_state(
             rec,
             user_roles=self._get_user_roles(getattr(AppContext, "current_user", None)),
-            assigned_roles=self._get_assigned_roles(rec. doc_id.value, getattr(AppContext, "current_user", None))
+            assigned_roles=self._get_assigned_roles(rec.doc_id.value, getattr(AppContext, "current_user", None))
         )
-        is_abort = "abbrechen" in state.workflow_text. lower() or "abort" in state.workflow_text.lower()
+        is_abort = "abbrechen" in state.workflow_text.lower() or "abort" in state.workflow_text.lower()
 
         if is_abort:
-            # Abort workflow
             pwd = simpledialog.askstring(
-                T("documents.ask. pwd. title") or "Passwort",
+                T("documents.ask.pwd.title") or "Passwort",
                 T("documents.ask.pwd") or "Bitte Passwort eingeben:",
-                parent=self, show="*"
+                parent=self,
+                show="*"
             )
             if not pwd:
                 return
@@ -966,11 +965,15 @@ class DocumentsView(ttk.Frame):
                 return
 
             user_roles = self._get_user_roles(getattr(AppContext, "current_user", None))
-            success, error_msg = self. workflow_ctrl.abort_workflow(
-                rec.doc_id.value, pwd, reason, user_roles=user_roles
+
+            # IMPORTANT: abort_workflow has keyword-only args after `reason`
+            success, error_msg = self.workflow_ctrl.abort_workflow(
+                rec.doc_id.value,
+                reason=reason,
+                password=pwd,
+                user_roles=user_roles,
             )
         else:
-            # Start workflow
             user_roles = self._get_user_roles(getattr(AppContext, "current_user", None))
             success, error_msg = self.workflow_ctrl.start_workflow(
                 rec.doc_id.value,
@@ -979,7 +982,11 @@ class DocumentsView(ttk.Frame):
             )
 
         if not success:
-            messagebox.showerror(T("documents.workflow.err") or "Workflow", error_msg or "Fehler", parent=self)
+            messagebox.showerror(
+                T("documents.workflow.err") or "Workflow",
+                error_msg or "Fehler",
+                parent=self
+            )
 
         self._reload()
 
@@ -1031,7 +1038,13 @@ class DocumentsView(ttk.Frame):
         self._reload()
 
     def _archive(self) -> None:
-        """Archive document."""
+        """Archive / obsolete document via forward transition.
+
+        NOTE:
+        - WorkflowController has no `archive()` method (would raise AttributeError).
+        - We use forward_transition() so WorkflowPolicy decides whether action is
+          'obsolete' (EFFECTIVE -> OBSOLETE) or 'archive' (OBSOLETE -> ARCHIVED).
+        """
         rec = self._selected_record()
         if not rec or not self.workflow_ctrl:
             return
@@ -1040,13 +1053,24 @@ class DocumentsView(ttk.Frame):
         if reason is None:
             return
 
-        user_roles = self._get_user_roles(getattr(AppContext, "current_user", None))
-        success, error_msg = self.workflow_ctrl.archive(
-            rec.doc_id. value, reason, user_roles=user_roles
+        user = getattr(AppContext, "current_user", None)
+        user_roles = self._get_user_roles(user)
+        assigned_roles = self._get_assigned_roles(rec.doc_id.value, user)
+
+        success, error_msg = self.workflow_ctrl.forward_transition(
+            rec.doc_id.value,
+            reason,
+            user_roles=user_roles,
+            assigned_roles=assigned_roles,
+            sign_pdf_callback=None
         )
 
         if not success:
-            messagebox.showerror(T("documents.archive.err") or "Fehler", error_msg or "Fehler", parent=self)
+            messagebox.showerror(
+                T("documents.archive.err") or "Archivieren",
+                error_msg or "Fehler",
+                parent=self
+            )
 
         self._reload()
 
