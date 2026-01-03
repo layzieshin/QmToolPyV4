@@ -1,64 +1,80 @@
 """Permission policy service.
 
-Evaluates role-based access control and separation of duties.
-Maps system roles (USER/ADMIN/QMB) to module roles (AUTHOR/REVIEWER/etc).
+Centralizes access control for the Documents module.
+
+Key principles (Target Design A):
+- System roles (USER/ADMIN/QMB) grant administrative capabilities only.
+- Signing roles (AUTHOR/REVIEWER/APPROVER) are document-scoped assignments.
+- JSON policy is the single source of truth for role->action permissions and signing chain mapping.
+- Context constraints (owner/status/signature history) are evaluated generically here
+  (no hard-coded "gates" in controllers or UI state derivation).
 """
 
 from __future__ import annotations
-from typing import Iterable, Set, Dict, Any, List
+
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Dict, Iterable, Optional, Set, Tuple
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class PermissionPolicy:
-    """
-    Evaluate permission rules for document actions.
+SIGNING_ACTIONS: Set[str] = {"submit_review", "approve", "publish"}
 
-    Features:
-    - System role → Module role mapping
-    - Action-based permissions
-    - Separation of duties enforcement
-    """
+
+@dataclass(frozen=True)
+class AccessContext:
+    """Context for access evaluation."""
+
+    actor_id: str
+    owner_id: Optional[str] = None
+    status: Optional[str] = None  # String status name (e.g. "DRAFT")
+    doc_type: Optional[str] = None
+
+    assigned_roles: Tuple[str, ...] = ()
+    system_roles: Tuple[str, ...] = ()
+
+    # Signature rows: {role, username, signed_at, comment, ...}
+    signatures: Tuple[Dict[str, Any], ...] = ()
+
+
+class PermissionPolicy:
+    """Evaluates permissions based on documents_permissions_policy.json."""
 
     def __init__(
         self,
         *,
-        role_actions: Dict[str, Iterable[str]],
-        separation_rules: Dict[str, bool],
-        system_role_mapping: Optional[Dict[str, List[str]]] = None
-    ):
-        """
-        Args:
-            role_actions: Map of role -> allowed actions
-            separation_rules:  Separation of duties rules
-            system_role_mapping: Map system roles to module roles
-        """
-        # Normalize:  all roles to UPPERCASE, all actions to lowercase
-        self._role_actions:  Dict[str, Set[str]] = {
-            role.strip().upper(): {str(a).strip().lower() for a in actions or []}
-            for role, actions in (role_actions or {}).items()
+        role_actions: Dict[str, Set[str]],
+        system_role_mapping: Dict[str, Set[str]],
+        separation_of_duties: Dict[str, Any],
+        signing_chain: Dict[str, str],
+    ) -> None:
+        self._role_actions = role_actions or {}
+        self._system_role_mapping = system_role_mapping or {}
+        self._separation = separation_of_duties or {}
+        self._signing_chain = {
+            str(k).strip().lower(): str(v).strip().upper()
+            for k, v in (signing_chain or {}).items()
+            if str(k).strip() and str(v).strip()
         }
-        self._separation = {k:  bool(v) for k, v in (separation_rules or {}).items()}
 
-        # System role mapping (e.g., USER -> [AUTHOR], ADMIN -> [ADMIN, AUTHOR, ... ])
-        self._system_role_mapping:  Dict[str, Set[str]] = {}
-        for sys_role, module_roles in (system_role_mapping or {}).items():
-            self._system_role_mapping[sys_role.upper()] = {
-                r.upper() for r in module_roles
-            }
-
-        # Default mapping if not specified
+        # Defensive defaults: system roles do NOT expand to signing roles.
         if not self._system_role_mapping:
             self._system_role_mapping = {
-                "ADMIN": {"ADMIN", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER"},
-                "QMB": {"QMB", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER"},
-                "USER": {"AUTHOR"},
+                "ADMIN": {"ADMIN"},
+                "QMB": {"QMB"},
+                "USER": {"USER"},
             }
 
-        logger.debug(f"PermissionPolicy loaded with {len(self._role_actions)} roles")
+        # Defensive default signing chain (used only if JSON does not define it)
+        if not self._signing_chain:
+            self._signing_chain = {
+                "submit_review": "AUTHOR",
+                "approve": "REVIEWER",
+                "publish": "APPROVER",
+            }
 
     @classmethod
     def load_from_directory(cls, directory: str | Path) -> "PermissionPolicy":
@@ -66,159 +82,172 @@ class PermissionPolicy:
         base = Path(directory)
         policy_file = base / "documents_permissions_policy.json"
 
-        data = {}
+        data: Dict[str, Any] = {}
         if policy_file.exists():
             try:
-                with policy_file.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                logger.info(f"Loaded permission policy from {policy_file}")
+                data = json.loads(policy_file.read_text(encoding="utf-8"))
+                logger.info("Loaded permission policy from %s", policy_file)
             except Exception as ex:
-                logger.error(f"Failed to load permission policy: {ex}")
+                logger.error("Failed to load permission policy: %s", ex)
                 data = {}
         else:
-            logger.warning(f"Permission policy file not found: {policy_file}")
+            logger.warning("Permission policy file not found: %s", policy_file)
+
+        role_actions: Dict[str, Set[str]] = {}
+        raw_roles = data.get("role_permissions", {}) or {}
+        if isinstance(raw_roles, dict):
+            for role, actions in raw_roles.items():
+                role_actions[str(role).strip().upper()] = {
+                    str(a).strip().lower()
+                    for a in (actions or [])
+                    if str(a).strip()
+                }
+
+        system_role_mapping: Dict[str, Set[str]] = {}
+        raw_map = data.get("system_role_mapping", {}) or {}
+        if isinstance(raw_map, dict):
+            for sys_role, module_roles in raw_map.items():
+                system_role_mapping[str(sys_role).strip().upper()] = {
+                    str(r).strip().upper()
+                    for r in (module_roles or [])
+                    if str(r).strip()
+                }
+
+        separation = data.get("separation_of_duties", {}) or {}
+        if not isinstance(separation, dict):
+            separation = {}
+
+        signing_chain_raw = data.get("signing_chain", {}) or {}
+        if not isinstance(signing_chain_raw, dict):
+            signing_chain_raw = {}
 
         return cls(
-            role_actions=data.get("role_permissions", {}),
-            separation_rules=data.get("separation_of_duties", {}),
-            system_role_mapping=data.get("system_role_mapping", None)
+            role_actions=role_actions,
+            system_role_mapping=system_role_mapping,
+            separation_of_duties=separation,
+            signing_chain=signing_chain_raw,
         )
 
-    def expand_roles(self, roles:  Iterable[str]) -> Set[str]:
-        """
-        Expand system roles to include mapped module roles.
+    def expand_system_roles(self, roles: Iterable[str]) -> Set[str]:
+        """Expand system roles to additional roles (if configured)."""
+        expanded: Set[str] = set()
 
-        Example:
-            ["USER"] -> {"USER", "AUTHOR"}
-            ["ADMIN"] -> {"ADMIN", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER"}
-        """
-        expanded:  Set[str] = set()
-
-        for role in roles:
+        for role in roles or []:
             role_upper = str(role).strip().upper()
+            if not role_upper:
+                continue
             expanded.add(role_upper)
 
-            # Add mapped module roles
             if role_upper in self._system_role_mapping:
                 expanded.update(self._system_role_mapping[role_upper])
 
         return expanded
 
     def can_perform(self, *, action_id: str, roles: Iterable[str]) -> bool:
-        """
-        Return True if any role can perform the action.
-
-        Automatically expands system roles to module roles.
-        """
+        """Return True if any of the given roles can perform the action."""
         action = (action_id or "").strip().lower()
         if not action:
             return False
 
-        # Expand system roles to module roles
-        expanded_roles = self.expand_roles(roles)
+        expanded_roles = self.expand_system_roles(roles)
 
         for role in expanded_roles:
             allowed_actions = self._role_actions.get(role, set())
 
-            # Wildcard permission
             if "*" in allowed_actions:
                 return True
 
             if action in allowed_actions:
                 return True
 
-            # Check aliases
+            # Action aliases (defensive)
             if any(alias in allowed_actions for alias in self._action_aliases(action)):
                 return True
 
         return False
 
-    def can_assign_roles(
-        self,
-        *,
-        user_roles: Iterable[str],
-        user_id: str,
-        owner_id: str,
-        workflow_starter_id: Optional[str] = None
-    ) -> bool:
-        """
-        Check if user can assign roles.
-
-        Allowed for:
-        - ADMIN
-        - QMB
-        - Document owner (before workflow starts)
-        - Workflow starter
-        """
-        roles_upper = {str(r).upper() for r in user_roles}
-
-        # ADMIN/QMB can always assign
-        if {"ADMIN", "QMB"} & roles_upper:
-            return True
-
-        # Owner can assign
-        if user_id and owner_id:
-            if str(user_id).lower() == str(owner_id).lower():
-                return True
-
-        # Workflow starter can assign
-        if user_id and workflow_starter_id:
-            if str(user_id).lower() == str(workflow_starter_id).lower():
-                return True
-
-        return False
-
-    def violates_separation_of_duties(
-        self,
-        *,
-        action_id: str,
-        actor_id: str,
-        owner_id: str,
-        doc_type: str = ""
-    ) -> bool:
-        """Check separation-of-duties constraints."""
-        if not actor_id or not owner_id:
-            return False
-
-        actor = actor_id.strip().lower()
-        owner = owner_id.strip().lower()
-
-        if not actor or not owner:
-            return False
-
+    def required_assigned_role(self, *, action_id: str) -> Optional[str]:
+        """Return the document-scoped role required to execute this action (signing chain)."""
         action = (action_id or "").strip().lower()
+        return self._signing_chain.get(action)
 
-        # No self-review rule
-        if action in ("review", "submit_review") and self._separation.get("no_self_review", False):
-            if actor == owner:
-                return True
+    def can_execute(self, *, action_id: str, ctx: AccessContext) -> Tuple[bool, Optional[str]]:
+        """Evaluate whether the actor may execute the given action in context.
 
-        # No self-approval rule
-        if action in ("approve", "publish") and self._separation.get("no_self_approval", False):
-            if actor == owner:
-                return True
-
-        return False
-
-    def required_roles_for_action(self, action_id: str) -> Set[str]:
-        """Get set of roles that can perform this action."""
+        Returns:
+            (allowed, reason_if_denied)
+        """
         action = (action_id or "").strip().lower()
-        roles:  Set[str] = set()
+        if not action:
+            return False, "Ungültige Aktion."
 
-        for role, actions in self._role_actions.items():
-            if "*" in actions or action in actions:
-                roles.add(role)
+        actor = (ctx.actor_id or "").strip().lower()
+        if not actor:
+            return False, "Kein Benutzerkontext."
 
-        return roles
+        system_roles = {str(r).strip().upper() for r in (ctx.system_roles or ()) if str(r).strip()}
+        assigned_roles = {str(r).strip().upper() for r in (ctx.assigned_roles or ()) if str(r).strip()}
+        status = (ctx.status or "").strip().upper()
+
+        # Base RBAC (JSON): union of system roles and assigned roles.
+        base_roles = set(system_roles) | set(assigned_roles)
+        if not self.can_perform(action_id=action, roles=base_roles):
+            return False, "Keine Berechtigung für diese Aktion."
+
+        # === Context constraints ===
+
+        # start_workflow: owner-only, except ADMIN/QMB
+        if action == "start_workflow":
+            is_admin = bool({"ADMIN", "QMB"} & system_roles)
+            owner = (ctx.owner_id or "").strip().lower()
+            if not is_admin:
+                if not owner:
+                    return False, "Dokumenten-Eigentümer unbekannt."
+                if actor != owner:
+                    return False, "Nur der Dokumenten-Eigentümer darf den Workflow starten."
+
+                # Owner cannot start workflow once approved/archived; QMB/ADMIN may.
+                if status in {"APPROVED", "ARCHIVED"}:
+                    return False, "Workflow kann in diesem Status nicht vom Eigentümer gestartet werden."
+
+        # Signing actions require document-scoped assigned role.
+        if action in SIGNING_ACTIONS:
+            required_role = self.required_assigned_role(action_id=action)
+            if required_role and required_role not in assigned_roles:
+                return False, f"Keine Berechtigung: Rolle '{required_role}' ist für diesen Schritt nicht zugewiesen."
+
+            # Separation of duties: reviewer cannot publish if they already approved.
+            if (
+                action == "publish"
+                and self._separation.get("reviewer_cannot_publish_if_reviewed", True)
+                and self._has_signed(ctx.signatures, role="approve", username=actor)
+            ):
+                return False, "Separation of Duties: Wer geprüft hat, darf nicht selbst freigeben."
+
+        return True, None
 
     @staticmethod
-    def _action_aliases(action_id: str) -> Set[str]:
-        """Get aliases for an action."""
-        action = (action_id or "").strip().lower()
+    def _has_signed(signatures: Iterable[Dict[str, Any]], *, role: str, username: str) -> bool:
+        role_n = (role or "").strip().lower()
+        user_n = (username or "").strip().lower()
+        if not role_n or not user_n:
+            return False
 
+        for row in signatures or []:
+            try:
+                r = str(row.get("role", "")).strip().lower()
+                u = str(row.get("username", "")).strip().lower()
+                if r == role_n and u == user_n:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    @staticmethod
+    def _action_aliases(action: str) -> Set[str]:
         aliases_map = {
             "submit_review": {"submit", "submit_review", "send_for_review"},
-            "approve":  {"approve", "approve_document", "approval"},
+            "approve": {"approve", "approve_document", "approval"},
             "publish": {"publish", "release", "activate"},
             "create_revision": {"create_revision", "revise"},
             "archive": {"archive"},
@@ -226,9 +255,4 @@ class PermissionPolicy:
             "start_workflow": {"start_workflow", "begin_workflow"},
             "back_to_draft": {"back_to_draft", "reject", "return_to_draft"},
         }
-
         return aliases_map.get(action, {action})
-
-
-# For type hints
-from typing import Optional

@@ -92,7 +92,23 @@ class AssignmentController:
 
         overlap = reviewers & approvers
         if overlap:
-            return False, f"Prüfer und Freigeber dürfen nicht identisch sein: {', '.join(overlap)}"
+            # Overlap is allowed, but must not lead to a deadlock:
+            # if a user performs the review step, they must not be the only possible approver.
+            approver_only = approvers - reviewers
+            if not approver_only:
+                return (
+                    False,
+                    "Separation of Duties: Wenn Prüfer auch als Freigeber ausgewählt sind, "
+                    "muss mindestens ein weiterer Freigeber vorhanden sein, der nicht Prüfer ist."
+                )
+
+            reviewer_only = reviewers - approvers
+            if reviewers and not reviewer_only:
+                return (
+                    False,
+                    "Separation of Duties: Wenn Freigeber auch als Prüfer ausgewählt sind, "
+                    "muss mindestens ein weiterer Prüfer vorhanden sein, der nicht Freigeber ist."
+                )
 
         return True, None
 

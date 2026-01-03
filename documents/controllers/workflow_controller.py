@@ -5,7 +5,8 @@ import logging
 import os
 import tempfile
 from typing import Callable, List, Optional, Tuple, Any
-
+from documents.services.policy.permission_policy import AccessContext
+from documents.enum.document_status import DocumentStatus
 logger = logging.getLogger(__name__)
 
 
@@ -33,7 +34,11 @@ class WorkflowController:
         assigned_roles: Optional[List[str]] = None,
         ensure_assignments_callback: Optional[Callable[[], bool]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """Start workflow."""
+        """Start workflow.
+
+        Note:
+            Permission checks are centralized in PermissionPolicy.can_execute().
+        """
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
@@ -45,17 +50,34 @@ class WorkflowController:
         if self._repo.is_workflow_active(doc_id):
             return False, "Workflow ist bereits aktiv."
 
+        user_id = self._get_user_id(user)
+        owner_id = self._repo.get_owner(doc_id)
+
+        # Central policy check (owner/status constraint handled in policy)
+        ok, reason = self._perm_policy.can_execute(
+            action_id="start_workflow",
+            ctx=AccessContext(
+                actor_id=user_id or "",
+                owner_id=owner_id,
+                status=self._to_status_name(record.status),
+                doc_type=str(record.doc_type),
+                assigned_roles=tuple((assigned_roles or [])),
+                system_roles=tuple((user_roles or [])),
+                signatures=tuple(),
+            ),
+        )
+        if not ok:
+            return False, reason or "Keine Berechtigung."
+
         # Ensure assignments exist if requested (UI hook)
         if ensure_assignments_callback and callable(ensure_assignments_callback):
             try:
-                ok = ensure_assignments_callback()
+                ensured_ok = bool(ensure_assignments_callback())
             except Exception as ex:
                 logger.error(f"Ensure assignments callback failed: {ex}")
-                ok = False
-            if not ok:
+                ensured_ok = False
+            if not ensured_ok:
                 return False, "Zuweisungen sind unvollständig."
-
-        user_id = self._get_user_id(user)
 
         try:
             self._repo.set_workflow_active(doc_id, True, started_by=user_id or "")
@@ -63,7 +85,7 @@ class WorkflowController:
             return True, None
         except Exception as ex:
             logger.error(f"Workflow start failed: {ex}")
-            return False, f"Workflow-Start fehlgeschlagen: {ex}"
+            return False, str(ex)
 
     def abort_workflow(
         self,
@@ -71,56 +93,49 @@ class WorkflowController:
         reason: str,
         *,
         user_roles: List[str],
-        assigned_roles: Optional[List[str]] = None,
-        password: Optional[str] = None
+        assigned_roles: Optional[List[str]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """Abort workflow and cleanup signing artifact."""
+        """Abort workflow (administrative action)."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
-
-        if not reason or not reason.strip():
-            return False, "Begründung erforderlich."
 
         record = self._repo.get(doc_id)
         if not record:
             return False, "Dokument nicht gefunden."
 
         if not self._repo.is_workflow_active(doc_id):
-            return False, "Kein aktiver Workflow zum Abbrechen."
+            return False, "Workflow ist nicht aktiv."
 
-        user_roles_set = {r.upper() for r in user_roles}
         user_id = self._get_user_id(user)
+        owner_id = self._repo.get_owner(doc_id)
 
-        is_admin = bool({"ADMIN", "QMB"} & user_roles_set)
-        starter_id = self._repo.get_workflow_starter(doc_id)
-        is_starter = (
-            starter_id and user_id and
-            str(starter_id).lower() == str(user_id).lower()
+        ok, deny_reason = self._perm_policy.can_execute(
+            action_id="abort_workflow",
+            ctx=AccessContext(
+                actor_id=user_id or "",
+                owner_id=owner_id,
+                status=self._to_status_name(record.status),
+                doc_type=str(record.doc_type),
+                assigned_roles=tuple((assigned_roles or [])),
+                system_roles=tuple((user_roles or [])),
+                signatures=tuple(self._repo.list_signatures(doc_id) or []),
+            ),
         )
+        if not ok:
+            return False, deny_reason or "Keine Berechtigung."
 
-        if not (is_admin or is_starter):
-            return False, "Nur ADMIN/QMB oder der Workflow-Starter können abbrechen."
+        if self._wf_policy.requires_reason("abort_workflow"):
+            if not reason or not reason.strip():
+                return False, "Begründung erforderlich für diese Aktion."
 
         try:
-            self._repo.set_workflow_active(doc_id, False)
-            from documents.enum.document_status import DocumentStatus
-            self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
-
-            # Cleanup signing PDF (single active artifact) on abort
-            try:
-                signing_pdf_path = self._repo.get_signing_pdf(doc_id)
-                self._repo.clear_signing_pdf(doc_id)
-                if signing_pdf_path and os.path.isfile(signing_pdf_path):
-                    os.remove(signing_pdf_path)
-            except Exception as cleanup_ex:
-                logger.warning(f"Signing PDF cleanup failed: {cleanup_ex}")
-
-            logger.info(f"Workflow aborted for {doc_id} by {user_id}")
+            self._repo.set_workflow_active(doc_id, False, started_by="")
+            logger.info(f"Workflow aborted for {doc_id} by {user_id} ({reason})")
             return True, None
         except Exception as ex:
             logger.error(f"Workflow abort failed: {ex}")
-            return False, f"Workflow-Abbruch fehlgeschlagen: {ex}"
+            return False, str(ex)
 
     def forward_transition(
         self,
@@ -145,46 +160,40 @@ class WorkflowController:
             status_name = self._to_status_name(record.status)
             return False, f"Keine Aktion möglich für Status '{status_name}'."
 
-        all_roles = self._perm_policy.expand_roles(user_roles)
-        all_roles.update(r.upper() for r in assigned_roles)
-
         user_id = self._get_user_id(user)
         owner_id = self._repo.get_owner(doc_id)
+        signatures = tuple(self._repo.list_signatures(doc_id) or [])
 
-        permitted_action = None
+        # Determine first permitted action in the current status
+        permitted_action: Optional[str] = None
+        deny_reason: Optional[str] = None
+
         for action in allowed_actions:
-            if self._perm_policy.can_perform(action_id=action, roles=all_roles):
-                if not self._perm_policy.violates_separation_of_duties(
-                    action_id=action,
+            ok, r = self._perm_policy.can_execute(
+                action_id=action,
+                ctx=AccessContext(
                     actor_id=user_id or "",
-                    owner_id=owner_id or "",
-                    doc_type=record.doc_type
-                ):
-                    permitted_action = action
-                    break
+                    owner_id=owner_id,
+                    status=self._to_status_name(record.status),
+                    doc_type=str(record.doc_type),
+                    assigned_roles=tuple((assigned_roles or [])),
+                    system_roles=tuple((user_roles or [])),
+                    signatures=signatures,
+                ),
+            )
+            if ok:
+                permitted_action = action
+                break
+            deny_reason = r or deny_reason
 
         if not permitted_action:
-            return False, "Keine Berechtigung für verfügbare Aktionen."
+            return False, deny_reason or "Keine Berechtigung für verfügbare Aktionen."
 
         if self._wf_policy.requires_reason(permitted_action):
             if not reason or not reason.strip():
                 return False, "Begründung erforderlich für diese Aktion."
 
-        # HARD GATE: only assigned users may perform forward actions that represent the signing chain.
-        # Mapping is aligned with SignaturePolicy default roles.
-        required_role = {
-            "submit_review": "AUTHOR",
-            "approve": "REVIEWER",
-            "publish": "APPROVER",
-        }.get(str(permitted_action).strip().lower())
-
-        user_roles_set = {str(r).upper() for r in user_roles}
-        is_admin = bool({"ADMIN", "QMB"} & user_roles_set)
-
-        if required_role and (not is_admin) and (required_role not in all_roles):
-            return False, f"Keine Berechtigung: Rolle '{required_role}' ist für diesen Schritt nicht zugewiesen."
-
-        # Determine target status early (needed for signing artifact rules)
+# Determine target status early (needed for signing artifact rules)
         next_status_name = self._wf_policy.next_status(
             action_id=permitted_action,
             status=record.status
@@ -258,6 +267,8 @@ class WorkflowController:
             logger.error(f"Transition failed: {ex}")
             return False, f"Status-Update fehlgeschlagen: {ex}"
 
+    
+
     def backward_to_draft(
         self,
         doc_id: str,
@@ -266,7 +277,7 @@ class WorkflowController:
         user_roles: List[str],
         assigned_roles: Optional[List[str]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """Backward transition to draft."""
+        """Backward transition to draft (administrative action)."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
@@ -277,23 +288,33 @@ class WorkflowController:
         if not record:
             return False, "Dokument nicht gefunden."
 
-        # Basic permission gate
-        all_roles = self._perm_policy.expand_roles(user_roles)
-        if assigned_roles:
-            all_roles.update(r.upper() for r in assigned_roles)
-
-        if not self._perm_policy.can_perform(action_id="back_to_draft", roles=all_roles):
-            return False, "Keine Berechtigung."
-
         user_id = self._get_user_id(user)
+        owner_id = self._repo.get_owner(doc_id)
+
+        ok, deny_reason = self._perm_policy.can_execute(
+            action_id="back_to_draft",
+            ctx=AccessContext(
+                actor_id=user_id or "",
+                owner_id=owner_id,
+                status=self._to_status_name(record.status),
+                doc_type=str(record.doc_type),
+                assigned_roles=tuple((assigned_roles or [])),
+                system_roles=tuple((user_roles or [])),
+                signatures=tuple(self._repo.list_signatures(doc_id) or []),
+            ),
+        )
+        if not ok:
+            return False, deny_reason or "Keine Berechtigung."
 
         try:
-            from documents.enum.document_status import DocumentStatus
+            # Reset status and workflow
             self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
+            self._repo.set_workflow_active(doc_id, False, started_by="")
+            logger.info(f"Back to draft for {doc_id} by {user_id} ({reason})")
             return True, None
         except Exception as ex:
             logger.error(f"Back to draft failed: {ex}")
-            return False, f"Rücksetzung fehlgeschlagen: {ex}"
+            return False, str(ex)
 
     def _generate_pdf_for_signing(self, doc_id: str, record, is_draft_to_review: bool) -> Optional[str]:
         """

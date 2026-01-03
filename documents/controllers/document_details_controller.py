@@ -135,6 +135,8 @@ class DocumentDetailsController:
             record.current_file_path and
             os.path.isfile(record.current_file_path or "")
         )
+        signatures = self._repo.list_signatures(record.doc_id.value)
+
 
         # Delegate to UIStateService
         return self._ui_state.build_controls_state(
@@ -146,7 +148,8 @@ class DocumentDetailsController:
             can_open_file=can_open_file,
             user_id=user_id,
             owner_id=owner_id,
-            workflow_starter_id=workflow_starter_id
+            workflow_starter_id=workflow_starter_id,
+            signatures=signatures
         )
 
     def get_comments(self, doc_id: str) -> List[Dict[str, Any]]:

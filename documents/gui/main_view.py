@@ -1089,17 +1089,21 @@ class DocumentsView(ttk.Frame):
 
     # ================================================================== CREATION
     def _new_from_template(self) -> None:
-        """Create document from template."""
-        if not self. creation_ctrl:
+        """Create document from template (DOTX/DOCX).
+
+        Uses the existing MetadataDialog to select metadata (especially doc_type)
+        BEFORE creation, so DB CHECK constraints are satisfied.
+        """
+        if not self.creation_ctrl:
             return
 
         proj_root = os.path.abspath(os.getcwd())
         tdir = os.path.join(proj_root, "templates")
 
-        if not os.path. isdir(tdir):
+        if not os.path.isdir(tdir):
             messagebox.showwarning(
-                title=(T("documents.tpl.missing. title") or "Keine Vorlagen"),
-                message=(T("documents. tpl.missing.msg") or "Ordner nicht gefunden:  ") + tdir,
+                title=(T("documents.tpl.missing.title") or "Keine Vorlagen"),
+                message=(T("documents.tpl.missing.msg") or "Ordner nicht gefunden: ") + tdir,
                 parent=self
             )
             return
@@ -1108,21 +1112,77 @@ class DocumentsView(ttk.Frame):
             parent=self,
             title=(T("documents.tpl.choose") or "Vorlage wählen"),
             initialdir=tdir,
-            filetypes=[("DOCX", "*.docx"), ("All", "*.*")]
+            filetypes=[
+                ("Word Vorlage", "*.dotx"),
+                ("Word Dokument", "*.docx"),
+                ("All", "*.*")
+            ]
         )
-
         if not path:
             return
 
-        success, error_msg, record = self.creation_ctrl.create_from_template(path, doc_type="SOP")
+        # Allowed doc types come from registry (documents_document_types.json)
+        allowed = list(getattr(self, "_allowed_doc_types", ()) or ())
+        if not allowed:
+            messagebox.showerror(
+                "Fehler",
+                "Keine erlaubten Dokumenttypen gefunden (TypeRegistry leer).",
+                parent=self,
+            )
+            return
 
+        # Use the existing MetadataDialog (same approach as import)
+        class _TmpRecord:
+            def __init__(self, title: str, doc_type: str) -> None:
+                self.title = title
+                self.doc_type = doc_type
+                self.area = ""
+                self.process = ""
+                self.next_review = ""
+
+        default_title = os.path.splitext(os.path.basename(path))[0]
+        tmp = _TmpRecord(title=default_title, doc_type=allowed[0])
+
+        dlg = MetadataDialog(self, tmp, allowed_types=allowed)
+        self.wait_window(dlg)
+        result = getattr(dlg, "result", None)
+        if not result:
+            return  # cancelled
+
+        title = (getattr(result, "title", "") or "").strip() or default_title
+        doc_type = (getattr(result, "doc_type", "") or "").strip()
+
+        if doc_type not in allowed:
+            messagebox.showerror(
+                "Fehler",
+                f"Ungültiger Dokumenttyp '{doc_type}'.\nErlaubt: {', '.join(allowed)}",
+                parent=self,
+            )
+            return
+
+        success, error_msg, record = self.creation_ctrl.create_from_template(path, doc_type=doc_type)
         if not success:
             messagebox.showerror("Fehler", error_msg or "Fehler beim Erstellen", parent=self)
             return
 
+        # Optional: apply additional metadata post-create (if supported)
+        try:
+            if record and hasattr(self, "details_ctrl") and self.details_ctrl:
+                meta = {
+                    "title": title,
+                    "doc_type": doc_type,
+                    "area": getattr(result, "area", ""),
+                    "process": getattr(result, "process", ""),
+                    "next_review": getattr(result, "next_review", ""),
+                }
+                self.details_ctrl.update_metadata(getattr(record, "doc_id", ""), meta)
+        except Exception:
+            pass
+
         messagebox.showinfo(
             title=(T("documents.tpl.created") or "Dokument erstellt"),
-            message=(T("documents.tpl.created.msg") or "Erstellt aus Vorlage: ") + (record. doc_id.value if record else ""),
+            message=(T("documents.tpl.created.msg") or "Erstellt aus Vorlage: ") + (
+                record.doc_id.value if record else ""),
             parent=self
         )
         self._reload()

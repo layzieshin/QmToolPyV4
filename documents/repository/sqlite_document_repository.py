@@ -756,35 +756,46 @@ class SQLiteDocumentRepository:
             logger.error(f"Error clearing signing_pdf_path: {ex}")
             raise
 
-    def attach_signed_pdf(
-        self,
-        doc_id: str,
-        signed_pdf_path: str,
-        step: str,
-        user_id: str,
-        reason: Optional[str] = None,
-    ) -> tuple[bool, Optional[str]]:
+    
+    def list_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
+        """Return signature rows for the given document."""
+        if not doc_id:
+            return []
+        try:
+            rows = self._db.query(
+                "SELECT doc_id, role, username, signed_at, comment FROM signatures WHERE doc_id = ? ORDER BY signed_at ASC",
+                (doc_id,),
+            )
+            # Ensure list of dicts
+            return [dict(r) for r in (rows or [])]
+        except Exception as ex:
+            logger.error(f"Error listing signatures for {doc_id}: {ex}")
+            return []
+
+
+    def attach_signed_pdf(self, doc_id: str, signed_pdf_path: str, step: str, user_id: str,
+                          reason: Optional[str] = None, ) -> tuple[bool, Optional[str]]:
         """Attach signed PDF to document."""
         if not self.exists(doc_id):
             return False, f"Document not found: {doc_id}"
-
         now = datetime.utcnow().isoformat(timespec="seconds")
-
         try:
             self._db.insert(
                 "signatures",
                 {
-                    "doc_id": doc_id,
-                    "role": step,
-                    "username": user_id,
-                    "signed_at": now,
-                    "comment": reason,
+                "doc_id": doc_id,
+                "role": step,
+                "username": user_id,
+                "signed_at": now,
+                "comment": reason,
                 },
             )
             return True, None
-        except Exception as ex:
-            logger.error(f"Error attaching signed PDF: {ex}")
-            return False, str(ex)
+        except Exception as ex: (
+            logger.error(f"Error attaching signed PDF: {ex}"),)
+
+        return False,(str(ex))
+
 
     def export_pdf_with_version_suffix(self, doc_id: str) -> Optional[str]:
         """Export PDF with version number in filename."""
@@ -924,5 +935,4 @@ class SQLiteDocumentRepository:
         except Exception:
             # If inspection fails, fall back: drop the newest field first
             kwargs.pop("signing_pdf_path", None)
-
-        return DocumentRecord(**kwargs)  # type: ignore[arg-type]
+        return DocumentRecord(**kwargs)

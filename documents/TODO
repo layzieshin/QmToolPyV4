@@ -4,3 +4,27 @@
 2. Man soll als regulärer Nutzer keinen Zugriff auf die Rollen-Zuweisung haben
     - diese soll nur beim Starten eines Workflows einmal angezeigt werden (Assign Roles dialog)
     - Danach nur noch für QMBs und Admin sichtbar und änderbar sein
+3. Der Button "Öffnen" muss immer die letzte / die aktuellste Version eines Dokuments öffnen
+4. Die Namensgebung beim Signieren von Dokumenten soll angepasst werden
+    - Aktuell: <Dokumentname>_v<Version>_signed.<Dateityp>
+    -> ABER: Das passiert bei jedem Signiervorgang, so dass am Ende ein Dokument den Namen
+       <Dokumentname>_v<Version>_signed_signed_signed...<Dateityp> hat
+    - Anpassung: Es soll immer nur ein "_signed" angehängt werden, egal wie oft das Dokument signiert wird
+5. Die Speicherpfade der einzelnen Dokumente sollen angepasst werden
+    - Aktuell: importierte und neue Dokumente aus Vorlage werden nicht als Arbeitskopie an festegelegten Speicherorten abgelegt
+    - Anpassung: Alle Arbeitskopien von Dokumenten sollen im Verzeichnis "./documents/LifeCycle/" abgelegt werden
+    - Unterverzeichnisse für jede Dokumentenart (z.B. SOPs, Arbeitsanweisungen, Formulare, etc.) sollen automatisch erstellt werden
+    - Die Dokumente haben eine eindeutige Kennung für Bereich, Dokumententyp und Dokumentennummer im Dateinamen (z.B. "C04VA001_Bestellungen.docx")
+    - Diese 8-stellige (Dokumenten-)Kennung soll als Unterordnerstruktur im Verzeichnis "./documents/LifeCycle/" verwendet werden (z.B. "./documents/LifeCycle/C04VA001/")
+    - Beim Speichern von neuen Dokumenten oder Importieren von Dokumenten soll der Nutzer aufgefordert werden, die erforderlichen Metadaten (Bereich, Dokumententyp, Dokumentennummer) anzugeben, um die korrekte Ablage zu gewährleisten. Editmeta dialog (inklusive der Dokumentenkennung)
+    - Die Dokumente sollen jeweils bei Start eines Workflows in den entsprechenden Unterordner/Version kopiert werden (z.B. "./documents/LifeCycle/C04VA001/V1.0/")
+    - Dokumente die Archiviert werden sollen, werden in ein separates Verzeichnis "./documents/Archive/" verschoben, ebenfalls mit der Unterordnerstruktur basierend auf der Dokumentenkennung.
+    - Dazu muss der Code für die Archivierungsfunktion entsprechend angepasst werden.
+6. Beim Neu aus Vorlage wird momentan noch die Vorlage im Vorlagenordner geöffnet
+    - Anpassung: Es soll direkt die Arbeitskopie im LifeCycle Ordner geöffnet werden
+7. Alle Dokumente besitzen die Eigenschaft Aktuelle Datei (bezeichnung im Quellcode könnte auch anders sein). Dieses Attribut soll immer auf die aktuellste Version des Dokuments zeigen
+    - Anpassung: Beim Speichern, Signieren, Archivieren etc. muss dieses Attribut entsprechend aktualisiert werden
+7. Wir bekommen noch folgende Fehlermeldung :
+    a)"Error listing signatures for DOC-2026-*: 'SQLiteAdapter' object has no attribute 'query'
+    b) File is not a DOCX and cannot be converted.
+    letzere tritt beim Signieren von PDF Dateien auf weil das verwendete Dokument im Dotx Format übergeben wird

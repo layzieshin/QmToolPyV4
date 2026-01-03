@@ -74,7 +74,22 @@ class DocumentRepository(Protocol):
         """Replace role assignments for document."""
         ...
 
-    # ===== PDF Operations =====
+    
+    # ===== Signatures =====
+
+    def list_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
+        """
+        Return signature rows for the document.
+
+        Each row is expected to contain at least:
+        - role (str): action/step name (e.g., "approve", "publish")
+        - username (str): user id who signed
+        - signed_at (str/datetime): timestamp
+        - comment (optional)
+        """
+        ...
+
+# ===== PDF Operations =====
 
     def generate_review_pdf(self, doc_id: str) -> Optional[str]:
         """

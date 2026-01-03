@@ -1,10 +1,12 @@
 """DocumentCreationController - handles document creation and metadata updates."""
 
 from __future__ import annotations
+
 from typing import Any, Callable, Dict, Optional, Tuple
 import os
 
 from documents.models.document_models import DocumentRecord
+
 
 class DocumentCreationController:
     """
@@ -21,13 +23,13 @@ class DocumentCreationController:
     def __init__(
             self,
             *,
-            repository: DocumentsRepository,
+            repository: "DocumentsRepository",
             current_user_provider: Callable[[], Optional[object]]
     ) -> None:
         """
         Args:
             repository: Documents repository
-            current_user_provider:  Lambda that returns current user
+            current_user_provider: Lambda that returns current user
         """
         self._repo = repository
         self._user_provider = current_user_provider
@@ -35,59 +37,102 @@ class DocumentCreationController:
     def create_from_template(
             self,
             template_path: str,
-            doc_type: str = "SOP"
+            doc_type: Optional[str] = None
     ) -> Tuple[bool, Optional[str], Optional[DocumentRecord]]:
         """
         Create document from template.
 
         Args:
-            template_path: Path to DOCX template
-            doc_type: Document type
+            template_path: Path to template (DOCX/DOTX)
+            doc_type: Document type (must be allowed by repository constraint)
 
         Returns:
-            (success:  bool, error_msg: Optional[str], record: Optional[DocumentRecord])
+            (success: bool, error_msg: Optional[str], record: Optional[DocumentRecord])
         """
         if not os.path.isfile(template_path):
             return False, f"Template nicht gefunden: {template_path}", None
+
+        # Allow DOCX and DOTX templates
+        lp = template_path.lower()
+        if not (lp.endswith(".docx") or lp.endswith(".dotx")):
+            return False, "Nur DOCX- oder DOTX-Templates werden unterstützt.", None
+
+        # Normalize doc_type
+        doc_type_norm = (doc_type or "").strip()
+
+        # If repo has allowed types (new world), enforce them early with a clean error
+        allowed = ()
+        try:
+            allowed = tuple(getattr(getattr(self._repo, "_cfg", None), "allowed_doc_types", ()) or ())
+        except Exception:
+            allowed = ()
+
+        if not doc_type_norm:
+            if allowed:
+                doc_type_norm = allowed[0]
+            else:
+                return False, "Kein Dokumenttyp angegeben.", None
+
+        if allowed and doc_type_norm not in allowed:
+            return False, f"Ungültiger Dokumenttyp '{doc_type_norm}'. Erlaubt: {', '.join(allowed)}", None
 
         try:
             user_id = self._get_user_id()
             record = self._repo.create_from_file(
                 title=None,  # Will be extracted from filename
-                doc_type=doc_type,
+                doc_type=doc_type_norm,
                 user_id=user_id,
                 src_file=template_path
             )
             return True, None, record
         except Exception as ex:
-            return False, f"Fehler beim Erstellen:  {ex}", None
+            return False, f"Fehler beim Erstellen: {ex}", None
 
     def import_file(
             self,
             file_path: str,
-            doc_type: str = "SOP"
+            doc_type: Optional[str] = None
     ) -> Tuple[bool, Optional[str], Optional[DocumentRecord]]:
         """
         Import existing DOCX file.
 
         Args:
-            file_path:  Path to DOCX
-            doc_type: Document type
+            file_path: Path to DOCX
+            doc_type: Document type (must be allowed by repository constraint)
 
         Returns:
-            (success: bool, error_msg:  Optional[str], record: Optional[DocumentRecord])
+            (success: bool, error_msg: Optional[str], record: Optional[DocumentRecord])
         """
         if not os.path.isfile(file_path):
-            return False, f"Datei nicht gefunden: {file_path}", None
+            return False, "Datei nicht gefunden.", None
 
         if not file_path.lower().endswith(".docx"):
             return False, "Nur DOCX-Dateien werden unterstützt.", None
+
+        # Normalize doc_type
+        doc_type_norm = (doc_type or "").strip()
+
+        # If repo has allowed types (new world), enforce them early with a clean error
+        allowed = ()
+        try:
+            allowed = tuple(getattr(getattr(self._repo, "_cfg", None), "allowed_doc_types", ()) or ())
+        except Exception:
+            allowed = ()
+
+        if not doc_type_norm:
+            if allowed:
+                doc_type_norm = allowed[0]
+            else:
+                return False, "Kein Dokumenttyp angegeben.", None
+
+        if allowed and doc_type_norm not in allowed:
+            return False, f"Ungültiger Dokumenttyp '{doc_type_norm}'. Erlaubt: {', '.join(allowed)}", None
 
         try:
             user_id = self._get_user_id()
             record = self._repo.create_from_file(
                 title=None,
-                doc_type=doc_type,
+                doc_type=doc_type_norm,
                 user_id=user_id,
                 src_file=file_path
             )

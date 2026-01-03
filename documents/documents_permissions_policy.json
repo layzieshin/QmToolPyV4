@@ -2,44 +2,35 @@
   "separation_of_duties": {
     "no_self_review": true,
     "no_self_approval": true,
-    "approver_cannot_edit_effective":  true
+    "approver_cannot_edit_effective": true,
+    "reviewer_cannot_publish_if_reviewed": true
   },
   "system_role_mapping": {
-    "ADMIN": ["ADMIN", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER"],
-    "QMB": ["QMB", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER"],
-    "USER": ["AUTHOR"]
+    "USER": [
+      "USER"
+    ],
+    "ADMIN": [
+      "ADMIN"
+    ],
+    "QMB": [
+      "QMB"
+    ]
   },
   "role_permissions": {
     "ADMIN": [
-      "create_document",
-      "edit_draft",
-      "edit_revision",
-      "submit_review",
-      "review",
-      "comment",
-      "approve",
-      "publish",
-      "obsolete",
-      "archive",
       "start_workflow",
       "abort_workflow",
+      "archive",
+      "obsolete",
       "assign_roles",
       "back_to_draft",
       "create_revision"
     ],
     "QMB": [
-      "create_document",
-      "edit_draft",
-      "edit_revision",
-      "submit_review",
-      "review",
-      "comment",
-      "approve",
-      "publish",
-      "obsolete",
-      "archive",
       "start_workflow",
       "abort_workflow",
+      "archive",
+      "obsolete",
       "assign_roles",
       "back_to_draft",
       "create_revision"
@@ -66,6 +57,19 @@
       "obsolete",
       "archive",
       "create_revision"
+    ],
+    "USER": [
+      "create_document",
+      "import_document",
+      "new_from_template",
+      "start_workflow",
+      "comment",
+      "read"
     ]
+  },
+  "signing_chain": {
+    "submit_review": "AUTHOR",
+    "approve": "REVIEWER",
+    "publish": "APPROVER"
   }
 }
