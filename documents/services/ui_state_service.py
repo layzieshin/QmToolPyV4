@@ -1,43 +1,30 @@
-"""UI state service (no IO).
+"""UI state service - derives button states from policies.
 
-Combines policy services to derive UI states (button enablement, etc.).
+Uses STRING comparison for status to avoid enum class mismatch.
 """
 
 from __future__ import annotations
-from typing import Optional, Set, Iterable
+from typing import Optional, Set, Iterable, Any
 import logging
 
 from documents.dto.controls_state import ControlsState
-from documents.enum. document_status import DocumentStatus
-from documents.services.policy. permission_policy import PermissionPolicy
-from documents.services.policy.workflow_policy import WorkflowPolicy
 
 logger = logging.getLogger(__name__)
 
 
 class UIStateService:
-    """Derive view state flags from policy evaluation."""
+    """Leitet UI-States aus Policy-Evaluation ab."""
 
-    def __init__(
-        self,
-        *,
-        permission_policy: PermissionPolicy,
-        workflow_policy: WorkflowPolicy
-    ):
-        """
-        Args:
-            permission_policy: Permission evaluation service
-            workflow_policy: Workflow rules service
-        """
+    def __init__(self, *, permission_policy, workflow_policy):
         self._perm_policy = permission_policy
         self._wf_policy = workflow_policy
 
     def build_controls_state(
         self,
         *,
-        status: DocumentStatus,
+        status: Any,  # Akzeptiert Enum oder String
         doc_type: str,
-        user_roles:  Iterable[str],
+        user_roles: Iterable[str],
         assigned_roles: Iterable[str],
         workflow_active: bool,
         can_open_file: bool = False,
@@ -45,106 +32,101 @@ class UIStateService:
         owner_id: Optional[str] = None,
         workflow_starter_id: Optional[str] = None
     ) -> ControlsState:
-        """
-        Build complete UI control state.
+        """Build complete UI control state."""
 
-        Args:
-            status: Current document status
-            doc_type:  Document type
-            user_roles:  User's module roles
-            assigned_roles: User's assigned roles on this document
-            workflow_active: Is workflow active?
-            can_open_file: Can file be opened?
-            user_id: Current user ID
-            owner_id:  Document owner ID
-            workflow_starter_id: User who started workflow
+        # Normalize status to string
+        status_name = self._to_status_name(status)
 
-        Returns:
-            ControlsState DTO
-        """
-        # Normalize roles to uppercase
-        roles = {r.upper() for r in user_roles} | {r.upper() for r in assigned_roles}
+        # Expand system roles to module roles
+        user_roles_set = set(str(r).upper() for r in user_roles)
+        expanded_roles = self._perm_policy.expand_roles(user_roles_set)
 
-        # If no roles, grant basic permissions for testing/development
-        if not roles:
-            # Fallback:  treat as AUTHOR for basic operations
-            roles = {"AUTHOR"}
-            logger.debug("No user roles detected, using fallback AUTHOR role")
+        # Add document-specific assigned roles
+        for r in assigned_roles:
+            expanded_roles.add(str(r).upper())
 
-        # Can open?
+        logger.debug(f"UIState: status={status_name}, user_roles={user_roles_set}, expanded={expanded_roles}")
+
+        # === Basic Actions ===
         can_open = can_open_file
+        can_copy = (status_name == "EFFECTIVE")
 
-        # Can copy?  (only EFFECTIVE documents)
-        can_copy = (status == DocumentStatus.EFFECTIVE)
+        # === Assignment - nur ADMIN/QMB/Owner/Workflow-Starter ===
+        can_assign_roles = False
+        if status_name == "DRAFT":
+            can_assign_roles = self._perm_policy.can_assign_roles(
+                user_roles=user_roles_set,
+                user_id=user_id or "",
+                owner_id=owner_id or "",
+                workflow_starter_id=workflow_starter_id
+            )
 
-        # Can assign roles?
-        can_assign_roles = self._perm_policy.can_perform(
-            action_id="assign_roles",
-            roles=roles
-        )
+        # === Archive ===
+        can_archive = False
+        if status_name == "EFFECTIVE":
+            can_archive = self._perm_policy.can_perform(action_id="obsolete", roles=expanded_roles)
+        elif status_name == "OBSOLETE":
+            can_archive = self._perm_policy. can_perform(action_id="archive", roles=expanded_roles)
 
-        # Can archive?
-        if status == DocumentStatus.EFFECTIVE:
-            can_archive = self._perm_policy.can_perform(action_id="obsolete", roles=roles)
-        elif status == DocumentStatus.OBSOLETE:
-            can_archive = self._perm_policy.can_perform(action_id="archive", roles=roles)
-        else:
-            can_archive = False
-
-        # Workflow toggle
-        if status == DocumentStatus.DRAFT and not workflow_active:
+        # === Workflow Toggle ===
+        if status_name == "DRAFT" and not workflow_active:
             workflow_text = "Workflow starten"
-            can_toggle_workflow = self._perm_policy.can_perform(action_id="start_workflow", roles=roles)
+            can_toggle_workflow = self._perm_policy.can_perform(
+                action_id="start_workflow", roles=expanded_roles
+            )
         elif workflow_active:
             workflow_text = "Workflow abbrechen"
-            # Can abort if:  ADMIN/QMB or workflow starter
-            is_admin = bool({"ADMIN", "QMB"} & roles)
+            is_admin = bool({"ADMIN", "QMB"} & user_roles_set)
             is_starter = (
                 user_id and workflow_starter_id and
-                str(user_id).strip().lower() == str(workflow_starter_id).strip().lower()
+                str(user_id).lower() == str(workflow_starter_id).lower()
             )
             can_toggle_workflow = is_admin or is_starter
         else:
             workflow_text = "Workflow starten"
-            # Allow starting workflow for non-DRAFT statuses if user has permission
-            can_toggle_workflow = self._perm_policy.can_perform(action_id="start_workflow", roles=roles)
+            can_toggle_workflow = False
 
-        # Next step
+        # === Next Step ===
         allowed_actions = self._wf_policy.allowed_transitions(status)
-        next_action = allowed_actions[0] if allowed_actions else None
+        logger.debug(f"Allowed actions for {status_name}: {allowed_actions}")
 
-        # Check permission for next action
+        next_action = None
         can_next = False
-        if next_action:
-            can_next = self._perm_policy.can_perform(action_id=next_action, roles=roles)
 
-            # Check separation of duties
-            if can_next and user_id and owner_id:
-                if self._perm_policy.violates_separation_of_duties(
-                    action_id=next_action,
-                    actor_id=user_id,
-                    owner_id=owner_id,
-                    doc_type=doc_type
-                ):
-                    can_next = False
+        for action in allowed_actions:
+            if self._perm_policy.can_perform(action_id=action, roles=expanded_roles):
+                # Check separation of duties
+                if user_id and owner_id:
+                    if self._perm_policy.violates_separation_of_duties(
+                        action_id=action,
+                        actor_id=user_id,
+                        owner_id=owner_id,
+                        doc_type=doc_type
+                    ):
+                        logger.debug(f"Action {action} blocked by separation of duties")
+                        continue
+                next_action = action
+                can_next = True
+                break
 
         action_labels = {
             "submit_review": "Zur Prüfung einreichen",
             "approve": "Freigeben",
-            "publish": "Veröffentlichen",
+            "publish":  "Veröffentlichen",
             "create_revision": "Revision erstellen",
             "obsolete": "Außer Kraft setzen",
-            "archive":  "Archivieren",
+            "archive": "Archivieren",
         }
         next_text = action_labels.get(next_action or "", "Nächster Schritt")
 
-        # Back to draft?
-        can_back_to_draft = (
-            status in (DocumentStatus.REVIEW, DocumentStatus.APPROVED) and
-            self._perm_policy.can_perform(action_id="back_to_draft", roles=roles)
-        )
+        # === Back to Draft ===
+        can_back_to_draft = False
+        if status_name in ("REVIEW", "APPROVED"):
+            can_back_to_draft = self._perm_policy.can_perform(
+                action_id="back_to_draft", roles=expanded_roles
+            )
 
-        return ControlsState(
+        result = ControlsState(
             can_open=can_open,
             can_copy=can_copy,
             can_assign_roles=can_assign_roles,
@@ -155,3 +137,16 @@ class UIStateService:
             workflow_text=workflow_text,
             next_text=next_text,
         )
+
+        logger.debug(f"Controls:  can_next={can_next}, can_back={can_back_to_draft}, can_workflow={can_toggle_workflow}")
+        return result
+
+    def _to_status_name(self, status: Any) -> str:
+        """Convert any status to uppercase string."""
+        if status is None:
+            return ""
+        if hasattr(status, 'name'):
+            return str(status.name).upper()
+        if hasattr(status, 'value'):
+            return str(status. value).upper()
+        return str(status).strip().upper()

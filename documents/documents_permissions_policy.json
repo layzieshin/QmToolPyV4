@@ -4,6 +4,11 @@
     "no_self_approval": true,
     "approver_cannot_edit_effective":  true
   },
+  "system_role_mapping": {
+    "ADMIN": ["ADMIN", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER"],
+    "QMB": ["QMB", "AUTHOR", "EDITOR", "REVIEWER", "APPROVER"],
+    "USER": ["AUTHOR"]
+  },
   "role_permissions": {
     "ADMIN": [
       "create_document",
@@ -43,8 +48,7 @@
       "create_document",
       "edit_draft",
       "submit_review",
-      "start_workflow",
-      "assign_roles"
+      "start_workflow"
     ],
     "EDITOR": [
       "edit_draft",
@@ -53,6 +57,7 @@
     "REVIEWER": [
       "review",
       "comment",
+      "approve",
       "back_to_draft"
     ],
     "APPROVER": [

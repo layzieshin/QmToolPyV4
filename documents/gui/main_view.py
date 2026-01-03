@@ -140,7 +140,7 @@ class DocumentsView(ttk.Frame):
         return None
 
     def _init_controllers(self) -> None:
-        """Initialize all controllers with services (Controller Factory)."""
+        """Initialize all controllers with services."""
         if self._init_error or not self._repo:
             self.filter_ctrl = None
             self.list_ctrl = None
@@ -153,12 +153,17 @@ class DocumentsView(ttk.Frame):
         # User provider
         user_provider = lambda: getattr(AppContext, "current_user", None)
 
-        # === Load Policy Services from JSON ===
+        # === Load Policy Services ===
         base_dir = Path(__file__).resolve().parents[1]
 
         self._permission_policy = PermissionPolicy.load_from_directory(base_dir)
         self._workflow_policy = WorkflowPolicy.load_from_directory(base_dir)
-        self._signature_policy = SignaturePolicy.load_from_directory(base_dir)
+
+        # Signature policy is optional
+        try:
+            self._signature_policy = SignaturePolicy.load_from_directory(base_dir)
+        except Exception:
+            self._signature_policy = None
 
         # Create UI state service
         ui_state_service = UIStateService(
@@ -168,43 +173,59 @@ class DocumentsView(ttk.Frame):
 
         # === Initialize Controllers ===
 
-        # Filter controller
         self.filter_ctrl = SearchFilterController(repository=self._repo)
 
-        # List controller
         self.list_ctrl = DocumentListController(
             repository=self._repo,
             filter_controller=self.filter_ctrl
         )
 
-        # Details controller
         self.details_ctrl = DocumentDetailsController(
             repository=self._repo,
             ui_state_service=ui_state_service,
             current_user_provider=user_provider
         )
 
-        # Creation controller
         self.creation_ctrl = DocumentCreationController(
             repository=self._repo,
             current_user_provider=user_provider
         )
 
-        # Workflow controller
+        # Workflow Controller - OHNE signature_provider (graceful degradation)
         self.workflow_ctrl = WorkflowController(
             repository=self._repo,
             workflow_policy=self._workflow_policy,
             permission_policy=self._permission_policy,
-            current_user_provider=user_provider
+            current_user_provider=user_provider,
+            #signature_provider=None  # Optional - Workflow funktioniert auch ohne
         )
 
-        # Assignment controller - mit Benutzer-Provider aus UserManager
+        # Assignment Controller - OHNE rbac_service
         self.assignment_ctrl = AssignmentController(
             repository=self._repo,
-            rbac_service=self._rbac,
             user_provider=self._get_all_system_users
         )
 
+    def _get_all_system_users(self) -> List[Dict[str, str]]:
+        """Get all users from UserManager."""
+        try:
+            from usermanagement.logic.user_manager import UserManager
+            um = UserManager()
+            all_users = um.get_all_users()
+
+            return [
+                {
+                    "id": str(getattr(u, "id", "") or ""),
+                    "username": str(getattr(u, "username", "") or ""),
+                    "email": str(getattr(u, "email", "") or ""),
+                    "full_name": str(getattr(u, "full_name", "") or ""),
+                }
+                for u in all_users
+                if getattr(u, "username", None)
+            ]
+        except Exception as ex:
+            logger.debug(f"Failed to get users: {ex}")
+            return []
     def _get_all_system_users(self) -> List[Dict[str, str]]:
         """Get all users from UserManager for role assignment."""
         users = []
@@ -450,13 +471,13 @@ class DocumentsView(ttk.Frame):
         self.btn_copy = ttk.Button(footer, text=T("documents.btn.copy") or "Kopie erstellen", command=self._copy)
         self.btn_assign_roles = ttk.Button(footer, text=T("documents.btn.assign") or "Rollen zuweisen",
                                            command=lambda: self._assign_roles(force=True))
-        self.btn_workflow = ttk.Button(footer, text=T("documents.btn. workflow. start") or "Workflow starten",
+        self.btn_workflow = ttk.Button(footer, text=T("documents.btn.workflow. start") or "Workflow starten",
                                        command=self._toggle_workflow)
         self.btn_next = ttk.Button(footer, text=T("documents.btn.next") or "Nächster Schritt",
                                    command=self._next_step)
-        self.btn_back_to_draft = ttk.Button(footer, text=T("documents.btn. back") or "Zurück zu Entwurf",
+        self.btn_back_to_draft = ttk.Button(footer, text=T("documents.btn.back") or "Zurück zu Entwurf",
                                             command=self._back_to_draft)
-        self.btn_archive = ttk.Button(footer, text=T("documents.btn. archive") or "Archivieren",
+        self.btn_archive = ttk.Button(footer, text=T("documents.btn.archive") or "Archivieren",
                                       command=self._archive)
         self.btn_refresh = ttk.Button(footer, text=T("common.reload") or "Aktualisieren",
                                       command=self._reload)
@@ -823,32 +844,85 @@ class DocumentsView(ttk.Frame):
         self.btn_archive.configure(state=("normal" if state.can_archive else "disabled"))
 
     def _get_user_roles(self, user: object) -> list[str]:
-        """Get user's module roles (NEW: checks both global roles and module RBAC)."""
+        """
+        Get user's system roles.
+
+        Returns system roles (ADMIN, QMB, USER) which will be
+        expanded to module roles by PermissionPolicy.
+        """
         if not user:
             return []
 
         roles = []
 
-        # Check global roles from user object
+        # Get role from user object
+        if hasattr(user, 'role'):
+            role = getattr(user, 'role', None)
+            if role:
+                # Handle enum or string
+                role_name = str(role.name if hasattr(role, 'name') else role).upper()
+                roles.append(role_name)
+
+        # Also check roles list (if present)
         if hasattr(user, 'roles'):
             user_roles = getattr(user, 'roles', [])
             if isinstance(user_roles, (list, set)):
                 for r in user_roles:
-                    role_name = str(r. name if hasattr(r, 'name') else r).upper()
-                    if role_name in ("ADMIN", "QMB", "AUTHOR", "REVIEWER", "APPROVER"):
-                        roles.append(role_name)
-
-        if hasattr(user, 'role'):
-            role = getattr(user, 'role', None)
-            if role:
-                role_name = str(role.name if hasattr(role, 'name') else role).upper()
-                if role_name in ("ADMIN", "QMB", "AUTHOR", "REVIEWER", "APPROVER"):
+                    role_name = str(r.name if hasattr(r, 'name') else r).upper()
                     if role_name not in roles:
                         roles.append(role_name)
 
-        # TODO: Add module-specific RBAC check via PermissionPolicy
+        # Fallback to USER if no roles
+        if not roles:
+            roles = ["USER"]
 
         return roles
+
+    def _refresh_controls(self, rec: Optional[DocumentRecord]) -> None:
+        """Update button states via UIStateService."""
+        # Default:  all disabled
+        for btn in [self.btn_workflow, self.btn_next, self.btn_back_to_draft,
+                    self.btn_archive, self.btn_open, self.btn_copy]:
+            btn.configure(state="disabled")
+        self.btn_assign_roles.configure(state="disabled")
+
+        if not rec or not self.details_ctrl:
+            self.btn_workflow.configure(text="Workflow")
+            self.btn_next.configure(text="Nächster Schritt")
+            return
+
+        # Get user info
+        user = getattr(AppContext, "current_user", None)
+        user_roles = self._get_user_roles(user)
+        assigned_roles = self._get_assigned_roles(rec.doc_id.value, user)
+
+        # Get user_id for ownership check
+        user_id = None
+        if user:
+            for attr in ("id", "user_id", "username"):
+                val = getattr(user, attr, None)
+                if val:
+                    user_id = str(val)
+                    break
+
+        # Compute state via controller
+        state: ControlsState = self.details_ctrl.compute_controls_state(
+            rec,
+            user_roles=user_roles,
+            assigned_roles=assigned_roles
+        )
+
+        # Apply state
+        self.btn_workflow.configure(text=state.workflow_text)
+        self.btn_next.configure(text=state.next_text)
+
+        self.btn_open.configure(state=("normal" if state.can_open else "disabled"))
+        self.btn_copy.configure(state=("normal" if state.can_copy else "disabled"))
+        self.btn_assign_roles.configure(state=("normal" if state.can_assign_roles else "disabled"))
+        self.btn_workflow.configure(state=("normal" if state.can_toggle_workflow else "disabled"))
+        self.btn_next.configure(state=("normal" if state.can_next else "disabled"))
+        self.btn_back_to_draft.configure(state=("normal" if state.can_back_to_draft else "disabled"))
+        self.btn_archive.configure(state=("normal" if state.can_archive else "disabled"))
 
     def _get_assigned_roles(self, doc_id: str, user: object) -> list[str]:
         """Get user's assigned roles on this document."""

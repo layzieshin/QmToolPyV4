@@ -1,42 +1,26 @@
 """WorkflowController - orchestrates workflow transitions.
 
-REFACTORED: Uses WorkflowPolicy and PermissionPolicy services.
+Uses STRING comparison for status to avoid enum class mismatch.
 """
 
 from __future__ import annotations
-from typing import Callable, Optional, Tuple
+import logging
+from typing import Callable, List, Optional, Tuple, Set, Any
 
-from documents.repository.document_repository import DocumentRepository
-from documents.services.policy.workflow_policy import WorkflowPolicy
-from documents.services.policy.permission_policy import PermissionPolicy
-from documents.models.document_models import DocumentStatus
+logger = logging.getLogger(__name__)
 
 
 class WorkflowController:
-    """
-    Orchestrates workflow transitions.
-
-    REFACTORED:
-    - Uses WorkflowPolicy for transition rules
-    - Uses PermissionPolicy for authorization
-    - Stateless (no caching)
-    """
+    """Orchestriert Workflow-Transitionen."""
 
     def __init__(
         self,
         *,
-        repository: DocumentRepository,
-        workflow_policy: WorkflowPolicy,
-        permission_policy: PermissionPolicy,
-        current_user_provider:  Callable[[], Optional[object]]
+        repository,
+        workflow_policy,
+        permission_policy,
+        current_user_provider:  Callable[[], Optional[object]],
     ) -> None:
-        """
-        Args:
-            repository: Documents repository
-            workflow_policy: Workflow rules service
-            permission_policy: Permission evaluation service
-            current_user_provider: Lambda that returns current user
-        """
         self._repo = repository
         self._wf_policy = workflow_policy
         self._perm_policy = permission_policy
@@ -46,94 +30,100 @@ class WorkflowController:
         self,
         doc_id: str,
         *,
-        user_roles: list[str],
+        user_roles: List[str],
+        assigned_roles: Optional[List[str]] = None,
         ensure_assignments_callback: Optional[Callable[[], bool]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Start workflow (sets workflow_active=True).
-
-        Args:
-            doc_id: Document ID
-            user_roles: User's roles
-            ensure_assignments_callback:  Optional callback to ensure roles are assigned
-
-        Returns:
-            (success:  bool, error_msg: Optional[str])
-        """
+        """Start workflow."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
 
-        # Check permission
-        if not self._perm_policy.can_perform(action_id="start_workflow", roles=user_roles):
+        record = self._repo.get(doc_id)
+        if not record:
+            return False, "Dokument nicht gefunden."
+
+        # Check status (string comparison)
+        status_name = self._to_status_name(record.status)
+        if status_name != "DRAFT":
+            return False, f"Workflow kann nur für Entwürfe gestartet werden (aktuell: {status_name})."
+
+        # Expand and check permission
+        all_roles = self._perm_policy.expand_roles(user_roles)
+        if assigned_roles:
+            all_roles.update(r.upper() for r in assigned_roles)
+
+        if not self._perm_policy.can_perform(action_id="start_workflow", roles=all_roles):
             return False, "Keine Berechtigung zum Starten des Workflows."
 
-        # Check if assignments are present
+        # Check assignments
         assignees = self._repo.get_assignees(doc_id)
-        if not any(assignees.get(role) for role in ("AUTHOR", "REVIEWER", "APPROVER")):
+        has_approver = bool(assignees. get("APPROVER"))
+
+        if not has_approver:
             if ensure_assignments_callback and callable(ensure_assignments_callback):
                 if not ensure_assignments_callback():
                     return False, "Rollenzuweisung abgebrochen."
-            else:
-                return False, "Keine Rollen zugewiesen."
+                assignees = self._repo.get_assignees(doc_id)
+                has_approver = bool(assignees.get("APPROVER"))
 
-        # Start workflow
+            if not has_approver:
+                return False, "Mindestens ein Freigeber (Approver) muss zugewiesen sein."
+
         try:
             user_id = self._get_user_id(user)
             self._repo.set_workflow_active(doc_id, True, user_id)
+            logger.info(f"Workflow started for {doc_id} by {user_id}")
             return True, None
         except Exception as ex:
+            logger.error(f"Workflow start failed:  {ex}")
             return False, f"Workflow-Start fehlgeschlagen: {ex}"
 
     def abort_workflow(
         self,
         doc_id: str,
-        password: str,
         reason: str,
         *,
-        user_roles: list[str]
+        user_roles: List[str],
+        assigned_roles: Optional[List[str]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Abort workflow (Admin/QMB/Starter).
-
-        Args:
-            doc_id: Document ID
-            password:  Confirmation password
-            reason: Reason for abort
-            user_roles: User's roles
-
-        Returns:
-            (success: bool, error_msg: Optional[str])
-        """
+        """Abort workflow."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
 
-        # TODO: Validate password
-        if not password:
-            return False, "Passwort erforderlich."
+        if not reason or not reason.strip():
+            return False, "Begründung erforderlich."
 
-        # Check permission
         record = self._repo.get(doc_id)
         if not record:
             return False, "Dokument nicht gefunden."
 
-        # Admin/QMB can always abort
-        if not self._perm_policy.can_perform(action_id="abort_workflow", roles=user_roles):
-            # Check if user is workflow starter
-            starter_id = self._repo.get_workflow_starter(doc_id)
-            user_id = self._get_user_id(user)
+        if not self._repo.is_workflow_active(doc_id):
+            return False, "Kein aktiver Workflow zum Abbrechen."
 
-            if not (starter_id and user_id and starter_id.lower() == user_id.lower()):
-                return False, "Keine Berechtigung zum Abbrechen des Workflows."
+        user_roles_set = {r.upper() for r in user_roles}
+        user_id = self._get_user_id(user)
 
-        # Abort workflow
+        is_admin = bool({"ADMIN", "QMB"} & user_roles_set)
+        starter_id = self._repo.get_workflow_starter(doc_id)
+        is_starter = (
+            starter_id and user_id and
+            str(starter_id).lower() == str(user_id).lower()
+        )
+
+        if not (is_admin or is_starter):
+            return False, "Nur ADMIN/QMB oder der Workflow-Starter können abbrechen."
+
         try:
-            user_id = self._get_user_id(user)
-            self._repo.set_workflow_active(doc_id, False, user_id)
-            self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
+            self._repo.set_workflow_active(doc_id, False)
+            # Import status dynamically to use whatever enum is available
+            from documents.enum. document_status import DocumentStatus
+            self._repo.set_status(doc_id, DocumentStatus. DRAFT, user_id or "", reason)
+            logger.info(f"Workflow aborted for {doc_id} by {user_id}")
             return True, None
         except Exception as ex:
+            logger.error(f"Workflow abort failed: {ex}")
             return False, f"Workflow-Abbruch fehlgeschlagen: {ex}"
 
     def forward_transition(
@@ -141,23 +131,10 @@ class WorkflowController:
         doc_id: str,
         reason: str,
         *,
-        user_roles: list[str],
-        assigned_roles: list[str],
-        sign_pdf_callback: Optional[Callable[[str, str], Optional[str]]] = None
+        user_roles: List[str],
+        assigned_roles: List[str],
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Execute next workflow step.
-
-        Args:
-            doc_id: Document ID
-            reason: Reason/change note
-            user_roles: User's module roles
-            assigned_roles: User's assigned roles on this document
-            sign_pdf_callback:  Optional signature callback (pdf_path, reason) -> signed_path
-
-        Returns:
-            (success: bool, error_msg: Optional[str])
-        """
+        """Execute next workflow step."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
@@ -167,67 +144,61 @@ class WorkflowController:
             return False, "Dokument nicht gefunden."
 
         # Get allowed transitions
-        allowed_actions = self._wf_policy.allowed_transitions(record.status)
+        allowed_actions = self._wf_policy. allowed_transitions(record.status)
         if not allowed_actions:
-            return False, "Keine zulässige Aktion verfügbar."
+            status_name = self._to_status_name(record.status)
+            return False, f"Keine Aktion möglich für Status '{status_name}'."
 
-        # Take first allowed action
-        next_action = allowed_actions[0]
+        # Find permitted action
+        all_roles = self._perm_policy. expand_roles(user_roles)
+        all_roles.update(r.upper() for r in assigned_roles)
 
-        # Check permission
-        all_roles = set(user_roles) | set(assigned_roles)
-        if not self._perm_policy.can_perform(action_id=next_action, roles=all_roles):
-            return False, f"Keine Berechtigung für Aktion '{next_action}'."
-
-        # Check separation of duties
         user_id = self._get_user_id(user)
         owner_id = self._repo.get_owner(doc_id)
 
-        if self._perm_policy.violates_separation_of_duties(
-            action_id=next_action,
-            actor_id=user_id or "",
-            owner_id=owner_id or "",
-            doc_type=record.doc_type
-        ):
-            return False, "Verstoß gegen Funktionstrennung (z.B. Selbstfreigabe nicht erlaubt)."
+        permitted_action = None
+        for action in allowed_actions:
+            if self._perm_policy.can_perform(action_id=action, roles=all_roles):
+                if not self._perm_policy.violates_separation_of_duties(
+                    action_id=action,
+                    actor_id=user_id or "",
+                    owner_id=owner_id or "",
+                    doc_type=record. doc_type
+                ):
+                    permitted_action = action
+                    break
 
-        # Check if signature required
-        requires_signature = self._wf_policy.requires_signature(next_action, record.doc_type)
+        if not permitted_action:
+            return False, "Keine Berechtigung für verfügbare Aktionen."
 
-        if requires_signature:
-            # Generate PDF
-            pdf_path = self._repo.generate_review_pdf(doc_id)
-            if not pdf_path:
-                return False, "PDF-Generierung fehlgeschlagen."
+        # Check if reason required
+        if self._wf_policy.requires_reason(permitted_action):
+            if not reason or not reason.strip():
+                return False, "Begründung erforderlich für diese Aktion."
 
-            # Sign PDF (via callback)
-            if sign_pdf_callback and callable(sign_pdf_callback):
-                signed_path = sign_pdf_callback(pdf_path, reason)
-                if not signed_path:
-                    return False, "Signierung abgebrochen."
+        # Get next status
+        next_status_name = self._wf_policy.next_status(
+            action_id=permitted_action,
+            status=record.status
+        )
+        if not next_status_name:
+            return False, f"Kein Zielstatus für Aktion '{permitted_action}' definiert."
 
-                # Attach signed PDF
-                ok, msg = self._repo.attach_signed_pdf(doc_id, signed_path, next_action, user_id or "", reason)
-                if not ok:
-                    return False, msg or "Signierte PDF konnte nicht angehängt werden."
-
-        # Determine next status
-        next_status = self._wf_policy.next_status(action_id=next_action, status=record.status)
-        if not next_status:
-            return False, f"Kein Zielstatus für Aktion '{next_action}' definiert."
-
-        # Update status
         try:
-            self._repo.set_status(doc_id, next_status, user_id or "", reason)
+            # Convert string to enum
+            from documents.enum.document_status import DocumentStatus
+            next_status = DocumentStatus[next_status_name]
 
-            # Bump version if publishing
-            if next_status == DocumentStatus.EFFECTIVE:
+            self._repo.set_status(doc_id, next_status, user_id or "", reason or "")
+
+            if next_status_name == "EFFECTIVE":
                 self._repo.bump_minor_version(doc_id, user_id or "", reason)
-                # Export versioned PDF
-                self._repo.export_pdf_with_version_suffix(doc_id)
 
+            logger.info(f"Transition to {next_status_name} for {doc_id} by {user_id}")
             return True, None
+
         except Exception as ex:
+            logger.error(f"Transition failed: {ex}")
             return False, f"Status-Update fehlgeschlagen: {ex}"
 
     def backward_to_draft(
@@ -235,84 +206,110 @@ class WorkflowController:
         doc_id: str,
         reason: str,
         *,
-        user_roles: list[str]
+        user_roles: List[str],
+        assigned_roles: Optional[List[str]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Revert document to DRAFT.
-
-        Args:
-            doc_id: Document ID
-            reason: Reason
-            user_roles: User's roles
-
-        Returns:
-            (success:  bool, error_msg: Optional[str])
-        """
+        """Revert to DRAFT."""
         user = self._user_provider()
         if not user:
             return False, "Kein Benutzer angemeldet."
 
-        if not self._perm_policy.can_perform(action_id="back_to_draft", roles=user_roles):
-            return False, "Keine Berechtigung."
-
-        try:
-            user_id = self._get_user_id(user)
-            self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
-            return True, None
-        except Exception as ex:
-            return False, f"Zurücksetzen fehlgeschlagen:  {ex}"
-
-    def archive(
-        self,
-        doc_id: str,
-        reason: str,
-        *,
-        user_roles: list[str]
-    ) -> Tuple[bool, Optional[str]]:
-        """
-        Archive document.
-
-        Args:
-            doc_id: Document ID
-            reason: Reason
-            user_roles: User's roles
-
-        Returns:
-            (success: bool, error_msg: Optional[str])
-        """
-        user = self._user_provider()
-        if not user:
-            return False, "Kein Benutzer angemeldet."
+        if not reason or not reason.strip():
+            return False, "Begründung erforderlich."
 
         record = self._repo.get(doc_id)
         if not record:
             return False, "Dokument nicht gefunden."
 
-        # Determine action based on current status
-        if record.status == DocumentStatus.EFFECTIVE:
+        status_name = self._to_status_name(record.status)
+        if status_name in ("EFFECTIVE", "OBSOLETE", "ARCHIVED"):
+            return False, f"Zurücksetzen nicht möglich für Status '{status_name}'."
+
+        if status_name == "DRAFT":
+            return False, "Dokument ist bereits im Entwurf-Status."
+
+        all_roles = self._perm_policy.expand_roles(user_roles)
+        if assigned_roles:
+            all_roles.update(r.upper() for r in assigned_roles)
+
+        if not self._perm_policy.can_perform(action_id="back_to_draft", roles=all_roles):
+            return False, "Keine Berechtigung zum Zurücksetzen."
+
+        try:
+            from documents.enum.document_status import DocumentStatus
+            user_id = self._get_user_id(user)
+            self._repo.set_status(doc_id, DocumentStatus.DRAFT, user_id or "", reason)
+            logger.info(f"Reset to DRAFT for {doc_id} by {user_id}")
+            return True, None
+        except Exception as ex:
+            logger. error(f"Reset failed: {ex}")
+            return False, f"Zurücksetzen fehlgeschlagen: {ex}"
+
+    def archive(
+        self,
+        doc_id: str,
+        reason:  str,
+        *,
+        user_roles: List[str],
+        assigned_roles: Optional[List[str]] = None
+    ) -> Tuple[bool, Optional[str]]:
+        """Archive document."""
+        user = self._user_provider()
+        if not user:
+            return False, "Kein Benutzer angemeldet."
+
+        if not reason or not reason.strip():
+            return False, "Begründung erforderlich."
+
+        record = self._repo.get(doc_id)
+        if not record:
+            return False, "Dokument nicht gefunden."
+
+        status_name = self._to_status_name(record.status)
+
+        if status_name == "EFFECTIVE":
             action_id = "obsolete"
-            target_status = DocumentStatus.OBSOLETE
-        elif record.status == DocumentStatus.OBSOLETE:
+            target_status_name = "OBSOLETE"
+        elif status_name == "OBSOLETE":
             action_id = "archive"
-            target_status = DocumentStatus.ARCHIVED
+            target_status_name = "ARCHIVED"
         else:
             return False, "Nur gültige oder obsolete Dokumente können archiviert werden."
 
-        # Check permission
-        if not self._perm_policy.can_perform(action_id=action_id, roles=user_roles):
+        all_roles = self._perm_policy.expand_roles(user_roles)
+        if assigned_roles:
+            all_roles.update(r.upper() for r in assigned_roles)
+
+        if not self._perm_policy.can_perform(action_id=action_id, roles=all_roles):
             return False, "Keine Berechtigung."
 
         try:
+            from documents.enum.document_status import DocumentStatus
+            target_status = DocumentStatus[target_status_name]
             user_id = self._get_user_id(user)
             self._repo.set_status(doc_id, target_status, user_id or "", reason)
+            logger.info(f"Archive ({action_id}) for {doc_id} by {user_id}")
             return True, None
         except Exception as ex:
+            logger.error(f"Archive failed: {ex}")
             return False, f"Archivierung fehlgeschlagen: {ex}"
 
     def _get_user_id(self, user: object) -> Optional[str]:
         """Extract user ID."""
-        for attr in ("id", "user_id", "uid"):
+        if not user:
+            return None
+        for attr in ("id", "user_id", "uid", "username"):
             val = getattr(user, attr, None)
             if val:
                 return str(val)
         return None
+
+    def _to_status_name(self, status: Any) -> str:
+        """Convert status to string."""
+        if status is None:
+            return ""
+        if hasattr(status, 'name'):
+            return str(status.name).upper()
+        if hasattr(status, 'value'):
+            return str(status. value).upper()
+        return str(status).strip().upper()

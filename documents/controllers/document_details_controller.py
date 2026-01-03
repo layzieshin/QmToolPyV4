@@ -112,11 +112,9 @@ class DocumentDetailsController:
         """
         Compute UI state (button enablement and text).
 
-        REFACTORED:  Delegates to UIStateService.
-
         Args:
             record: Document record
-            user_roles: User's module roles (e.g., ["ADMIN", "AUTHOR"])
+            user_roles: User's system roles (e.g., ["ADMIN"], ["USER"])
             assigned_roles: User's assigned roles on this doc (e.g., ["REVIEWER"])
 
         Returns:
@@ -124,10 +122,10 @@ class DocumentDetailsController:
         """
         user = self._user_provider()
         if not user:
-            return ControlsState.disabled()
+            return ControlsState. disabled()
 
-        # Get workflow state
-        workflow_active = self._repo.is_workflow_active(record.doc_id.value)
+        # Get context
+        workflow_active = self._repo.is_workflow_active(record. doc_id.value)
         workflow_starter_id = self._repo.get_workflow_starter(record.doc_id.value)
         owner_id = self._repo.get_owner(record.doc_id.value)
         user_id = self._get_user_id(user)
@@ -139,7 +137,7 @@ class DocumentDetailsController:
         )
 
         # Delegate to UIStateService
-        return self._ui_state.build_controls_state(
+        return self._ui_state. build_controls_state(
             status=record.status,
             doc_type=record.doc_type,
             user_roles=user_roles,
