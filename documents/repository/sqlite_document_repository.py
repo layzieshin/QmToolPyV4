@@ -13,7 +13,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
-
+import inspect
 from documents.adapters.sqlite_adapter import SQLiteAdapter
 from documents.logic.id_generator import IdGenerator
 from documents.models.document_models import DocumentId, DocumentRecord, DocumentStatus
@@ -50,13 +50,32 @@ class SQLiteDocumentRepository:
     # =========================================================================
 
     def _ensure_schema(self) -> None:
-        """Create database schema if not exists."""
+        """Create database schema if not exists.
+
+        IMPORTANT:
+            SQLite cannot add CHECK constraints to an existing table via ALTER TABLE.
+            If allowed_doc_types are configured, we enforce that an existing 'documents'
+            table already contains the expected constraint. Otherwise we fail fast with
+            an explicit instruction to delete/recreate the database (non-production scenario).
+        """
+        allowed = tuple(getattr(self._cfg, "allowed_doc_types", ()) or ())
+
+        # If a documents table exists already and allowed types are configured,
+        # ensure it contains a matching CHECK constraint.
+        if allowed:
+            self._ensure_documents_table_has_type_constraint(allowed)
+
+        doc_type_def = "doc_type TEXT NOT NULL"
+        if allowed:
+            quoted = ", ".join([f"'{self._escape_sql_literal(v)}'" for v in allowed])
+            doc_type_def += f" CHECK (doc_type IN ({quoted}))"
+
         self._db.executescript(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS documents (
                 doc_id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
-                doc_type TEXT NOT NULL,
+                {doc_type_def},
                 status TEXT NOT NULL,
                 version_major INTEGER NOT NULL,
                 version_minor INTEGER NOT NULL,
@@ -91,6 +110,45 @@ class SQLiteDocumentRepository:
         # Run migrations for existing tables
         self._migrate_workflow_state()
         self._migrate_documents_signing_pdf()
+
+    @staticmethod
+    def _escape_sql_literal(value: str) -> str:
+        """Escape a value for use in a single-quoted SQL literal."""
+        return value.replace("'", "''")
+
+    def _ensure_documents_table_has_type_constraint(self, allowed: tuple[str, ...]) -> None:
+        """Fail fast if an existing documents table does not contain the expected CHECK constraint.
+
+        We intentionally do not auto-migrate here. The feature is currently non-production
+        and the database can be recreated safely.
+        """
+        row = self._db.fetchone(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='documents'"
+        )
+        if not row:
+            # Table does not exist yet - will be created with the constraint.
+            return
+
+        create_sql = row.get("sql") if isinstance(row, dict) else row[0]
+        if not create_sql:
+            return
+
+        # Minimal heuristic: constraint exists and includes all allowed values.
+        if "CHECK" not in create_sql or "doc_type" not in create_sql:
+            raise RuntimeError(
+                "Documents DB schema is outdated (missing doc_type CHECK constraint). "
+                f"Please delete the database file and restart: {self._cfg.db_path}"
+            )
+
+        missing = [
+            code for code in allowed
+            if f"'{self._escape_sql_literal(code)}'" not in create_sql
+        ]
+        if missing:
+            raise RuntimeError(
+                "Documents DB schema is outdated (doc_type CHECK constraint does not match allowed types). "
+                f"Missing: {', '.join(missing)}. Please delete the database file and restart: {self._cfg.db_path}"
+            )
 
     def _ensure_assignments_table(self) -> None:
         """Ensure assignments table exists with compatible structure."""
@@ -781,89 +839,90 @@ class SQLiteDocumentRepository:
             logger.error(f"copy_to_destination: dest_dir is not a directory: {dest_dir!r}")
             return None
 
-        basename = os.path.basename(src_path)
-        dest_path = os.path.join(dest_dir, basename)
+        # Build destination filename (keep base name)
+        base = os.path.basename(src_path)
+        dst_path = os.path.join(dest_dir, base)
 
-        # Defensive: Windows doesn't like trailing spaces/dots in path segments
-        # (Should not happen, but avoids WinError 87 if it does.)
-        dest_path = dest_path.rstrip(" .")
+        # If file exists, add suffix _copyN
+        if os.path.exists(dst_path):
+            name, ext = os.path.splitext(base)
+            n = 1
+            while True:
+                cand = os.path.join(dest_dir, f"{name}_copy{n}{ext}")
+                if not os.path.exists(cand):
+                    dst_path = cand
+                    break
+                n += 1
 
-        import time
-
-        last_ex: Optional[Exception] = None
-
-        for attempt in range(1, 9):
+        # Copy with retries
+        retries = 5
+        for attempt in range(1, retries + 1):
             try:
-                shutil.copy2(src_path, dest_path)
-                return dest_path
+                shutil.copy2(src_path, dst_path)
+                return dst_path
             except Exception as ex:
-                last_ex = ex
-                # Helpful diagnostics (repr shows hidden characters)
-                logger.warning(
-                    "copy_to_destination retry %s/8 failed: %s | src=%r | dest_dir=%r | dest=%r",
-                    attempt, ex, src_path, dest_dir, dest_path
-                )
-                time.sleep(0.2 * attempt)
+                if attempt >= retries:
+                    logger.error(f"copy_to_destination failed after retries: {ex}")
+                    return None
+                try:
+                    import time
+                    time.sleep(0.2 * attempt)
+                except Exception:
+                    pass
 
-        logger.error(f"Error copying to destination after retries: {last_ex}")
         return None
 
-
-
     # =========================================================================
-    # File Management
-    # =========================================================================
-
-    def check_in(
-        self,
-        doc_id: str,
-        user_id: str,
-        file_path: str,
-        comment: Optional[str] = None,
-    ) -> None:
-        """Check in new file version."""
-        if not self.exists(doc_id):
-            raise ValueError(f"Document not found:  {doc_id}")
-
-        now = datetime.utcnow().isoformat(timespec="seconds")
-
-        self._db.execute(
-            "UPDATE documents SET current_file_path = ?, updated_at = ? WHERE doc_id = ?",
-            (file_path, now, doc_id),
-        )
-        self._db.commit()
-
-    # =========================================================================
-    # Internal Helpers
+    # Internal Helpers: Row mapping
     # =========================================================================
 
     def _row_to_record(self, row: Dict[str, Any]) -> DocumentRecord:
-        """Convert DB row into DocumentRecord."""
-        doc_id = DocumentId(row["doc_id"])
-        status = DocumentStatus[row["status"]]
+        """Map DB row to DocumentRecord in a backward-compatible way.
 
-        return DocumentRecord(
-            doc_id=doc_id,
-            title=row.get("title", ""),
-            doc_type=row.get("doc_type", ""),
-            status=status,
-            version_major=int(row.get("version_major") or 1),
-            version_minor=int(row.get("version_minor") or 0),
-            current_file_path=row.get("current_file_path"),
-            doc_code=row.get("doc_code"),
-            created_by=row.get("created_by"),
-            created_at=self._parse_dt(row.get("created_at")),
-            updated_at=self._parse_dt(row.get("updated_at")),
-            next_review=self._parse_dt(row.get("next_review")),
-        )
+        The DocumentRecord constructor may differ between iterations (models vs dto).
+        We therefore only pass kwargs that are actually accepted by the constructor.
+        """
+        doc_id_val = row.get("doc_id") or ""
 
-    @staticmethod
-    def _parse_dt(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            return value
+        # DocumentId wrapper may differ by iteration
         try:
-            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            doc_id = DocumentId(doc_id_val)  # type: ignore[misc]
         except Exception:
-            return None
+            doc_id = doc_id_val  # type: ignore[assignment]
+
+        status_txt = row.get("status") or getattr(DocumentStatus, "DRAFT", None).name  # type: ignore[union-attr]
+        try:
+            status = DocumentStatus[status_txt]  # type: ignore[index]
+        except Exception:
+            try:
+                status = DocumentStatus.DRAFT  # type: ignore[attr-defined]
+            except Exception:
+                status = status_txt  # type: ignore[assignment]
+
+        # Base kwargs we want to provide (newer schema may include signing_pdf_path)
+        kwargs = {
+            "doc_id": doc_id,
+            "title": row.get("title") or "",
+            "doc_type": row.get("doc_type") or "",
+            "status": status,
+            "version_major": int(row.get("version_major") or 1),
+            "version_minor": int(row.get("version_minor") or 0),
+            "current_file_path": row.get("current_file_path") or None,
+            "doc_code": row.get("doc_code") or None,
+            "created_by": row.get("created_by") or None,
+            "created_at": row.get("created_at") or None,
+            "updated_at": row.get("updated_at") or None,
+            "next_review": row.get("next_review") or None,
+            "signing_pdf_path": row.get("signing_pdf_path") or None,
+        }
+
+        # Filter kwargs to what the constructor accepts
+        try:
+            sig = inspect.signature(DocumentRecord)  # type: ignore[arg-type]
+            allowed = set(sig.parameters.keys())
+            kwargs = {k: v for k, v in kwargs.items() if k in allowed}
+        except Exception:
+            # If inspection fails, fall back: drop the newest field first
+            kwargs.pop("signing_pdf_path", None)
+
+        return DocumentRecord(**kwargs)  # type: ignore[arg-type]

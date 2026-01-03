@@ -1,0 +1,6 @@
+1. Man kann als Admin ein Dokument zur Prüfung freigeben obwohl
+    - das Dokument keinen aktiven Workflow hat
+    - obwohl der Admin nicht in der Assignee-Liste des Workflows steht
+2. Man soll als regulärer Nutzer keinen Zugriff auf die Rollen-Zuweisung haben
+    - diese soll nur beim Starten eines Workflows einmal angezeigt werden (Assign Roles dialog)
+    - Danach nur noch für QMBs und Admin sichtbar und änderbar sein

@@ -14,6 +14,9 @@ import logging
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from typing import Any, Dict, Optional, List
+from pathlib import Path
+from documents.services.policy.type_registry import TypeRegistry
+from documents.services.ui_state_service import UIStateService
 
 # Core services / i18n
 from core.common.app_context import AppContext, T  # type: ignore
@@ -83,8 +86,15 @@ class DocumentsView(ttk.Frame):
         super().__init__(parent)
 
         self._sm = settings_manager
+        self._feature_dir = Path(__file__).resolve().parents[1]
+        self._type_registry = TypeRegistry.load_from_directory(self._feature_dir)
+        self._allowed_doc_types = tuple(sorted(self._type_registry.list_all().keys()))
         self._init_error:  Optional[str] = None
         self._loading:  bool = False  # Guard flag for reload
+        # Document types: source of truth is documents_document_types.json
+        self._feature_dir = Path(__file__).resolve().parents[1]
+        self._type_registry = TypeRegistry.load_from_directory(self._feature_dir)
+        self._allowed_doc_types = tuple(sorted(self._type_registry.list_all().keys()))
 
         # Initialize repository with adapters
         try:
@@ -113,6 +123,7 @@ class DocumentsView(ttk.Frame):
         base_dir = str(getattr(AppContext, "app_storage_dir", None) or os.getcwd())
         root_path = self._sm.get(self._FEATURE_ID, "repository_root", os.path.join(base_dir, "documents_repo"))
         db_path = os.path.join(root_path, "documents.db")
+        allowed_doc_types = self._allowed_doc_types,
 
         cfg = RepoConfig(
             root_path=root_path,
@@ -121,7 +132,9 @@ class DocumentsView(ttk.Frame):
             id_pattern=str(self._sm.get(self._FEATURE_ID, "id_pattern", "{YYYY}-{seq:04d}")),
             review_months=int(self._sm.get(self._FEATURE_ID, "review_cycle_months", 24)),
             watermark_copy=str(self._sm.get(self._FEATURE_ID, "watermark_text", "KONTROLLKOPIE")),
+            allowed_doc_types=self._allowed_doc_types,
         )
+
 
         # Create adapters (NEW!)
         db_adapter = SQLiteAdapter(db_path)
@@ -142,20 +155,20 @@ class DocumentsView(ttk.Frame):
     def _init_controllers(self) -> None:
         """Initialize all controllers with services."""
         if self._init_error or not self._repo:
-            self. filter_ctrl = None
+            self.filter_ctrl = None
             self.list_ctrl = None
-            self. details_ctrl = None
-            self. creation_ctrl = None
-            self. workflow_ctrl = None
-            self. assignment_ctrl = None
+            self.details_ctrl = None
+            self.creation_ctrl = None
+            self.workflow_ctrl = None
+            self.assignment_ctrl = None
             return
 
         user_provider = lambda: getattr(AppContext, "current_user", None)
 
         base_dir = Path(__file__).resolve().parents[1]
 
-        self._permission_policy = PermissionPolicy. load_from_directory(base_dir)
-        self._workflow_policy = WorkflowPolicy. load_from_directory(base_dir)
+        self._permission_policy = PermissionPolicy.load_from_directory(base_dir)
+        self._workflow_policy = WorkflowPolicy.load_from_directory(base_dir)
 
         ui_state_service = UIStateService(
             permission_policy=self._permission_policy,
@@ -457,7 +470,7 @@ class DocumentsView(ttk.Frame):
         self.btn_copy = ttk.Button(footer, text=T("documents.btn.copy") or "Kopie erstellen", command=self._copy)
         self.btn_assign_roles = ttk.Button(footer, text=T("documents.btn.assign") or "Rollen zuweisen",
                                            command=lambda: self._assign_roles(force=True))
-        self.btn_workflow = ttk.Button(footer, text=T("documents.btn.workflow. start") or "Workflow starten",
+        self.btn_workflow = ttk.Button(footer, text=T("documents.btn.workflow.start") or "Workflow starten",
                                        command=self._toggle_workflow)
         self.btn_next = ttk.Button(footer, text=T("documents.btn.next") or "Nächster Schritt",
                                    command=self._next_step)
@@ -477,34 +490,34 @@ class DocumentsView(ttk.Frame):
         self.btn_archive.grid(row=0, column=6, padx=(0, 6))
         self.btn_refresh.grid(row=0, column=7, sticky="e")
 
-    def _build_overview_tab(self, parent: tk. Misc) -> None:
+    def _build_overview_tab(self, parent: tk.Misc) -> None:
         """Build overview tab (details display)."""
         parent.columnconfigure(1, weight=1)
 
         r = 0
-        ttk.Label(parent, text=T("documents. ov.id") or "Dokumenten-ID:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=(8, 2))
+        ttk.Label(parent, text=T("documents.ov.id") or "Dokumenten-ID:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=(8, 2))
         self.l_id = ttk.Label(parent, text="—"); self.l_id.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=(8, 2)); r += 1
 
         ttk.Label(parent, text=T("documents.ov.title") or "Titel:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_title = ttk.Label(parent, text="—"); self.l_title.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk.Label(parent, text=T("documents.ov. type") or "Typ:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
+        ttk.Label(parent, text=T("documents.ov.type") or "Typ:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_type = ttk.Label(parent, text="—"); self.l_type.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk.Label(parent, text=T("documents.ov. status") or "Status:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
+        ttk.Label(parent, text=T("documents.ov.status") or "Status:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_status = ttk.Label(parent, text="—"); self.l_status.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
         ttk.Label(parent, text=T("documents.ov.version") or "Version:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_version = ttk.Label(parent, text="—"); self.l_version.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk.Label(parent, text=T("documents. ov.updated") or "Geändert:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
+        ttk.Label(parent, text=T("documents.ov.updated") or "Geändert:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
         self.l_updated = ttk.Label(parent, text="—"); self.l_updated.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
         ttk.Label(parent, text=T("documents.ov.path") or "Aktuelle Datei:", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8, 4), pady=2)
-        self.l_path = ttk. Label(parent, text="—", justify="left", wraplength=560)
-        self.l_path. grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
+        self.l_path = ttk.Label(parent, text="—", justify="left", wraplength=560)
+        self.l_path.grid(row=r, column=1, sticky="w", padx=(0, 8), pady=2); r += 1
 
-        ttk. Separator(parent).grid(row=r, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 6)); r += 1
+        ttk.Separator(parent).grid(row=r, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 6)); r += 1
 
         # Current actors
         ttk.Label(parent, text=T("documents.ov.actors") or "Aktuelle Bearbeiter", font=("Segoe UI", 10, "bold")).grid(row=r, column=0, sticky="w", padx=(8,4), pady=(2,2)); r += 1
@@ -514,16 +527,16 @@ class DocumentsView(ttk.Frame):
 
         ttk.Label(grid, text=T("documents.role.editor") or "Bearbeiter").grid(row=0, column=0, sticky="w")
         ttk.Label(grid, text=T("documents.role.reviewer") or "Prüfer").grid(row=0, column=1, sticky="w")
-        ttk.Label(grid, text=T("documents. role.publisher") or "Freigeber").grid(row=0, column=2, sticky="w")
-        ttk.Label(grid, text=T("documents. role.editor_dt") or "Bearb.-Datum").grid(row=0, column=3, sticky="w")
-        ttk.Label(grid, text=T("documents. role.reviewer_dt") or "Prüf.-Datum").grid(row=0, column=4, sticky="w")
+        ttk.Label(grid, text=T("documents.role.publisher") or "Freigeber").grid(row=0, column=2, sticky="w")
+        ttk.Label(grid, text=T("documents.role.editor_dt") or "Bearb.-Datum").grid(row=0, column=3, sticky="w")
+        ttk.Label(grid, text=T("documents.role.reviewer_dt") or "Prüf.-Datum").grid(row=0, column=4, sticky="w")
         ttk.Label(grid, text=T("documents.role.publisher_dt") or "Freig.-Datum").grid(row=0, column=5, sticky="w")
 
-        self.l_exec_editor = ttk.Label(grid, text="—");        self.l_exec_editor. grid(row=1, column=0, sticky="w")
-        self.l_exec_reviewer = ttk.Label(grid, text="—");      self.l_exec_reviewer. grid(row=1, column=1, sticky="w")
-        self.l_exec_publisher = ttk.Label(grid, text="—");     self.l_exec_publisher. grid(row=1, column=2, sticky="w")
+        self.l_exec_editor = ttk.Label(grid, text="—");        self.l_exec_editor.grid(row=1, column=0, sticky="w")
+        self.l_exec_reviewer = ttk.Label(grid, text="—");      self.l_exec_reviewer.grid(row=1, column=1, sticky="w")
+        self.l_exec_publisher = ttk.Label(grid, text="—");     self.l_exec_publisher.grid(row=1, column=2, sticky="w")
         self.l_dt_editor = ttk.Label(grid, text="—");          self.l_dt_editor.grid(row=1, column=3, sticky="w")
-        self.l_dt_reviewer = ttk.Label(grid, text="—");        self.l_dt_reviewer. grid(row=1, column=4, sticky="w")
+        self.l_dt_reviewer = ttk.Label(grid, text="—");        self.l_dt_reviewer.grid(row=1, column=4, sticky="w")
         self.l_dt_publisher = ttk.Label(grid, text="—");       self.l_dt_publisher.grid(row=1, column=5, sticky="w")
 
         ttk.Separator(parent).grid(row=r, column=0, columnspan=2, sticky="ew", padx=8, pady=(12, 6)); r += 1
@@ -574,9 +587,9 @@ class DocumentsView(ttk.Frame):
         m = {
             (T("documents.status.draft") or "Entwurf"): DocumentStatus.DRAFT,
             (T("documents.status.review") or "Prüfung"): DocumentStatus.REVIEW,
-            (T("documents. status.approved") or "Freigegeben"): DocumentStatus.APPROVED,
+            (T("documents.status.approved") or "Freigegeben"): DocumentStatus.APPROVED,
             (T("documents.status.effective") or "Gültig"): DocumentStatus.EFFECTIVE,
-            (T("documents.status. revision") or "Revision"): DocumentStatus.REVISION,
+            (T("documents.status.revision") or "Revision"): DocumentStatus.REVISION,
             (T("documents.status.obsolete") or "Obsolet"): DocumentStatus.OBSOLETE,
             (T("documents.status.archived") or "Archiviert"): DocumentStatus.ARCHIVED,
         }
@@ -585,7 +598,7 @@ class DocumentsView(ttk.Frame):
 
     def _reload(self) -> None:
         """Reload list via DocumentListController."""
-        if self._init_error or not self. list_ctrl:
+        if self._init_error or not self.list_ctrl:
             return
         if self._loading:
             return
@@ -595,7 +608,7 @@ class DocumentsView(ttk.Frame):
             # Clear table
             for iid in self.tree.get_children():
                 self.tree.delete(iid)
-            self._rows. clear()
+            self._rows.clear()
 
             # Collect filters
             search = self.e_search.get().strip() or None
@@ -604,7 +617,7 @@ class DocumentsView(ttk.Frame):
             sort_mode_text = (self.cb_sort.get() or "").strip()
 
             # Map to sort mode
-            if sort_mode_text. startswith("Status"):
+            if sort_mode_text.startswith("Status"):
                 sort_mode = "status"
             elif sort_mode_text.startswith("Titel"):
                 sort_mode = "title"
@@ -623,25 +636,25 @@ class DocumentsView(ttk.Frame):
 
             # Fill tree
             for rec in documents:
-                iid = str(rec. doc_id. value if hasattr(rec.doc_id, "value") else rec.doc_id)
+                iid = str(rec.doc_id.value if hasattr(rec.doc_id, "value") else rec.doc_id)
                 ver = f"{rec.version_major}.{rec.version_minor}"
                 updated = str(rec.updated_at) if rec.updated_at else ""
                 owner = str(rec.created_by) if rec.created_by else ""
                 active = "✓" if rec.status in (
                     DocumentStatus.DRAFT,
                     DocumentStatus.REVIEW,
-                    DocumentStatus. APPROVED,
-                    DocumentStatus. EFFECTIVE,
+                    DocumentStatus.APPROVED,
+                    DocumentStatus.EFFECTIVE,
                     DocumentStatus.REVISION,
                 ) else ""
 
-                self.tree. insert(
+                self.tree.insert(
                     "", "end", iid=iid,
                     values=(
                         iid,
                         rec.title or "",
-                        rec. doc_type or "",
-                        rec.status. name if hasattr(rec.status, "name") else str(rec.status),
+                        rec.doc_type or "",
+                        rec.status.name if hasattr(rec.status, "name") else str(rec.status),
                         ver,
                         updated,
                         owner,
@@ -661,12 +674,12 @@ class DocumentsView(ttk.Frame):
         if not sel:
             return None
         iid = sel[0]
-        rec = self._rows. get(iid)
+        rec = self._rows.get(iid)
         if rec:
             return rec
 
         # Fallback:  load from controller
-        if self. list_ctrl:
+        if self.list_ctrl:
             return self.list_ctrl.get_document(iid)
         return None
 
@@ -695,7 +708,7 @@ class DocumentsView(ttk.Frame):
                 lbl.configure(text="—")
             for lbl in (self.l_exec_editor, self.l_exec_reviewer, self.l_exec_publisher,
                         self.l_dt_editor, self.l_dt_reviewer, self.l_dt_publisher):
-                lbl. configure(text="—")
+                lbl.configure(text="—")
             return
 
         # Get details via controller
@@ -719,13 +732,13 @@ class DocumentsView(ttk.Frame):
         _set(self.l_exec_editor, details.editor)
         _set(self.l_exec_reviewer, details.reviewer)
         _set(self.l_exec_publisher, details.publisher)
-        _set(self.l_dt_editor, details. editor_dt)
+        _set(self.l_dt_editor, details.editor_dt)
         _set(self.l_dt_reviewer, details.reviewer_dt)
         _set(self.l_dt_publisher, details.publisher_dt)
 
         # Metadata
         self._meta_map["l_desc"].configure(text=details.description or "—")
-        self._meta_map["l_dtype"].configure(text=details. documenttype or "—")
+        self._meta_map["l_dtype"].configure(text=details.documenttype or "—")
         self._meta_map["l_actual_ftype"].configure(text=details.actual_filetype or "—")
         self._meta_map["l_valid"].configure(text=details.valid_by_date or "—")
         self._meta_map["l_lastmod"].configure(text=details.last_modified or "—")
@@ -740,7 +753,7 @@ class DocumentsView(ttk.Frame):
             return
 
         # Get comments via controller
-        comments = self.details_ctrl.get_comments(rec.doc_id. value)
+        comments = self.details_ctrl.get_comments(rec.doc_id.value)
 
         def preview(text: str, n: int = 40) -> str:
             text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
@@ -749,7 +762,7 @@ class DocumentsView(ttk.Frame):
         for c in (comments or []):
             try:
                 self.tv_comments.insert("", "end",
-                                        values=(c. get("author"), c.get("date"), preview(c.get("text", ""))))
+                                        values=(c.get("author"), c.get("date"), preview(c.get("text", ""))))
             except Exception:
                 continue
 
@@ -802,7 +815,7 @@ class DocumentsView(ttk.Frame):
 
         if not rec or not self.details_ctrl:
             self.btn_workflow.configure(text="Workflow")
-            self.btn_next. configure(text="Nächster Schritt")
+            self.btn_next.configure(text="Nächster Schritt")
             return
 
         # Get user roles (NEW:  using PermissionPolicy)
@@ -811,7 +824,7 @@ class DocumentsView(ttk.Frame):
         assigned_roles = self._get_assigned_roles(rec.doc_id.value, user)
 
         # Compute state via controller (NEW!)
-        state:  ControlsState = self.details_ctrl. compute_controls_state(
+        state:  ControlsState = self.details_ctrl.compute_controls_state(
             rec,
             user_roles=user_roles,
             assigned_roles=assigned_roles
@@ -822,7 +835,7 @@ class DocumentsView(ttk.Frame):
         self.btn_next.configure(text=state.next_text)
 
         self.btn_open.configure(state=("normal" if state.can_open else "disabled"))
-        self.btn_copy.configure(state=("normal" if state. can_copy else "disabled"))
+        self.btn_copy.configure(state=("normal" if state.can_copy else "disabled"))
         self.btn_assign_roles.configure(state=("normal" if state.can_assign_roles else "disabled"))
         self.btn_workflow.configure(state=("normal" if state.can_toggle_workflow else "disabled"))
         self.btn_next.configure(state=("normal" if state.can_next else "disabled"))
@@ -923,7 +936,7 @@ class DocumentsView(ttk.Frame):
         assigned = []
 
         for role, users in assignees.items():
-            if user_id. lower() in [str(u).lower() for u in users]:
+            if user_id.lower() in [str(u).lower() for u in users]:
                 assigned.append(role)
 
         return assigned
@@ -1115,31 +1128,87 @@ class DocumentsView(ttk.Frame):
         self._reload()
 
     def _import_file(self) -> None:
-        """Import DOCX file."""
+        """Import DOCX file.
+
+        Uses the existing MetadataDialog to select metadata (especially doc_type)
+        BEFORE importing, so DB CHECK constraints are satisfied.
+        """
         if not self.creation_ctrl:
             return
 
         path = filedialog.askopenfilename(
             parent=self,
-            title=(T("documents.import.title") or "Dokument importieren"),
+            title="Dokument importieren",
             filetypes=[("DOCX", "*.docx"), ("All", "*.*")]
         )
-
         if not path:
             return
 
-        success, error_msg, record = self.creation_ctrl.import_file(path, doc_type="SOP")
-
-        if not success:
-            messagebox.showerror("Fehler", error_msg or "Import fehlgeschlagen", parent=self)
+        # Allowed doc types come from registry (documents_document_types.json)
+        allowed = list(getattr(self, "_allowed_doc_types", ()) or ())
+        if not allowed:
+            messagebox.showerror(
+                "Import",
+                "Keine erlaubten Dokumenttypen gefunden (TypeRegistry leer).",
+                parent=self,
+            )
             return
 
-        messagebox.showinfo(
-            title=(T("documents.import. ok") or "Importiert"),
-            message=(T("documents.import.msg") or "Dokument angelegt: ") + (record.doc_id.value if record else ""),
-            parent=self
-        )
-        self._reload()
+        # Create a lightweight "record-like" object for the dialog.
+        # MetadataDialog only needs a few attributes; we don't need a DB record here.
+        class _TmpRecord:
+            def __init__(self, title: str, doc_type: str) -> None:
+                self.title = title
+                self.doc_type = doc_type
+                self.area = ""
+                self.process = ""
+                self.next_review = ""
+
+        default_title = os.path.splitext(os.path.basename(path))[0]
+        tmp = _TmpRecord(title=default_title, doc_type=allowed[0])
+
+        dlg = MetadataDialog(self, tmp, allowed_types=allowed)
+        self.wait_window(dlg)
+        result = getattr(dlg, "result", None)
+        if not result:
+            return  # cancelled
+
+        # Collect metadata from dialog
+        title = (getattr(result, "title", "") or "").strip() or default_title
+        doc_type = (getattr(result, "doc_type", "") or "").strip()
+
+        if doc_type not in allowed:
+            messagebox.showerror(
+                "Import",
+                f"Ungültiger Dokumenttyp '{doc_type}'.\nErlaubt: {', '.join(allowed)}",
+                parent=self,
+            )
+            return
+
+        # Perform import with selected doc_type
+        success, error_msg, record = self.creation_ctrl.import_file(path, doc_type=doc_type)
+
+        if not success:
+            messagebox.showerror("Import", error_msg or "Import fehlgeschlagen.", parent=self)
+            return
+
+        # Optional: apply additional metadata post-import, if your controller supports it.
+        # (Only if update_metadata exists and you want title/area/process/next_review from dialog.)
+        try:
+            if record and hasattr(self, "details_ctrl") and self.details_ctrl:
+                meta = {
+                    "title": title,
+                    "doc_type": doc_type,
+                    "area": getattr(result, "area", ""),
+                    "process": getattr(result, "process", ""),
+                    "next_review": getattr(result, "next_review", ""),
+                }
+                self.details_ctrl.update_metadata(getattr(record, "doc_id", ""), meta)
+        except Exception:
+            # Keep import successful even if metadata update fails
+            pass
+
+        self.reload()
 
     def _edit_metadata(self) -> None:
         """Edit document metadata."""
@@ -1154,9 +1223,9 @@ class DocumentsView(ttk.Frame):
             messagebox.showinfo("Metadata", "Metadata dialog not available.", parent=self)
             return
 
-        allowed = [t. strip() for t in str(self._sm. get(self._FEATURE_ID, "allowed_types", "SOP,WI,FB,CL")).split(",")]
+        allowed = list(self._allowed_doc_types)
         dlg = MetadataDialog(self, rec, allowed_types=allowed)
-        self. wait_window(dlg)
+        self.wait_window(dlg)
         result = getattr(dlg, "result", None)
 
         if result:

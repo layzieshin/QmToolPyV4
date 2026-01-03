@@ -42,7 +42,7 @@ class AssignmentController:
             raw = self._repo.get_assignees(doc_id)
             return {
                 "AUTHOR": raw.get("AUTHOR", []) or [],
-                "REVIEWER": raw. get("REVIEWER", []) or [],
+                "REVIEWER": raw.get("REVIEWER", []) or [],
                 "APPROVER":  raw.get("APPROVER", []) or [],
             }
         except Exception as ex:
@@ -56,13 +56,13 @@ class AssignmentController:
     ) -> Tuple[bool, Optional[str]]:
         """Speichere Zuweisungen."""
         # Validate
-        valid, error = self. validate_assignments(assignments)
+        valid, error = self.validate_assignments(assignments)
         if not valid:
             return False, error
 
         try:
             mapping = {
-                "AUTHOR": assignments. authors or [],
+                "AUTHOR": assignments.authors or [],
                 "REVIEWER": assignments.reviewers or [],
                 "APPROVER": assignments.approvers or [],
             }

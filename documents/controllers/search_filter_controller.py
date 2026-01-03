@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Optional
 import logging
 
-from documents.models. document_models import DocumentRecord, DocumentStatus
+from documents.models.document_models import DocumentRecord, DocumentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class SearchFilterController:
         except TypeError as ex:
             # Fallback for repos that don't support all filter kwargs
             logger.warning(
-                f"Repository. list() does not support full filter API: {ex}.  "
+                f"Repository.list() does not support full filter API: {ex}.  "
                 "Falling back to status-only filtering with in-memory post-filter."
             )
             return self._fallback_filter(text=text, status=status, active_only=active_only)
@@ -97,7 +97,7 @@ class SearchFilterController:
                 d for d in docs
                 if search_lower in (d.title or "").lower()
                 or search_lower in (getattr(d, "doc_code", "") or "").lower()
-                or search_lower in str(getattr(d. doc_id, "value", d.doc_id)).lower()
+                or search_lower in str(getattr(d.doc_id, "value", d.doc_id)).lower()
             ]
 
         # Apply active_only filter in memory (if repo provides is_workflow_active)
@@ -105,9 +105,9 @@ class SearchFilterController:
             filtered = []
             for d in docs:
                 try:
-                    doc_id_str = getattr(d. doc_id, "value", str(d.doc_id))
+                    doc_id_str = getattr(d.doc_id, "value", str(d.doc_id))
                     if self._repo.is_workflow_active(doc_id_str):
-                        filtered. append(d)
+                        filtered.append(d)
                 except Exception:
                     pass  # Skip if method not available
             docs = filtered
@@ -140,7 +140,7 @@ class SearchFilterController:
         """
         mode = (sort_mode or "").lower()
 
-        if mode. startswith("status"):
+        if mode.startswith("status"):
             # Status workflow order
             order = {
                 DocumentStatus.DRAFT: 0,

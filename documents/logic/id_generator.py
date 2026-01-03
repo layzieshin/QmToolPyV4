@@ -45,7 +45,7 @@ class IdGenerator:
             )
 
             base = 0
-            if last and last. get("doc_id"):
+            if last and last.get("doc_id"):
                 try:
                     last_id = str(last["doc_id"])
                     seq_part = last_id.split("-")[-1]
@@ -58,7 +58,7 @@ class IdGenerator:
                 "INSERT INTO sequences(year,prefix,seq) VALUES (?,?,?)",
                 (year, self._prefix, seq)
             )
-            self._db. commit()
+            self._db.commit()
         else:
             seq = int(row["seq"]) + 1
             self._db.execute(

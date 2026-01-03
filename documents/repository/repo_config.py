@@ -25,3 +25,6 @@ class RepoConfig:
 
     watermark_copy: str = "KONTROLLIERTE KOPIE"
     """Watermark text for controlled copies"""
+
+    allowed_doc_types: tuple[str, ...] = ()
+    """Allowed document type codes. If empty, no DB constraint will be applied."""

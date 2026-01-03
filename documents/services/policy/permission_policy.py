@@ -46,7 +46,7 @@ class PermissionPolicy:
         # System role mapping (e.g., USER -> [AUTHOR], ADMIN -> [ADMIN, AUTHOR, ... ])
         self._system_role_mapping:  Dict[str, Set[str]] = {}
         for sys_role, module_roles in (system_role_mapping or {}).items():
-            self._system_role_mapping[sys_role. upper()] = {
+            self._system_role_mapping[sys_role.upper()] = {
                 r.upper() for r in module_roles
             }
 
@@ -70,7 +70,7 @@ class PermissionPolicy:
         if policy_file.exists():
             try:
                 with policy_file.open("r", encoding="utf-8") as f:
-                    data = json. load(f)
+                    data = json.load(f)
                 logger.info(f"Loaded permission policy from {policy_file}")
             except Exception as ex:
                 logger.error(f"Failed to load permission policy: {ex}")
@@ -118,7 +118,7 @@ class PermissionPolicy:
         expanded_roles = self.expand_roles(roles)
 
         for role in expanded_roles:
-            allowed_actions = self._role_actions. get(role, set())
+            allowed_actions = self._role_actions.get(role, set())
 
             # Wildcard permission
             if "*" in allowed_actions:
@@ -189,7 +189,7 @@ class PermissionPolicy:
         action = (action_id or "").strip().lower()
 
         # No self-review rule
-        if action in ("review", "submit_review") and self._separation. get("no_self_review", False):
+        if action in ("review", "submit_review") and self._separation.get("no_self_review", False):
             if actor == owner:
                 return True
 
@@ -205,9 +205,9 @@ class PermissionPolicy:
         action = (action_id or "").strip().lower()
         roles:  Set[str] = set()
 
-        for role, actions in self._role_actions. items():
+        for role, actions in self._role_actions.items():
             if "*" in actions or action in actions:
-                roles. add(role)
+                roles.add(role)
 
         return roles
 
@@ -227,7 +227,7 @@ class PermissionPolicy:
             "back_to_draft": {"back_to_draft", "reject", "return_to_draft"},
         }
 
-        return aliases_map. get(action, {action})
+        return aliases_map.get(action, {action})
 
 
 # For type hints

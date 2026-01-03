@@ -40,7 +40,7 @@ class WorkflowPolicy:
         data = {}
         if policy_file.exists():
             try:
-                with policy_file. open("r", encoding="utf-8") as f:
+                with policy_file.open("r", encoding="utf-8") as f:
                     data = json.load(f)
                 logger.info(f"Loaded workflow policy from {policy_file}")
             except Exception as ex:
@@ -96,7 +96,7 @@ class WorkflowPolicy:
 
             action = str(rule.get("action", "")).strip()
             if action and action not in actions:
-                actions. append(action)
+                actions.append(action)
 
         logger.debug(f"allowed_transitions({status_name}): {actions}")
         return actions
@@ -116,7 +116,7 @@ class WorkflowPolicy:
             rule_action = str(rule.get("action", "")).strip().lower()
 
             if from_name == status_name and rule_action == action:
-                return str(rule. get("to", "")).strip().upper()
+                return str(rule.get("to", "")).strip().upper()
 
         return None
 
