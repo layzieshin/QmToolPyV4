@@ -142,36 +142,25 @@ class DocumentsView(ttk.Frame):
     def _init_controllers(self) -> None:
         """Initialize all controllers with services."""
         if self._init_error or not self._repo:
-            self.filter_ctrl = None
+            self. filter_ctrl = None
             self.list_ctrl = None
-            self.details_ctrl = None
-            self.creation_ctrl = None
-            self.workflow_ctrl = None
-            self.assignment_ctrl = None
+            self. details_ctrl = None
+            self. creation_ctrl = None
+            self. workflow_ctrl = None
+            self. assignment_ctrl = None
             return
 
-        # User provider
         user_provider = lambda: getattr(AppContext, "current_user", None)
 
-        # === Load Policy Services ===
         base_dir = Path(__file__).resolve().parents[1]
 
-        self._permission_policy = PermissionPolicy.load_from_directory(base_dir)
-        self._workflow_policy = WorkflowPolicy.load_from_directory(base_dir)
+        self._permission_policy = PermissionPolicy. load_from_directory(base_dir)
+        self._workflow_policy = WorkflowPolicy. load_from_directory(base_dir)
 
-        # Signature policy is optional
-        try:
-            self._signature_policy = SignaturePolicy.load_from_directory(base_dir)
-        except Exception:
-            self._signature_policy = None
-
-        # Create UI state service
         ui_state_service = UIStateService(
             permission_policy=self._permission_policy,
             workflow_policy=self._workflow_policy
         )
-
-        # === Initialize Controllers ===
 
         self.filter_ctrl = SearchFilterController(repository=self._repo)
 
@@ -191,21 +180,18 @@ class DocumentsView(ttk.Frame):
             current_user_provider=user_provider
         )
 
-        # Workflow Controller - OHNE signature_provider (graceful degradation)
+        # WorkflowController - jetzt MIT sign_pdf_callback Support
         self.workflow_ctrl = WorkflowController(
             repository=self._repo,
             workflow_policy=self._workflow_policy,
             permission_policy=self._permission_policy,
-            current_user_provider=user_provider,
-            #signature_provider=None  # Optional - Workflow funktioniert auch ohne
+            current_user_provider=user_provider
         )
 
-        # Assignment Controller - OHNE rbac_service
         self.assignment_ctrl = AssignmentController(
             repository=self._repo,
             user_provider=self._get_all_system_users
         )
-
     def _get_all_system_users(self) -> List[Dict[str, str]]:
         """Get all users from UserManager."""
         try:

@@ -121,9 +121,23 @@ class WorkflowPolicy:
         return None
 
     def requires_signature(self, action_id: str, doc_type: str = "") -> bool:
-        """Check if action requires signature (disabled for MVP)."""
-        # Für MVP: Keine Signatur erforderlich
-        return False
+        """
+        Check if action requires signature.
+
+        Signatur ist PFLICHT für:
+        - submit_review
+        - approve
+        - publish
+        """
+        action = (action_id or "").strip().lower()
+
+        signature_actions = {
+            "submit_review",
+            "approve",
+            "publish",
+        }
+
+        return action in signature_actions
 
     def requires_reason(self, action_id: str, target_status: Optional[str] = None) -> bool:
         """Check if action requires a reason."""
