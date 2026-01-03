@@ -118,7 +118,7 @@ class DocumentsView(ttk.Frame):
             root_path=root_path,
             db_path=db_path,
             id_prefix=str(self._sm.get(self._FEATURE_ID, "id_prefix", "DOC")),
-            id_pattern=str(self._sm.get(self._FEATURE_ID, "id_pattern", "{YYYY}-{seq: 04d}")),
+            id_pattern=str(self._sm.get(self._FEATURE_ID, "id_pattern", "{YYYY}-{seq:04d}")),
             review_months=int(self._sm.get(self._FEATURE_ID, "review_cycle_months", 24)),
             watermark_copy=str(self._sm.get(self._FEATURE_ID, "watermark_text", "KONTROLLKOPIE")),
         )
@@ -142,7 +142,6 @@ class DocumentsView(ttk.Frame):
     def _init_controllers(self) -> None:
         """Initialize all controllers with services (Controller Factory)."""
         if self._init_error or not self._repo:
-            # Fallback:  no controllers
             self.filter_ctrl = None
             self.list_ctrl = None
             self.details_ctrl = None
@@ -178,7 +177,7 @@ class DocumentsView(ttk.Frame):
             filter_controller=self.filter_ctrl
         )
 
-        # Details controller (uses UIStateService!)
+        # Details controller
         self.details_ctrl = DocumentDetailsController(
             repository=self._repo,
             ui_state_service=ui_state_service,
@@ -191,7 +190,7 @@ class DocumentsView(ttk.Frame):
             current_user_provider=user_provider
         )
 
-        # Workflow controller (uses WorkflowPolicy + PermissionPolicy!)
+        # Workflow controller
         self.workflow_ctrl = WorkflowController(
             repository=self._repo,
             workflow_policy=self._workflow_policy,
@@ -199,12 +198,125 @@ class DocumentsView(ttk.Frame):
             current_user_provider=user_provider
         )
 
-        # Assignment controller
+        # Assignment controller - mit Benutzer-Provider aus UserManager
         self.assignment_ctrl = AssignmentController(
             repository=self._repo,
-            rbac_service=self._rbac
+            rbac_service=self._rbac,
+            user_provider=self._get_all_system_users
         )
 
+    def _get_all_system_users(self) -> List[Dict[str, str]]:
+        """Get all users from UserManager for role assignment."""
+        users = []
+
+        try:
+            # Try to get UserManager from AppContext
+            user_manager = getattr(AppContext, "user_manager", None)
+
+            if user_manager and hasattr(user_manager, "get_all_users"):
+                all_users = user_manager.get_all_users()
+                for u in all_users:
+                    user_dict = {
+                        "id": str(getattr(u, "id", "") or getattr(u, "user_id", "") or ""),
+                        "username": str(getattr(u, "username", "") or ""),
+                        "email": str(getattr(u, "email", "") or ""),
+                        "full_name": str(getattr(u, "full_name", "") or getattr(u, "display_name", "") or ""),
+                    }
+                    if user_dict["username"]:
+                        users.append(user_dict)
+
+            # If no users found via user_manager, try direct import
+            if not users:
+                try:
+                    from usermanagement.logic.user_manager import UserManager
+                    um = UserManager()
+                    all_users = um.get_all_users()
+                    for u in all_users:
+                        user_dict = {
+                            "id": str(getattr(u, "id", "") or ""),
+                            "username": str(getattr(u, "username", "") or ""),
+                            "email": str(getattr(u, "email", "") or ""),
+                            "full_name": str(getattr(u, "full_name", "") or ""),
+                        }
+                        if user_dict["username"]:
+                            users.append(user_dict)
+                except Exception as ex:
+                    logger.debug(f"Direct UserManager import failed: {ex}")
+
+        except Exception as ex:
+            logger.debug(f"Failed to get users from UserManager: {ex}")
+
+        # Fallback: at least include current user
+        if not users:
+            current = getattr(AppContext, "current_user", None)
+            if current:
+                user_dict = {
+                    "id": str(getattr(current, "id", "") or ""),
+                    "username": str(getattr(current, "username", "") or ""),
+                    "email": str(getattr(current, "email", "") or ""),
+                    "full_name": str(getattr(current, "full_name", "") or ""),
+                }
+                if user_dict["username"]:
+                    users.append(user_dict)
+
+        return users
+    def _get_available_users_fallback(self) -> List[Dict[str, str]]:
+        """Fallback method to get available users from various sources."""
+        users = []
+
+        # Try to get from AppContext
+        try:
+            # Check for user manager/service
+            user_mgr = getattr(AppContext, "user_manager", None) or getattr(AppContext, "users", None)
+            if user_mgr:
+                if callable(user_mgr):
+                    result = user_mgr()
+                elif hasattr(user_mgr, "list_users"):
+                    result = user_mgr.list_users()
+                elif hasattr(user_mgr, "get_all"):
+                    result = user_mgr.get_all()
+                elif isinstance(user_mgr, (list, tuple)):
+                    result = user_mgr
+                else:
+                    result = None
+
+                if result:
+                    for u in result:
+                        users.append(self._extract_user_info(u))
+        except Exception:
+            pass
+
+        # At minimum, include current user
+        try:
+            current = getattr(AppContext, "current_user", None)
+            if current:
+                user_info = self._extract_user_info(current)
+                if user_info.get("id") or user_info.get("username"):
+                    # Check if already in list
+                    existing_ids = {u.get("id") for u in users}
+                    if user_info.get("id") not in existing_ids:
+                        users.append(user_info)
+        except Exception:
+            pass
+
+        return users
+
+    def _extract_user_info(self, user) -> Dict[str, str]:
+        """Extract user info from various user object formats."""
+        if isinstance(user, dict):
+            return {
+                "id": str(user.get("id", "") or user.get("user_id", "") or ""),
+                "username": str(user.get("username", "") or user.get("name", "") or ""),
+                "email": str(user.get("email", "") or ""),
+                "full_name": str(user.get("full_name", "") or user.get("display_name", "") or ""),
+            }
+
+        return {
+            "id": str(getattr(user, "id", "") or getattr(user, "user_id", "") or ""),
+            "username": str(getattr(user, "username", "") or getattr(user, "name", "") or ""),
+            "email": str(getattr(user, "email", "") or ""),
+            "full_name": str(getattr(user, "full_name", "") or getattr(user, "display_name", "") or ""),
+        }
     # ================================================================== UI BUILD
     def _build_ui(self) -> None:
         """Build complete UI structure."""

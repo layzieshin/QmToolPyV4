@@ -2,26 +2,65 @@
   "separation_of_duties": {
     "no_self_review": true,
     "no_self_approval": true,
-    "approver_cannot_edit_effective": true
+    "approver_cannot_edit_effective":  true
   },
   "role_permissions": {
-    "Author": [
+    "ADMIN": [
       "create_document",
       "edit_draft",
-      "submit_review"
+      "edit_revision",
+      "submit_review",
+      "review",
+      "comment",
+      "approve",
+      "publish",
+      "obsolete",
+      "archive",
+      "start_workflow",
+      "abort_workflow",
+      "assign_roles",
+      "back_to_draft",
+      "create_revision"
     ],
-    "Editor": [
+    "QMB": [
+      "create_document",
+      "edit_draft",
+      "edit_revision",
+      "submit_review",
+      "review",
+      "comment",
+      "approve",
+      "publish",
+      "obsolete",
+      "archive",
+      "start_workflow",
+      "abort_workflow",
+      "assign_roles",
+      "back_to_draft",
+      "create_revision"
+    ],
+    "AUTHOR": [
+      "create_document",
+      "edit_draft",
+      "submit_review",
+      "start_workflow",
+      "assign_roles"
+    ],
+    "EDITOR": [
       "edit_draft",
       "edit_revision"
     ],
-    "Reviewer": [
+    "REVIEWER": [
       "review",
-      "comment"
+      "comment",
+      "back_to_draft"
     ],
-    "Approver": [
+    "APPROVER": [
       "approve",
       "publish",
-      "obsolete"
+      "obsolete",
+      "archive",
+      "create_revision"
     ]
   }
 }

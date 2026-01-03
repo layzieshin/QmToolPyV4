@@ -6,16 +6,20 @@ Business logic is in services layer.
 
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from documents.adapters.sqlite_adapter import SQLiteAdapter
 from documents.logic.id_generator import IdGenerator
 from documents.models.document_models import DocumentId, DocumentRecord, DocumentStatus
 from documents.repository.repo_config import RepoConfig
+
+logger = logging.getLogger(__name__)
 
 
 class SQLiteDocumentRepository:
@@ -29,14 +33,21 @@ class SQLiteDocumentRepository:
     def __init__(self, config: RepoConfig, *, db_adapter: Optional[Any] = None) -> None:
         """
         Args:
-            config: Repository configuration
-            db_adapter: Database adapter (default: SQLiteAdapter)
+            config:  Repository configuration
+            db_adapter:  Database adapter (default: SQLiteAdapter)
         """
         self._cfg = config
         self._db = db_adapter or SQLiteAdapter(config.db_path)
 
+        # Cache for column names (populated lazily)
+        self._table_columns_cache:  Dict[str, Set[str]] = {}
+
         self._ensure_schema()
         self._id_gen = IdGenerator(self._db, config.id_prefix, config.id_pattern)
+
+    # =========================================================================
+    # Schema Management
+    # =========================================================================
 
     def _ensure_schema(self) -> None:
         """Create database schema if not exists."""
@@ -62,15 +73,6 @@ class SQLiteDocumentRepository:
                 workflow_active INTEGER NOT NULL DEFAULT 0
             );
 
-            CREATE TABLE IF NOT EXISTS assignments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                username TEXT NOT NULL,
-                assigned_at TEXT,
-                UNIQUE(doc_id, role, username)
-            );
-
             CREATE TABLE IF NOT EXISTS signatures (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id TEXT NOT NULL,
@@ -82,6 +84,84 @@ class SQLiteDocumentRepository:
             """
         )
 
+        # Ensure assignments table exists with compatible structure
+        self._ensure_assignments_table()
+
+        # Run migrations for existing tables
+        self._migrate_workflow_state()
+
+    def _ensure_assignments_table(self) -> None:
+        """Ensure assignments table exists with compatible structure."""
+        # Check if table exists
+        table_exists = self._db.fetchone(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='assignments'"
+        )
+
+        if not table_exists:
+            # Create new table with preferred schema
+            self._db.executescript(
+                """
+                CREATE TABLE assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    doc_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    assigned_at TEXT,
+                    UNIQUE(doc_id, role, user_id)
+                );
+                """
+            )
+        # Clear cache so columns are re-detected
+        self._table_columns_cache.pop("assignments", None)
+
+    def _get_table_columns(self, table_name: str) -> Set[str]:
+        """Get column names for a table (cached)."""
+        if table_name in self._table_columns_cache:
+            return self._table_columns_cache[table_name]
+
+        try:
+            rows = self._db.fetchall(f"PRAGMA table_info({table_name})")
+            columns = {row["name"] for row in rows} if rows else set()
+            self._table_columns_cache[table_name] = columns
+            return columns
+        except Exception as ex:
+            logger.error(f"Failed to get columns for {table_name}: {ex}")
+            return set()
+
+    def _get_assignments_user_column(self) -> str:
+        """Detect whether assignments table uses 'username' or 'user_id' column."""
+        columns = self._get_table_columns("assignments")
+        if "user_id" in columns:
+            return "user_id"
+        elif "username" in columns:
+            return "username"
+        else:
+            # Fallback
+            return "user_id"
+
+    def _assignments_has_assigned_at(self) -> bool:
+        """Check if assignments table has assigned_at column."""
+        columns = self._get_table_columns("assignments")
+        return "assigned_at" in columns
+
+    def _migrate_workflow_state(self) -> None:
+        """Add started_by column to workflow_state if missing."""
+        columns = self._get_table_columns("workflow_state")
+        if "started_by" not in columns:
+            try:
+                self._db.executescript(
+                    "ALTER TABLE workflow_state ADD COLUMN started_by TEXT;"
+                )
+                # Clear cache
+                self._table_columns_cache.pop("workflow_state", None)
+                logger.info("Migrated workflow_state:  added started_by column")
+            except Exception as ex:
+                logger.debug(f"workflow_state migration skipped: {ex}")
+
+    # =========================================================================
+    # CRUD Operations
+    # =========================================================================
+
     def create(
         self,
         *,
@@ -91,18 +171,13 @@ class SQLiteDocumentRepository:
         file_path: str,
         doc_code: Optional[str] = None,
     ) -> DocumentRecord:
-        """Create new document record.
-
-        Defensive behavior:
-        - If doc_id generation collides with an existing ID (UNIQUE constraint),
-          retry a few times with a newly generated ID.
-        """
+        """Create new document record."""
         now = datetime.utcnow().isoformat(timespec="seconds")
         next_review = (
             datetime.utcnow() + timedelta(days=30 * self._cfg.review_months)
         ).isoformat(timespec="seconds")
 
-        last_exc: Optional[Exception] = None
+        last_exc:  Optional[Exception] = None
 
         for _ in range(5):
             doc_id = self._id_gen.next_id()
@@ -113,8 +188,7 @@ class SQLiteDocumentRepository:
                         "doc_id": doc_id,
                         "title": title,
                         "doc_type": doc_type,
-                        # Store Enum name to match DocumentStatus[row["status"]] usage.
-                        "status": DocumentStatus.DRAFT.name,
+                        "status": DocumentStatus.DRAFT. name,
                         "version_major": 1,
                         "version_minor": 0,
                         "current_file_path": file_path,
@@ -127,18 +201,19 @@ class SQLiteDocumentRepository:
                 )
 
                 # Initialize workflow state
-                self._db.insert(
-                    "workflow_state", {"doc_id": doc_id, "workflow_active": 0}
+                self._db. insert(
+                    "workflow_state",
+                    {"doc_id": doc_id, "workflow_active": 0}
                 )
 
-                rec = self.get(doc_id)
+                rec = self. get(doc_id)
                 if rec is None:
                     raise RuntimeError("Document was inserted but could not be reloaded.")
                 return rec
 
             except sqlite3.IntegrityError as ex:
                 msg = str(ex).lower()
-                if "unique constraint failed" in msg and "documents.doc_id" in msg:
+                if "unique constraint failed" in msg and "documents. doc_id" in msg:
                     last_exc = ex
                     continue
                 raise
@@ -160,14 +235,9 @@ class SQLiteDocumentRepository:
         title: Optional[str],
         doc_type: str,
         user_id: str,
-        src_file: str,
+        src_file:  str,
     ) -> DocumentRecord:
-        """Create new document record from an existing DOCX file.
-
-        Option A (DB-only repository):
-        - We store the provided source path as the current_file_path and do not copy/move the file.
-        - File storage concerns must be handled by a higher layer/service.
-        """
+        """Create new document record from an existing DOCX file."""
         if title is None:
             base = os.path.basename(src_file)
             title = os.path.splitext(base)[0]
@@ -186,29 +256,329 @@ class SQLiteDocumentRepository:
             return None
         return self._row_to_record(row)
 
-    def list(self, *, status: Optional[DocumentStatus] = None) -> List[DocumentRecord]:
-        """List documents, optionally filtered by status."""
-        sql = "SELECT * FROM documents"
-        params: List[Any] = []
+    def exists(self, doc_id: str) -> bool:
+        """Check if document exists."""
+        row = self._db.fetchone("SELECT 1 FROM documents WHERE doc_id=?", (doc_id,))
+        return row is not None
 
+    def list(
+        self,
+        *,
+        status: Optional[DocumentStatus] = None,
+        text: Optional[str] = None,
+        active_only: bool = False,
+    ) -> List[DocumentRecord]:
+        """List documents with optional filters."""
+        # Build query with JOINs for active_only filter
+        if active_only:
+            sql = """
+                SELECT d.*
+                FROM documents d
+                LEFT JOIN workflow_state w ON d.doc_id = w.doc_id
+                WHERE 1=1
+            """
+        else:
+            sql = "SELECT * FROM documents WHERE 1=1"
+
+        params:  List[Any] = []
+
+        # Status filter
         if status is not None:
-            sql += " WHERE status = ?"
+            if active_only:
+                sql += " AND d.status = ?"
+            else:
+                sql += " AND status = ?"
             params.append(status.name)
 
-        sql += " ORDER BY updated_at DESC"
-        rows = self._db.fetchall(sql, tuple(params)) or []
-        return [self._row_to_record(r) for r in rows]
+        # Text search (LIKE on title and doc_code)
+        if text and text.strip():
+            search_term = f"%{text.strip()}%"
+            if active_only:
+                sql += " AND (d.title LIKE ? OR d. doc_code LIKE ?  OR d.doc_id LIKE ?)"
+            else:
+                sql += " AND (title LIKE ? OR doc_code LIKE ? OR doc_id LIKE ?)"
+            params.extend([search_term, search_term, search_term])
+
+        # Active only filter (via workflow_state)
+        if active_only:
+            sql += " AND w.workflow_active = 1"
+
+        # Order by updated_at DESC
+        if active_only:
+            sql += " ORDER BY d.updated_at DESC"
+        else:
+            sql += " ORDER BY updated_at DESC"
+
+        try:
+            rows = self._db. fetchall(sql, tuple(params)) or []
+            return [self._row_to_record(r) for r in rows]
+        except Exception as ex:
+            logger.error(f"Error in list(): {ex}")
+            return []
+
+    # =========================================================================
+    # Metadata Update
+    # =========================================================================
+
+    def update_metadata(
+        self,
+        data: Dict[str, Any],
+        user_id: str,
+    ) -> None:
+        """Update document metadata."""
+        doc_id = data.get("doc_id")
+        if not doc_id:
+            raise ValueError("data must include 'doc_id'")
+
+        if not self.exists(doc_id):
+            raise ValueError(f"Document not found: {doc_id}")
+
+        # Collect updateable fields
+        allowed_fields = {"title", "doc_type", "doc_code", "next_review"}
+        updates:  Dict[str, Any] = {}
+        for key in allowed_fields:
+            if key in data:
+                updates[key] = data[key]
+
+        if not updates:
+            return
+
+        updates["updated_at"] = datetime. utcnow().isoformat(timespec="seconds")
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates. keys())
+        values = list(updates.values()) + [doc_id]
+
+        sql = f"UPDATE documents SET {set_clause} WHERE doc_id = ?"
+        self._db.execute(sql, tuple(values))
+        self._db.commit()
+
+    # =========================================================================
+    # Status Management
+    # =========================================================================
+
+    def set_status(
+        self,
+        doc_id: str,
+        status: DocumentStatus,
+        user_id:  str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Change document status."""
+        if not self.exists(doc_id):
+            raise ValueError(f"Document not found: {doc_id}")
+
+        now = datetime.utcnow().isoformat(timespec="seconds")
+
+        self._db.execute(
+            "UPDATE documents SET status = ?, updated_at = ? WHERE doc_id = ?",
+            (status.name, now, doc_id),
+        )
+        self._db.commit()
+
+    # =========================================================================
+    # Version Management
+    # =========================================================================
+
+    def bump_minor_version(
+        self,
+        doc_id: str,
+        user_id: str,
+        reason: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """Increment minor version (e.g., 1.0 → 1.1)."""
+        rec = self.get(doc_id)
+        if not rec:
+            return False, f"Document not found: {doc_id}"
+
+        new_minor = rec. version_minor + 1
+        now = datetime.utcnow().isoformat(timespec="seconds")
+
+        self._db.execute(
+            "UPDATE documents SET version_minor = ?, updated_at = ? WHERE doc_id = ? ",
+            (new_minor, now, doc_id),
+        )
+        self._db.commit()
+        return True, None
+
+    def bump_major_version(
+        self,
+        doc_id: str,
+        user_id: str,
+        reason: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """Increment major version (e.g., 1.5 → 2.0)."""
+        rec = self.get(doc_id)
+        if not rec:
+            return False, f"Document not found: {doc_id}"
+
+        new_major = rec.version_major + 1
+        now = datetime.utcnow().isoformat(timespec="seconds")
+
+        self._db.execute(
+            "UPDATE documents SET version_major = ?, version_minor = 0, updated_at = ? WHERE doc_id = ?",
+            (new_major, now, doc_id),
+        )
+        self._db.commit()
+        return True, None
+
+    # =========================================================================
+    # Workflow State
+    # =========================================================================
+
+    def is_workflow_active(self, doc_id: str) -> bool:
+        """Check if workflow is active for document."""
+        try:
+            row = self._db.fetchone(
+                "SELECT workflow_active FROM workflow_state WHERE doc_id = ?",
+                (doc_id,),
+            )
+            if not row:
+                return False
+            return bool(row. get("workflow_active", 0))
+        except Exception as ex:
+            logger.error(f"Error checking workflow_active: {ex}")
+            return False
+
+    def set_workflow_active(
+        self,
+        doc_id: str,
+        active: bool,
+        started_by: Optional[str] = None,
+    ) -> None:
+        """Set workflow active state."""
+        existing = self._db.fetchone(
+            "SELECT 1 FROM workflow_state WHERE doc_id = ?", (doc_id,)
+        )
+
+        has_started_by = "started_by" in self._get_table_columns("workflow_state")
+
+        if not existing:
+            data = {"doc_id": doc_id, "workflow_active": 1 if active else 0}
+            if has_started_by:
+                data["started_by"] = started_by
+            self._db.insert("workflow_state", data)
+        else:
+            if active and has_started_by:
+                self._db.execute(
+                    "UPDATE workflow_state SET workflow_active = 1, started_by = ?  WHERE doc_id = ?",
+                    (started_by, doc_id),
+                )
+            elif active:
+                self._db.execute(
+                    "UPDATE workflow_state SET workflow_active = 1 WHERE doc_id = ?",
+                    (doc_id,),
+                )
+            else:
+                self._db.execute(
+                    "UPDATE workflow_state SET workflow_active = 0 WHERE doc_id = ?",
+                    (doc_id,),
+                )
+            self._db.commit()
+
+    def get_workflow_starter(self, doc_id: str) -> Optional[str]:
+        """Get user ID who started the workflow."""
+        has_started_by = "started_by" in self._get_table_columns("workflow_state")
+        if not has_started_by:
+            return None
+
+        try:
+            row = self._db.fetchone(
+                "SELECT started_by FROM workflow_state WHERE doc_id = ?",
+                (doc_id,),
+            )
+            if not row:
+                return None
+            return row.get("started_by")
+        except Exception as ex:
+            logger.debug(f"Error getting workflow_starter: {ex}")
+            return None
+
+    # =========================================================================
+    # Assignments
+    # =========================================================================
+
+    def get_assignees(self, doc_id:  str) -> Dict[str, List[str]]:
+        """Get role assignments."""
+        result:  Dict[str, List[str]] = {
+            "AUTHOR": [],
+            "REVIEWER":  [],
+            "APPROVER":  [],
+        }
+
+        user_col = self._get_assignments_user_column()
+        has_assigned_at = self._assignments_has_assigned_at()
+
+        try:
+            # Build query based on available columns
+            if has_assigned_at:
+                sql = f"SELECT role, {user_col} FROM assignments WHERE doc_id = ?  ORDER BY assigned_at"
+            else:
+                sql = f"SELECT role, {user_col} FROM assignments WHERE doc_id = ?"
+
+            rows = self._db.fetchall(sql, (doc_id,))
+
+            for row in rows or []:
+                role = (row. get("role") or "").upper()
+                user_value = row.get(user_col) or ""
+                if role in result and user_value:
+                    result[role].append(user_value)
+
+        except Exception as ex:
+            logger.error(f"Error getting assignees: {ex}")
+
+        return result
+
+    def set_assignees(
+        self,
+        doc_id: str,
+        mapping: Dict[str, List[str]],
+    ) -> None:
+        """Set role assignments."""
+        user_col = self._get_assignments_user_column()
+        has_assigned_at = self._assignments_has_assigned_at()
+        now = datetime.utcnow().isoformat(timespec="seconds")
+
+        try:
+            # Clear existing assignments for this document
+            self._db. execute("DELETE FROM assignments WHERE doc_id = ?", (doc_id,))
+
+            # Insert new assignments
+            for role, usernames in mapping.items():
+                role_upper = role.upper()
+                for username in usernames:
+                    if username and username.strip():
+                        data = {
+                            "doc_id": doc_id,
+                            "role": role_upper,
+                            user_col: username. strip(),
+                        }
+                        if has_assigned_at:
+                            data["assigned_at"] = now
+                        self._db. insert("assignments", data)
+        except Exception as ex:
+            logger.error(f"Error setting assignees: {ex}")
+            raise
+
+    def get_owner(self, doc_id: str) -> Optional[str]:
+        """Get document owner user ID (created_by)."""
+        try:
+            row = self._db.fetchone(
+                "SELECT created_by FROM documents WHERE doc_id = ?",
+                (doc_id,),
+            )
+            if not row:
+                return None
+            return row.get("created_by")
+        except Exception as ex:
+            logger.error(f"Error getting owner: {ex}")
+            return None
+
+    # =========================================================================
+    # Comments
+    # =========================================================================
 
     def list_comments(self, doc_id: str) -> List[Dict[str, Any]]:
-        """Return extracted DOCX comments for the current document file.
-
-        Option A (DB-only repository):
-        - We do not manage storage. We only read comments from the current file path
-          stored in the document record (if available).
-        - If the file is missing or not a .docx, returns [].
-
-        Returns dicts with keys: version_label, author, date, text.
-        """
+        """Return extracted DOCX comments for the current document file."""
         rec = self.get(doc_id)
         if rec is None:
             return []
@@ -224,7 +594,7 @@ class SQLiteDocumentRepository:
             return []
 
         try:
-            from word_meta.logic.docx_comments_reader import read_docx_comments  # type: ignore
+            from word_meta. logic.docx_comments_reader import read_docx_comments
         except Exception:
             return []
 
@@ -233,19 +603,120 @@ class SQLiteDocumentRepository:
         except Exception:
             return []
 
-        out: List[Dict[str, Any]] = []
+        out:  List[Dict[str, Any]] = []
         for c in comments:
             dt = getattr(c, "date", None)
             out.append(
                 {
                     "version_label": "",
                     "author": getattr(c, "author", "") or "",
-                    "date": dt.isoformat(sep=" ", timespec="seconds") if dt else "",
+                    "date": dt. isoformat(sep=" ", timespec="seconds") if dt else "",
                     "text": getattr(c, "text", "") or "",
                 }
             )
 
         return out
+
+    def get_docx_comments_for_version(
+        self,
+        doc_id: str,
+        version_label: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get DOCX comments for specific version."""
+        return self. list_comments(doc_id)
+
+    # =========================================================================
+    # PDF Operations (Stubs)
+    # =========================================================================
+
+    def generate_review_pdf(self, doc_id: str) -> Optional[str]:
+        """Generate PDF for review."""
+        return None
+
+    def attach_signed_pdf(
+        self,
+        doc_id: str,
+        signed_pdf_path: str,
+        step: str,
+        user_id: str,
+        reason: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """Attach signed PDF to document."""
+        if not self.exists(doc_id):
+            return False, f"Document not found: {doc_id}"
+
+        now = datetime.utcnow().isoformat(timespec="seconds")
+
+        try:
+            self._db.insert(
+                "signatures",
+                {
+                    "doc_id": doc_id,
+                    "role": step,
+                    "username": user_id,
+                    "signed_at": now,
+                    "comment": reason,
+                },
+            )
+            return True, None
+        except Exception as ex:
+            logger.error(f"Error attaching signed PDF: {ex}")
+            return False, str(ex)
+
+    def export_pdf_with_version_suffix(self, doc_id: str) -> Optional[str]:
+        """Export PDF with version number in filename."""
+        return None
+
+    def copy_to_destination(
+        self,
+        doc_id: str,
+        dest_dir: str,
+    ) -> Optional[str]:
+        """Copy controlled document to destination."""
+        rec = self.get(doc_id)
+        if not rec:
+            return None
+
+        src_path = rec.current_file_path
+        if not src_path or not os.path.isfile(src_path):
+            return None
+
+        basename = os.path.basename(src_path)
+        dest_path = os.path.join(dest_dir, basename)
+
+        try:
+            shutil.copy2(src_path, dest_path)
+            return dest_path
+        except Exception as ex:
+            logger.error(f"Error copying to destination: {ex}")
+            return None
+
+    # =========================================================================
+    # File Management
+    # =========================================================================
+
+    def check_in(
+        self,
+        doc_id: str,
+        user_id: str,
+        file_path: str,
+        comment: Optional[str] = None,
+    ) -> None:
+        """Check in new file version."""
+        if not self.exists(doc_id):
+            raise ValueError(f"Document not found:  {doc_id}")
+
+        now = datetime.utcnow().isoformat(timespec="seconds")
+
+        self._db.execute(
+            "UPDATE documents SET current_file_path = ?, updated_at = ? WHERE doc_id = ?",
+            (file_path, now, doc_id),
+        )
+        self._db.commit()
+
+    # =========================================================================
+    # Internal Helpers
+    # =========================================================================
 
     def _row_to_record(self, row: Dict[str, Any]) -> DocumentRecord:
         """Convert DB row into DocumentRecord."""
@@ -254,7 +725,7 @@ class SQLiteDocumentRepository:
 
         return DocumentRecord(
             doc_id=doc_id,
-            title=row.get("title", ""),
+            title=row. get("title", ""),
             doc_type=row.get("doc_type", ""),
             status=status,
             version_major=int(row.get("version_major") or 1),
@@ -263,8 +734,8 @@ class SQLiteDocumentRepository:
             doc_code=row.get("doc_code"),
             created_by=row.get("created_by"),
             created_at=self._parse_dt(row.get("created_at")),
-            updated_at=self._parse_dt(row.get("updated_at")),
-            next_review=self._parse_dt(row.get("next_review")),
+            updated_at=self._parse_dt(row. get("updated_at")),
+            next_review=self._parse_dt(row. get("next_review")),
         )
 
     @staticmethod

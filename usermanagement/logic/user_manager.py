@@ -7,10 +7,10 @@ Business-Logic:  Login/Logout, User-CRUD, Profil- und Passwort-Änderungen.
 
 from __future__ import annotations
 
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from usermanagement.logic.user_repository import UserRepository
-from core.qm_logging.logic.logger import logger
+from core.qm_logging. logic.logger import logger
 from core.models.user import User, UserRole
 
 
@@ -27,21 +27,21 @@ class UserManager:
     # ------------------------------------------------------------------ #
     # Session-Handling                                                   #
     # ------------------------------------------------------------------ #
-    def try_login(self, username: str, password: str) -> Optional[User]:
+    def try_login(self, username: str, password:  str) -> Optional[User]:
         """
         Prüft Credentials, setzt sowohl
           • self._current_user   (lokal)
           • AppContext.current_user  (global)
         und aktualisiert die Sprache.
         """
-        user = self._repo.verify_login(username, password)
+        user = self._repo. verify_login(username, password)
         from core.common.app_context import AppContext  # lazy, Kreisfrei
         if user:
             self._current_user = user
-            AppContext.current_user = user          # << Sync >>
-            AppContext.update_language()
+            AppContext. current_user = user          # << Sync >>
+            AppContext. update_language()
 
-            logger.log(
+            logger. log(
                 feature="User",
                 event="LoginSuccess",
                 user_id=user.id,
@@ -60,18 +60,17 @@ class UserManager:
         setzt beide User-Referenzen auf None,
         aktualisiert Sprache auf global/default.
         """
-        print("logout wurde geklickt")
         from core.common.app_context import AppContext  # lazy
 
         user = self._current_user or AppContext.current_user
         if user:
             logger.log(feature="User", event="Logout",
-                       user_id=user.id, username=user.username,
+                       user_id=user.id, username=user. username,
                        message="User logged out")
         else:
             logger.log(feature="User", event="Logout",
-                       user_id=user.id, username=user.username,
-                       message="User logged out")
+                       message="Logout called without active user")
+
         self._current_user = None
         AppContext.current_user = None          # << Sync >>
         AppContext.update_language()
@@ -87,15 +86,15 @@ class UserManager:
         username = user_data.get("username")
         raw_role = user_data.get("role", "USER")
 
-        role_enum = (UserRole[raw_role.upper()]
+        role_enum = (UserRole[raw_role. upper()]
                      if isinstance(raw_role, str) and raw_role.upper() in UserRole.__members__
                      else UserRole.USER)
 
         if not username or self._repo.get_user(username):
-            logger.log(feature="User", event="CreateFailed",
+            logger. log(feature="User", event="CreateFailed",
                        user_id=creator.id if creator else None,
                        username=creator.username if creator else None,
-                       message=f"Username '{username}' already exists")
+                       message=f"Username '{username}' already exists or empty")
             return False
 
         ok = self._repo.create_user_full(user_data, role_enum)
@@ -110,7 +109,7 @@ class UserManager:
                                password: str, email: str) -> bool:
         if self._repo.get_user(username):
             return False
-        ok = self._repo.create_admin(username, password, email)
+        ok = self._repo. create_admin(username, password, email)
         logger.log(feature="User",
                    event="UserCreated" if ok else "CreateFailed",
                    message=f"Seed-admin '{username}' created" if ok else "Admin seed failed")
@@ -125,7 +124,7 @@ class UserManager:
         logger.log(feature="Password",
                    event="Changed" if ok else "ChangeFailed",
                    user_id=self._current_user.id if self._current_user else None,
-                   username=self._current_user.username if self._current_user else username,
+                   username=self._current_user. username if self._current_user else username,
                    message="Password changed" if ok else "Wrong current password")
         return ok
 
@@ -154,15 +153,27 @@ class UserManager:
     # Query-Helper                                                       #
     # ------------------------------------------------------------------ #
     def get_user(self, username: str) -> Optional[User]:
-        return self._repo.get_user(username)
+        """Get user by username.
+
+        Args:
+            username: Username to look up (will be converted to string)
+
+        Returns:
+            User object or None if not found
+        """
+        # Ensure username is string (Treeview may pass int)
+        username_str = str(username) if username is not None else ""
+        if not username_str:
+            return None
+        return self._repo.get_user(username_str)
 
     def get_user_by_id(self, user_id: int) -> Optional[User]:
         return self._repo.get_user_by_id(user_id)
 
-    def get_all_users(self) -> list[User]:
+    def get_all_users(self) -> List[User]:
         return self._repo.get_all_users()
 
-    def get_editable_fields(self) -> list[str]:
+    def get_editable_fields(self) -> List[str]:
         return [
             "username", "email", "role",
             "full_name", "phone", "department", "job_title",
