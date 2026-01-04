@@ -924,45 +924,69 @@ class DocumentsView(ttk.Frame):
         self.btn_archive.configure(state=("normal" if state.can_archive else "disabled"))
 
     def _get_assigned_roles(self, doc_id: str, user: object) -> list[str]:
-        """Get user's assigned roles on this document."""
+        """Get user's assigned roles on this document.
+
+        The repository may store assignments by user_id (preferred) but the UI may
+        have different user object shapes (id, user_id, username, email, ...).
+        We therefore match against all available identifiers.
+        """
         if not user or not self._repo:
             return []
 
-        user_id = self._get_user_id_from_object(user)
-        if not user_id:
+        identifiers = self._get_user_identifiers(user)
+        if not identifiers:
             return []
 
         assignees = self._repo.get_assignees(doc_id)
-        assigned = []
+        assigned: list[str] = []
 
-        for role, users in assignees.items():
-            if user_id.lower() in [str(u).lower() for u in users]:
-                assigned.append(role)
+        # Expected shape in current repo: dict[str(role), list[str(user_id)]]
+        if isinstance(assignees, dict):
+            for role, users in assignees.items():
+                if not users:
+                    continue
+                users_norm = {str(u).strip().lower() for u in users if u is not None}
+                if identifiers & users_norm:
+                    assigned.append(role)
+            return assigned
 
-        return assigned
+        # Defensive fallback: list of dict rows (if repo implementation changes)
+        if isinstance(assignees, list):
+            for row in assignees:
+                if not isinstance(row, dict):
+                    continue
+                role = row.get("role")
+                uid = row.get("user_id") or row.get("username")
+                if role and uid and str(uid).strip().lower() in identifiers:
+                    assigned.append(str(role))
+            return assigned
+
+        return []
 
     def _get_user_id_from_object(self, user: object) -> Optional[str]:
-        """Extract a stable user identifier from common user object shapes.
+        """Backwards compatible: return one stable identifier if present."""
+        identifiers = self._get_user_identifiers(user)
+        return next(iter(identifiers), None)
 
-        Notes:
-            Assignments may be stored either as 'user_id' or as 'username' depending on the
-            available database schema. We therefore accept multiple common attributes.
-        """
-        if not user:
-            return None
+    def _get_user_identifiers(self, user: object) -> set[str]:
+        """Return a set of normalized identifiers for the given user object."""
+        identifiers: set[str] = set()
 
-        # Support dict-like objects (defensive).
+        def _add(val: object) -> None:
+            if val is None:
+                return
+            s = str(val).strip()
+            if s:
+                identifiers.add(s.lower())
+
         if isinstance(user, dict):
-            for key in ("id", "user_id", "uid", "username", "name", "email"):
-                val = user.get(key)
-                if val:
-                    return str(val)
+            for key in ("id", "user_id", "uid", "username", "email", "name"):
+                _add(user.get(key))
+        else:
+            for attr in ("id", "user_id", "uid", "username", "email", "name"):
+                _add(getattr(user, attr, None))
 
-        for attr in ("id", "user_id", "uid", "username", "name", "email"):
-            val = getattr(user, attr, None)
-            if val:
-                return str(val)
-        return None
+        return identifiers
 
     # ================================================================== ACTIONS
     def _toggle_workflow(self) -> None:
