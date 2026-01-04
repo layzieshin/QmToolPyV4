@@ -1,4 +1,3 @@
-# core/common/module_catalog.py
 """
 Static Module Catalog (no DB persistence)
 =========================================
@@ -16,6 +15,7 @@ Thread-safe, cached. Use:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from threading import RLock
 from typing import Dict
@@ -60,7 +60,7 @@ def _from_modules_json_entry(entry: dict) -> ModuleDescriptor:
 
 def _load_modules_json() -> Dict[str, ModuleDescriptor]:
     items: Dict[str, ModuleDescriptor] = {}
-    path: Path = MODULES_JSON_PATH  # Path-Objekt aus config_loader
+    path: Path = MODULES_JSON_PATH
     if not path.exists():
         logger.log("ModuleCatalog", "ModulesJsonMissing", message=str(path))
         return items
@@ -87,18 +87,17 @@ def _augment_with_auto_discovery(items: Dict[str, ModuleDescriptor]) -> None:
     """
     Optionally augment catalog with meta.json-discovered modules (no overwrite).
 
-    Änderung:
-    - Führe Auto-Discovery nur aus, wenn 'items' leer ist (d.h. keine
-      core/config/modules.json Einträge vorhanden). Das verhindert, dass
-      ein vollständiger Repo-Scan unbeabsichtigt viele Module in die
-      Navigation bringt, wenn bereits eine kuratierte modules.json existiert.
+    Rule:
+    - Non-frozen run: skip auto-discovery if modules.json has entries
+    - Frozen run: ALWAYS allow auto-discovery (distribution must be self-contained)
     """
     try:
-        if items:
-            # Wenn modules.json gepflegt ist, behalten wir dessen Inhalt und
-            # überspringen die Auto-Discovery, damit nicht "zufällig"
-            # viele meta.json aus dem Projekt auftauchen.
-            logger.log("ModuleCatalog", "AutoDiscoverySkip", message="modules.json present, skipping auto-discovery")
+        if items and not getattr(sys, "frozen", False):
+            logger.log(
+                "ModuleCatalog",
+                "AutoDiscoverySkip",
+                message="modules.json present, skipping auto-discovery (non-frozen run)",
+            )
             return
 
         metas = discover_meta_files(default_roots())
@@ -111,15 +110,16 @@ def _augment_with_auto_discovery(items: Dict[str, ModuleDescriptor]) -> None:
                     count += 1
             except Exception as exc:  # noqa: BLE001
                 logger.log("ModuleCatalog", "MetaParseError", message=f"{meta}: {exc}")
+
         if count:
             logger.log("ModuleCatalog", "AutoDiscoveryAugmented", message=f"+{count} entries")
+
     except Exception as exc:  # noqa: BLE001
         logger.log("ModuleCatalog", "AutoDiscoveryFailed", message=str(exc))
 
 
 def _build_catalog() -> Dict[str, ModuleDescriptor]:
     items = _load_modules_json()
-    # Optional: meta.json auto discovery on top
     _augment_with_auto_discovery(items)
     return items
 

@@ -1,25 +1,18 @@
 """Document repository protocol (interface).
 
 Defines the contract for document data access without implementation details.
-Implementations MUST NOT live in this file.
-
-IMPORTANT:
-- Protocols must not access self._db or perform IO.
-- All concrete logic belongs to repository implementations (e.g., SQLiteDocumentRepository).
 """
 
 from __future__ import annotations
-
 from typing import Protocol, List, Dict, Optional, Any
-
+from datetime import datetime
+from core.qm_logging.logic.logger import logger
 from documents.models.document_models import DocumentRecord, DocumentStatus
 from documents.dto.assignments import Assignments
 
 
 class DocumentRepository(Protocol):
     """Protocol for document data access."""
-
-    # ===== CRUD =====
 
     def create(self, record: DocumentRecord) -> None:
         """Create a new document record."""
@@ -81,28 +74,56 @@ class DocumentRepository(Protocol):
         """Replace role assignments for document."""
         ...
 
+    
     # ===== Signatures =====
 
     def list_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
         """Return signature rows for the given document."""
-        ...
+        if not doc_id:
+            return []
+        try:
+            rows = self._db.fetchall(
+                "SELECT doc_id, role, username, signed_at, comment "
+                "FROM signatures WHERE doc_id = ? ORDER BY signed_at ASC",
+                (doc_id,),
+            )
+            return [dict(r) for r in (rows or [])]
+        except Exception as ex:
+            logger.error(f"Error listing signatures for {doc_id}: {ex}")
+            return []
 
-    # ===== PDF Operations =====
+
+# ===== PDF Operations =====
 
     def generate_review_pdf(self, doc_id: str) -> Optional[str]:
-        """Generate PDF for review (without markup)."""
+        """
+        Generate PDF for review (without markup).
+
+        Returns:
+            Path to generated PDF or None
+        """
         ...
 
     def get_signing_pdf(self, doc_id: str) -> Optional[str]:
-        """Return the current signing PDF path for the document, if any."""
+        """
+        Return the current signing PDF path for the document, if any.
+
+        This is the single active PDF that is passed along the signing chain.
+        """
         ...
 
     def set_signing_pdf(self, doc_id: str, pdf_path: str) -> None:
-        """Persist the current signing PDF path for the document."""
+        """
+        Persist the current signing PDF path for the document.
+
+        The path MUST always reference the latest signed PDF (single active artifact).
+        """
         ...
 
     def clear_signing_pdf(self, doc_id: str) -> None:
-        """Clear signing PDF reference for the document (e.g. on workflow abort)."""
+        """
+        Clear signing PDF reference for the document (e.g. on workflow abort).
+        """
         ...
 
     def attach_signed_pdf(
@@ -111,9 +132,21 @@ class DocumentRepository(Protocol):
         signed_pdf_path: str,
         step: str,
         user_id: str,
-        reason: Optional[str] = None,
+        reason: Optional[str] = None
     ) -> tuple[bool, Optional[str]]:
-        """Attach signed PDF to document."""
+        """
+        Attach signed PDF to document.
+
+        Args:
+            doc_id: Document ID
+            signed_pdf_path: Path to signed PDF
+            step:  Workflow step (e.g., "submit_review", "approve", "publish")
+            user_id: User who signed
+            reason: Optional reason/comment
+
+        Returns:
+            (success, message)
+        """
         ...
 
     def export_pdf_with_version_suffix(self, doc_id: str) -> Optional[str]:
@@ -131,9 +164,14 @@ class DocumentRepository(Protocol):
         doc_id: str,
         user_id: str,
         *,
-        comment: Optional[str] = None,
+        comment: Optional[str] = None
     ) -> Optional[str]:
-        """Checkout document for editing."""
+        """
+        Checkout document for editing.
+
+        Returns:
+            Path to checked-out file or None
+        """
         ...
 
     def checkin(
@@ -141,7 +179,15 @@ class DocumentRepository(Protocol):
         doc_id: str,
         user_id: str,
         file_path: str,
-        comment: Optional[str] = None,
+        comment: Optional[str] = None
     ) -> None:
-        """Check in new file version."""
+        """
+        Check in new file version.
+
+        Args:
+            doc_id: Document ID
+            user_id: User checking in
+            file_path: Path to new file
+            comment: Check-in comment
+        """
         ...

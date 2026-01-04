@@ -1,15 +1,21 @@
-# core/common/module_registry.py
 """
 Module Registry (static, no DB)
 ===============================
 
-• Baut den Registry-Cache einmalig aus dem static Module Catalog (modules.json + meta.json).
-• Filtert nach Rolle & Lizenz.
-• Essentials (z. B. 'settings') werden nie geblockt.
+• Builds the registry cache once from the static Module Catalog (modules.json + meta.json).
+• Filters by role & licensing.
+• Essentials (e.g. 'settings') are never blocked.
+
+Frozen safety:
+- In PyInstaller onedir builds, dynamic discovery may fail depending on where modules.json/cwd points to.
+- If the catalog is empty in a frozen run, we fall back to scanning meta.json directly under <exe_dir>/_internal.
 """
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
 from typing import Dict, Optional
 
 from core.common.module_descriptor import ModuleDescriptor
@@ -21,31 +27,65 @@ from core.models.user import UserRole
 _CACHE: Dict[str, ModuleDescriptor] = {}
 _LOADED = False
 
-# Module, die immer sichtbar sein sollen (z. B. um die App konfigurieren zu können)
-_ESSENTIAL_MODULE_IDS = {"settings"}  # bewusst klein halten
+# Modules that must always be visible (keep intentionally small)
+_ESSENTIAL_MODULE_IDS = {"settings"}
+
+
+def _frozen_internal_root() -> Optional[Path]:
+    if not getattr(sys, "frozen", False):
+        return None
+    exe_dir = Path(sys.executable).resolve().parent
+    internal = exe_dir / "_internal"
+    return internal if internal.exists() else None
+
+
+def _scan_meta_json_direct(roots: list[Path]) -> Dict[str, ModuleDescriptor]:
+    """
+    Direct filesystem scan for meta.json (fallback path).
+    Returns descriptors keyed by id. Later duplicates keep first.
+    """
+    found: Dict[str, ModuleDescriptor] = {}
+    for root in roots:
+        try:
+            if not root.exists():
+                continue
+            for meta in root.rglob("meta.json"):
+                try:
+                    d = ModuleDescriptor.from_meta_json(meta)
+                    if d.id not in found:
+                        found[d.id] = d
+                except Exception as exc:  # noqa: BLE001
+                    logger.log("ModuleRegistry", "MetaParseError", message=f"{meta}: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            logger.log("ModuleRegistry", "MetaScanError", message=f"{root}: {exc}")
+    return found
 
 
 def load_registry(role: Optional[UserRole | str] = None) -> Dict[str, ModuleDescriptor]:
     """
     Build (once) and return the module registry, optionally filtered by role.
 
-    Änderungen gegenüber ursprünglicher Implementierung:
-    - Module mit enabled == 0 werden beim Aufbau des Caches ignoriert.
-    - Wenn role is None (VOR dem Login), werden nur noch die
-      als essentiell definierten Module (_ESSENTIAL_MODULE_IDS) zurückgegeben.
-      Damit werden vor dem Login nicht mehr alle entdeckten Module
-      in der Navigation angezeigt (verringert Startzeit und Verwirrung).
+    Behavior:
+    - enabled==0 modules are ignored.
+    - If role is None (pre-login), only essentials are returned.
+    - If frozen and catalog is empty, fallback to scanning meta.json directly under _internal.
     """
     global _LOADED, _CACHE
 
     if not _LOADED:
-        all_items = get_catalog().values()
+        catalog_values = list(get_catalog().values())
 
-        # Lizenz-Filter + enabled-Filter: nur lizenzierte UND aktivierte Module,
-        # Essentials werden immer beibehalten.
+        # FROZEN FALLBACK: if catalog is empty, scan meta.json directly
+        if not catalog_values and getattr(sys, "frozen", False):
+            internal = _frozen_internal_root()
+            if internal is not None:
+                logger.log("ModuleRegistry", "FrozenFallback", message=str(internal))
+                catalog_values = list(_scan_meta_json_direct([internal]).values())
+
+        # Licensing + enabled filter; essentials always kept
         filtered: Dict[str, ModuleDescriptor] = {}
-        for d in all_items:
-            # Ignoriere explizit deaktivierte Module
+        for d in catalog_values:
+            # Ignore explicitly disabled modules
             if not getattr(d, "enabled", 1):
                 logger.log("ModuleRegistry", "ModuleDisabled", message=d.id)
                 continue
@@ -54,7 +94,7 @@ def load_registry(role: Optional[UserRole | str] = None) -> Dict[str, ModuleDesc
                 filtered[d.id] = d
                 continue
 
-            if d.license_required:
+            if getattr(d, "license_required", 0):
                 ok = license_manager.is_module_licensed(d.id, d.version, d.license_tag)
                 if not ok:
                     logger.log("ModuleRegistry", "LicenseBlocked", message=d.id)
@@ -66,11 +106,15 @@ def load_registry(role: Optional[UserRole | str] = None) -> Dict[str, ModuleDesc
         _LOADED = True
         logger.log("ModuleRegistry", "CacheBuilt", message=f"{len(_CACHE)} entries (static)")
 
-    # Wenn role None (vor Login), nur Essentials zurückgeben.
+    # Pre-login: only essentials
     if role is None:
         return {mid: d for mid, d in _CACHE.items() if mid in _ESSENTIAL_MODULE_IDS}
 
-    return {mid: d for mid, d in _CACHE.items() if d.allowed_in_menu(role)}
+    # Normal role filter
+    result = {mid: d for mid, d in _CACHE.items() if d.allowed_in_menu(role)}
+    logger.log("ModuleRegistry", "RoleFilter", message=f"role={role} -> {len(result)} entries")
+    return result
+
 
 def invalidate_registry_cache() -> None:
     """Drop the in-memory cache so the next call rebuilds it."""

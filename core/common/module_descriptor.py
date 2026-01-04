@@ -2,12 +2,12 @@
 core/common/module_descriptor.py
 ================================
 
-DTO + Loader-Hilfen für Module (Meta-JSON basiert).
+DTO + Loader helpers for modules (meta.json based).
 
-• from_meta_json(path): liest/validiert Meta und erzeugt Descriptor
-• settings_class (optional): vollqualifizierte Settings-Tab-Klasse
-• visible_for / settings_for als JSON-Strings in DB
-• Lizenz-Felder: license_required, license_tag (optional)
+• from_meta_json(path): reads/validates meta and creates descriptor
+• settings_class (optional): fully qualified Settings-Tab class
+• visible_for / settings_for stored as JSON strings
+• License fields: license_required, license_tag (optional)
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from core.qm_logging.logic.logger import logger
 
 @dataclass
 class ModuleDescriptor:
-    # Persistierte Felder
+    # Persisted fields
     id: str
     label: str
     module_path: str
@@ -61,54 +61,79 @@ class ModuleDescriptor:
     def main_class_fq(self) -> str:
         return f"{self.module_path}.{self.class_name}"
 
-    # ---------------- Rollen --------------------- #
-    def allowed_in_menu(self, role: str | UserRole | None) -> bool:
+    # ---------------- Roles --------------------- #
+    @staticmethod
+    def _norm_role(role: str | UserRole | None) -> str | None:
+        """Normalize role to a comparable string (case-insensitive)."""
         if role is None:
-            return True
+            return None
         r = role.value if isinstance(role, UserRole) else str(role)
-        allowed = self.visible_list or ["Admin", "QMB", "User"]
-        return "*" in allowed or r in allowed
+        r = r.strip()
+        return r.lower() if r else None
+
+    @staticmethod
+    def _norm_allowed(values: list[str] | None, fallback: list[str]) -> set[str]:
+        """Normalize allowed role list (case-insensitive)."""
+        raw = values if values else fallback
+        return {str(x).strip().lower() for x in raw if str(x).strip()}
+
+    def allowed_in_menu(self, role: str | UserRole | None) -> bool:
+        """
+        Return True if module should appear in the menu for the given role.
+        Visible list supports '*' wildcard.
+        """
+        r = self._norm_role(role)
+        if r is None:
+            return True
+
+        allowed = self.visible_list
+        allowed_norm = self._norm_allowed(allowed, ["Admin", "QMB", "User"])
+        return "*" in allowed_norm or r in allowed_norm
 
     def allowed_in_settings(self, role: str | UserRole | None) -> bool:
-        if role is None:
+        """
+        Return True if module settings are accessible for the given role.
+        Settings list supports '*' wildcard.
+        """
+        r = self._norm_role(role)
+        if r is None:
             return True
-        r = role.value if isinstance(role, UserRole) else str(role)
-        allowed = self.settings_list or ["Admin"]
-        return "*" in allowed or r in allowed
+
+        allowed = self.settings_list
+        allowed_norm = self._norm_allowed(allowed, ["Admin"])
+        return "*" in allowed_norm or r in allowed_norm
 
     # ---------------- Loader --------------------- #
     def safe_load_class(self):
-        """Importiert die Hauptklasse; gibt Klasse oder None zurück.
+        """Import the main class; returns class or None.
 
-        Verbesserungen:
-        - Bei Fehlern wird das vollständige Traceback ins zentrale Logging geschrieben.
-        - Falls die Klasse im Modul nicht gefunden wird, wird das ebenfalls geloggt.
-        - Die Methode bleibt absturzsicher (gibt bei Fehler None zurück).
+        Improvements:
+        - Full traceback is logged on failure.
+        - Missing class in an importable module is logged.
+        - The method is crash-safe (returns None on error).
         """
         try:
             mod = importlib.import_module(self.module_path)
             cls = getattr(mod, self.class_name, None)
             if cls is None:
-                # Modul importierbar, aber Klasse nicht vorhanden
                 logger.log(
                     "ModuleDescriptor",
                     "ImportError",
-                    message=f"Module imported ({self.module_path}) but class '{self.class_name}' not found"
+                    message=f"Module imported ({self.module_path}) but class '{self.class_name}' not found",
                 )
             return cls
         except Exception as exc:  # noqa: BLE001
-            # Vollständiges Traceback loggen — hilft beim Aufspüren von
-            # ModuleNotFoundError, ImportError, SyntaxError in abhängigen Dateien etc.
             import traceback
+
             tb = traceback.format_exc()
             logger.log(
                 "ModuleDescriptor",
                 "ImportError",
-                message=f"Importing {self.module_path}.{self.class_name} failed: {exc}\n{tb}"
+                message=f"Importing {self.module_path}.{self.class_name} failed: {exc}\n{tb}",
             )
             return None
 
-    # ---------------- Fabriken ------------------- #
+    # ---------------- Factories ------------------- #
     @classmethod
     def from_row(cls, row) -> "ModuleDescriptor":
         return cls(

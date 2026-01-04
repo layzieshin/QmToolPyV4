@@ -15,6 +15,20 @@ from typing import Any, Callable, Dict, Tuple, Union, get_args, get_origin, get_
 # --------------------------------------------------------------------------- #
 #  Paths & default definitions
 # --------------------------------------------------------------------------- #
+def _runtime_data_root() -> Path:
+    """
+    Writable per-user runtime directory.
+    Windows: %APPDATA%/QMToolPy
+    Linux/macOS: ~/.qmtoolpy
+    """
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", Path.home()))
+        p = base / "QMToolPy"
+    else:
+        p = Path.home() / ".qmtoolpy"
+
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 def _find_project_root() -> Path:
     """
@@ -49,7 +63,7 @@ PROJECT_ROOT = _find_project_root()
 CONFIG_DIR = PROJECT_ROOT / "core" / "config"
 DEFAULTS_INI = CONFIG_DIR / "defaults.ini"
 MACHINE_INI = CONFIG_DIR / "config.ini"
-
+_RUNTIME_DATA = _runtime_data_root()
 # Make anchors available to os.path.expandvars consumers
 os.environ.setdefault("PROJECT_ROOT", str(PROJECT_ROOT))
 os.environ.setdefault("CONFIG_DIR", str(CONFIG_DIR))
@@ -57,8 +71,8 @@ os.environ.setdefault("CONFIG_DIR", str(CONFIG_DIR))
 # Embedded defaults that seed new installations and serve as the base layer.
 _DEFAULTS: Dict[str, Dict[str, Any]] = {
     "Database": {
-        "qm_tool": (PROJECT_ROOT / "databases" / "qm-tool.db").as_posix(),
-        "logging": (PROJECT_ROOT / "databases" / "logs.db").as_posix(),
+        "qm_tool": (_RUNTIME_DATA / "qm-tool.db").as_posix(),
+        "logging": (_RUNTIME_DATA / "logs.db").as_posix(),
     },
     "Files": {
         "modules_json": (PROJECT_ROOT / "core" / "config" / "modules.json").as_posix(),

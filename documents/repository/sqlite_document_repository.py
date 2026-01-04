@@ -711,6 +711,23 @@ class SQLiteDocumentRepository:
     # =========================================================================
     # Signing PDF (Single Source of Truth)
     # =========================================================================
+    def list_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
+        """Return signature rows for the given document.
+
+        Used by DocumentDetailsController to decide which actions are enabled.
+        """
+        if not doc_id:
+            return []
+        try:
+            rows = self._db.fetchall(
+                "SELECT doc_id, role, username, signed_at, comment "
+                "FROM signatures WHERE doc_id = ? ORDER BY signed_at ASC",
+                (doc_id,),
+            )
+            return [dict(r) for r in (rows or [])]
+        except Exception as ex:
+            logger.error(f"Error listing signatures for {doc_id}: {ex}")
+            return []
 
     def get_signing_pdf(self, doc_id: str) -> Optional[str]:
         """Return the current signing PDF path for the document, if any."""
@@ -746,33 +763,28 @@ class SQLiteDocumentRepository:
             logger.error(f"Error setting current_file_path: {ex}")
             raise
 
-    def set_signing_pdf_path_only(self, doc_id: str, pdf_path: str) -> None:
-        """Persist signing_pdf_path for a document WITHOUT changing current_file_path.
+    def set_signing_pdf(self, doc_id: str, pdf_path: str) -> None:
+        """Persist the current signing PDF path for the document.
 
-        Used for archival moves where we relocate the entire version folder and must
-        keep both fields consistent.
+        IMPORTANT:
+        - signing_pdf_path is the active PDF in signing rounds
+        - current_file_path MUST point to the same PDF so 'Öffnen' opens the correct artifact
         """
         if not self.exists(doc_id):
             raise ValueError(f"Document not found: {doc_id}")
 
         try:
             self._db.execute(
-                "UPDATE documents SET signing_pdf_path = ? WHERE doc_id = ?",
-                (pdf_path, doc_id),
+                "UPDATE documents SET signing_pdf_path = ?, current_file_path = ? WHERE doc_id = ?",
+                (pdf_path, pdf_path, doc_id),
             )
             self._db.commit()
         except Exception as ex:
-            logger.error(f"Error setting signing_pdf_path only: {ex}")
+            logger.error(f"Error setting signing_pdf_path: {ex}")
             raise
 
-
     def clear_signing_pdf(self, doc_id: str) -> None:
-        """Clear signing PDF reference for the document (e.g. on workflow abort).
-
-        Note:
-            This intentionally does NOT change current_file_path. The caller is responsible
-            for restoring current_file_path back to the DOCX working copy on abort/backward transitions.
-        """
+        """Clear signing PDF reference for the document."""
         if not self.exists(doc_id):
             return
 
@@ -786,47 +798,39 @@ class SQLiteDocumentRepository:
             logger.error(f"Error clearing signing_pdf_path: {ex}")
             raise
 
+    def attach_signed_pdf(
+            self,
+            doc_id: str,
+            signed_pdf_path: str,
+            step: str,
+            user_id: str,
+            reason: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """Attach signature metadata to the document.
 
-    
-    def list_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
-        """Return signature rows for the given document."""
-        if not doc_id:
-            return []
-        try:
-            rows = self._db.query(
-                "SELECT doc_id, role, username, signed_at, comment FROM signatures WHERE doc_id = ? ORDER BY signed_at ASC",
-                (doc_id,),
-            )
-            # Ensure list of dicts
-            return [dict(r) for r in (rows or [])]
-        except Exception as ex:
-            logger.error(f"Error listing signatures for {doc_id}: {ex}")
-            return []
-
-
-    def attach_signed_pdf(self, doc_id: str, signed_pdf_path: str, step: str, user_id: str,
-                          reason: Optional[str] = None, ) -> tuple[bool, Optional[str]]:
-        """Attach signed PDF to document."""
+        Note:
+            We store signature entries in the 'signatures' table.
+            The signed_pdf_path is maintained separately via set_signing_pdf().
+        """
         if not self.exists(doc_id):
             return False, f"Document not found: {doc_id}"
+
         now = datetime.utcnow().isoformat(timespec="seconds")
         try:
             self._db.insert(
                 "signatures",
                 {
-                "doc_id": doc_id,
-                "role": step,
-                "username": user_id,
-                "signed_at": now,
-                "comment": reason,
+                    "doc_id": doc_id,
+                    "role": step,
+                    "username": user_id,
+                    "signed_at": now,
+                    "comment": reason,
                 },
             )
             return True, None
-        except Exception as ex: (
-            logger.error(f"Error attaching signed PDF: {ex}"),)
-
-        return False,(str(ex))
-
+        except Exception as ex:
+            logger.error(f"Error attaching signed PDF: {ex}")
+            return False, str(ex)
 
     def export_pdf_with_version_suffix(self, doc_id: str) -> Optional[str]:
         """Export PDF with version number in filename."""

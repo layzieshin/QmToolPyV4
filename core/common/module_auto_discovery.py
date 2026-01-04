@@ -17,6 +17,7 @@ Behavior:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Iterable, List
 
@@ -33,9 +34,14 @@ def default_roots() -> List[Path]:
     """
     Default root directories for module scanning.
 
-    Single source of truth:
-    - The project root is provided by ConfigLoader.
+    - Dev run: PROJECT_ROOT_PATH_T (ConfigLoader)
+    - Frozen (PyInstaller onedir): <exe_dir>/_internal
     """
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        internal = exe_dir / "_internal"
+        return [internal]
+
     return [PROJECT_ROOT_PATH_T]
 
 
@@ -60,7 +66,10 @@ def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
     found: set[Path] = set()
 
     # Single source of truth root reference (for sanity checks)
-    project_root = PROJECT_ROOT_PATH_T.resolve()
+    if getattr(sys, "frozen", False):
+        project_root = (Path(sys.executable).resolve().parent / "_internal").resolve()
+    else:
+        project_root = PROJECT_ROOT_PATH_T.resolve()
 
     for root in scan_roots:
         if not root:
@@ -77,13 +86,14 @@ def discover_meta_files(roots: Iterable[Path] | None = None) -> List[Path]:
                 if _in_ignored_dir(meta):
                     continue
 
-                # Ensure the discovered file is within the project root
-                # (protects against weird symlink/junction edge cases)
                 meta_resolved = meta.resolve()
+
+                # Ensure the discovered file is within the active project root
                 if not meta_resolved.is_relative_to(project_root):
                     continue
 
                 found.add(meta_resolved)
+
             except Exception as exc:  # noqa: BLE001
                 logger.log("ModuleAutoDiscovery", "ScanError", message=f"{meta}: {exc}")
 

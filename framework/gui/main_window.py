@@ -24,7 +24,8 @@ from tkinter import (
     messagebox,
 )
 from typing import Optional, Dict
-
+import sys
+from pathlib import Path
 from core.common.app_context import AppContext
 from core.config.config_loader import config_loader
 from core.config.gui.config_settings_view import ConfigSettingsTab
@@ -59,6 +60,11 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------ #
     def __init__(self) -> None:
         super().__init__()
+        if getattr(sys, "frozen", False):
+            exe_dir = Path(sys.executable).resolve().parent
+            internal = exe_dir / "_internal"
+            if internal.exists():
+                sys.path.insert(0, str(internal))
 
         # Services aus AppContext
         self.log_controller = AppContext.log_controller
@@ -94,7 +100,7 @@ class MainWindow(tk.Tk):
         self.login_logout_button.pack(side=RIGHT, padx=10, pady=5)
 
         # ---------- Initialer Aufbau -----------------------------------
-        self._reload_registry(role=None)      # keine Tabs vor Login
+        self._reload_registry(role=None)  # keine Tabs vor Login
         self.load_login_view()
 
     # ------------------------------------------------------------------ #
@@ -249,9 +255,17 @@ class MainWindow(tk.Tk):
         if success:
             self.logged_in = True
             self.login_logout_button.config(text="Logout")
-            self._reload_registry(role=user.role)   # Tabs nach Rolle laden
+
+            # Tabs nach Rolle laden
+            self._reload_registry(role=user.role)
+
+            # View + Status
             self.load_welcome_view()
             self.set_status(f"Logged in as {user.username}")
+
+            # DEBUG (temporär): zeigt Pfade + gefundene meta.json in einem Popup
+            self._debug_paths_popup()
+
         else:
             self.set_status("Login failed")
 
@@ -264,6 +278,61 @@ class MainWindow(tk.Tk):
 
     def set_status(self, message: str) -> None:
         self.status_bar.config(text=message)
+
+    def _debug_paths_popup(self) -> None:
+        """
+        Diagnostic popup to show runtime paths and where meta.json files are located.
+        This is intended for troubleshooting frozen/packaged builds.
+        """
+        import os
+        import sys
+        from pathlib import Path
+        from tkinter import messagebox
+
+        lines: list[str] = []
+
+        lines.append("=== QMTool PATH DEBUG ===")
+        lines.append(f"sys.frozen: {getattr(sys, 'frozen', False)}")
+        lines.append(f"sys.executable: {sys.executable}")
+        lines.append(f"cwd: {os.getcwd()}")
+        lines.append("")
+
+        exe_dir = Path(sys.executable).resolve().parent
+        internal = exe_dir / "_internal"
+
+        lines.append(f"exe_dir exists: {exe_dir.exists()} -> {exe_dir}")
+        lines.append(f"_internal exists: {internal.exists()} -> {internal}")
+        lines.append("")
+
+        def list_dir(p: Path, label: str) -> None:
+            lines.append(f"[{label}] {p}")
+            if not p.exists():
+                lines.append("  (does not exist)")
+                return
+            try:
+                for x in sorted(p.iterdir()):
+                    lines.append(f"  {'[D]' if x.is_dir() else '[F]'} {x.name}")
+            except Exception as exc:  # noqa: BLE001
+                lines.append(f"  (cannot list: {exc})")
+
+        list_dir(Path(os.getcwd()), "CWD")
+        lines.append("")
+        list_dir(exe_dir, "EXE_DIR")
+        lines.append("")
+        list_dir(internal, "_INTERNAL")
+
+        lines.append("")
+        lines.append("meta.json found:")
+        found_any = False
+        for root in [Path(os.getcwd()), exe_dir, internal]:
+            if root.exists():
+                for meta in root.rglob("meta.json"):
+                    lines.append(f"  - {meta}")
+                    found_any = True
+        if not found_any:
+            lines.append("  (none)")
+
+       # messagebox.showinfo("QMTool Debug", "\n".join(lines), parent=self)
 
 
 # --------------------------------------------------------------------------- #
