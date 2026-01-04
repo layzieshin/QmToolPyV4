@@ -48,7 +48,10 @@ class DocumentCreationController:
     def create_from_template(
             self,
             template_path: str,
-            doc_type: Optional[str] = None
+            doc_type: Optional[str] = None,
+            *,
+            doc_code_override: Optional[str] = None,
+            title_override: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], Optional[DocumentRecord]]:
         """
         Create document from template.
@@ -100,28 +103,45 @@ class DocumentCreationController:
         if allowed and doc_type_norm not in allowed:
             return False, f"Ungültiger Dokumenttyp '{doc_type_norm}'. Erlaubt: {', '.join(allowed)}", None
 
-        # ---- Determine document code & title from filename ----
+        # ---- Determine document code & title (filename first, dialog overrides allowed) ----
         src_name = os.path.basename(template_path)
         resolver = LifecyclePathResolver(LifecycleRoots.from_cwd())
 
+        # 1) Primary source: template filename (historic convention)
         doc_code = resolver.parse_document_code_from_filename(src_name)
+
+        # 2) Fallback: user-provided override (e.g. metadata dialog / title prefix)
+        if not doc_code:
+            candidate = (doc_code_override or "").strip().upper()
+            if candidate:
+                doc_code = resolver.parse_document_code_from_filename(candidate) or None
+
         if not doc_code:
             return (
                 False,
-                "Die Dokumentenkennung (8-stellig, z.B. 'C04VA001') fehlt im Vorlagen-Dateinamen. "
-                "Bitte Vorlage entsprechend benennen oder Metadaten im Dialog angeben.",
+                "Die Dokumentenkennung (8-stellig, z.B. 'C04VA001') fehlt im Vorlagen-Dateinamen "
+                "und wurde nicht in den Metadaten angegeben. "
+                "Hinweis: Gib im Metadaten-Titel z.B. 'C04VA001 <Titel>' an oder benenne die Vorlage entsprechend.",
                 None,
             )
 
-        # Title: strip leading "<CODE>_" or "<CODE>-"
-        stem = Path(src_name).stem
-        upper_stem = stem.upper()
-        # Remove leading code + separator if present
-        title = stem
-        if upper_stem.startswith(f"{doc_code}_") or upper_stem.startswith(f"{doc_code}-"):
-            title = stem[len(doc_code) + 1:]
-        title = (title or "").strip() or stem  # fallback
-
+        # Title:
+        # - Prefer title_override (metadata dialog).
+        # - Otherwise derive from filename.
+        title = (title_override or "").strip()
+        if not title:
+            stem = Path(src_name).stem
+            upper_stem = stem.upper()
+            # Remove leading code + separator if present
+            title = stem
+            if upper_stem.startswith(f"{doc_code}_") or upper_stem.startswith(f"{doc_code}-"):
+                title = stem[len(doc_code) + 1:]
+            title = (title or "").strip() or stem  # fallback
+        else:
+            # If the user typed "<CODE>_<TITLE>" or "<CODE> <TITLE>", strip the code prefix for nicer filenames.
+            up = title.upper()
+            if up.startswith(f"{doc_code}_") or up.startswith(f"{doc_code}-") or up.startswith(f"{doc_code} "):
+                title = title[len(doc_code) + 1 :].strip()
         # ---- Create lifecycle working copy path for initial version ----
         version = "1.0"  # initial version (repository currently starts with 1.0)
         try:

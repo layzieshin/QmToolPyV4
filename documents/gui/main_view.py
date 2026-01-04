@@ -1199,7 +1199,26 @@ class DocumentsView(ttk.Frame):
             )
             return
 
-        success, error_msg, record = self.creation_ctrl.create_from_template(path, doc_type=doc_type)
+        # Allow entering the document code in the metadata title (fallback when template filename has no code).
+        # Supported formats: "C04VA001 Title", "C04VA001_Title", "C04VA001-Title"
+        doc_code_override: Optional[str] = None
+        normalized_title = title
+        if title and len(title) >= 8:
+            cand = title[:8].upper()
+            sep = title[8:9]
+            if all(ch.isalnum() for ch in cand) and (sep == "" or sep in (" ", "_", "-")):
+                doc_code_override = cand
+                if sep in (" ", "_", "-"):
+                    normalized_title = (title[9:] or "").strip() or title
+
+        title = normalized_title
+
+        success, error_msg, record = self.creation_ctrl.create_from_template(
+            path,
+            doc_type=doc_type,
+            doc_code_override=doc_code_override,
+            title_override=title,
+        )
         if not success:
             messagebox.showerror("Fehler", error_msg or "Fehler beim Erstellen", parent=self)
             return
@@ -1335,13 +1354,33 @@ class DocumentsView(ttk.Frame):
                 "process": result.process,
                 "next_review":  result.next_review,
             }
-            success, error_msg = self.creation_ctrl.update_metadata(rec.doc_id.value, metadata)
+            if result:
+                metadata = {
+                    "doc_id": rec.doc_id.value,
+                    "title": result.title,
+                    "doc_type": result.doc_type,
+                    "doc_code": getattr(result, "doc_code", None),
+                    "next_review": result.next_review,
+                }
 
-            if not success:
-                messagebox.showerror("Fehler", error_msg or "Fehler beim Speichern", parent=self)
-            else:
-                self._reload()
-                self._on_select()
+                # update_metadata is implemented in the SQLite repository (not in the controller)
+                user_id = self._get_user_id_from_object(getattr(AppContext, "current_user", None)) or "system"
+
+                try:
+                    self._repo.update_metadata(metadata, user_id=user_id)
+                except Exception as ex:
+                    messagebox.showerror(
+                        title=(T("documents.meta.error") or "Metadaten"),
+                        message=str(ex),
+                        parent=self
+                    )
+                    return
+
+                # Refresh view
+                try:
+                    self._reload_list()
+                except Exception:
+                    pass
 
     def _open_current(self) -> None:
         """Open current document file."""
