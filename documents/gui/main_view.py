@@ -942,8 +942,23 @@ class DocumentsView(ttk.Frame):
         return assigned
 
     def _get_user_id_from_object(self, user: object) -> Optional[str]:
-        """Extract user ID from user object."""
-        for attr in ("id", "user_id", "uid"):
+        """Extract a stable user identifier from common user object shapes.
+
+        Notes:
+            Assignments may be stored either as 'user_id' or as 'username' depending on the
+            available database schema. We therefore accept multiple common attributes.
+        """
+        if not user:
+            return None
+
+        # Support dict-like objects (defensive).
+        if isinstance(user, dict):
+            for key in ("id", "user_id", "uid", "username", "name", "email"):
+                val = user.get(key)
+                if val:
+                    return str(val)
+
+        for attr in ("id", "user_id", "uid", "username", "name", "email"):
             val = getattr(user, attr, None)
             if val:
                 return str(val)
