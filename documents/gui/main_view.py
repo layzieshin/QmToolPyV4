@@ -1268,7 +1268,7 @@ class DocumentsView(ttk.Frame):
             # Keep import successful even if metadata update fails
             pass
 
-        self.reload()
+        self._reload()
 
     def _edit_metadata(self) -> None:
         """Edit document metadata."""

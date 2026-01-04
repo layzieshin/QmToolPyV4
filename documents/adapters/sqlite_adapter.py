@@ -24,7 +24,8 @@ class SQLiteAdapter(DatabaseAdapter):
         """
         self._db_path = Path(db_path)
         self._conn: Optional[sqlite3.Connection] = None
-
+        self._query: Optional[str] = None
+        self._selected_record: Optional[sqlite3.Row] = None
     @property
     def conn(self) -> sqlite3.Connection:
         """Get or create connection."""

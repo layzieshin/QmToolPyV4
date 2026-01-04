@@ -24,7 +24,7 @@
     - Anpassung: Es soll direkt die Arbeitskopie im LifeCycle Ordner geöffnet werden
 7. Alle Dokumente besitzen die Eigenschaft Aktuelle Datei (bezeichnung im Quellcode könnte auch anders sein). Dieses Attribut soll immer auf die aktuellste Version des Dokuments zeigen
     - Anpassung: Beim Speichern, Signieren, Archivieren etc. muss dieses Attribut entsprechend aktualisiert werden
-7. Wir bekommen noch folgende Fehlermeldung :
+8. Wir bekommen noch folgende Fehlermeldung :
     a)"Error listing signatures for DOC-2026-*: 'SQLiteAdapter' object has no attribute 'query'
     b) File is not a DOCX and cannot be converted.
     letzere tritt beim Signieren von PDF Dateien auf weil das verwendete Dokument im Dotx Format übergeben wird

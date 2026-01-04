@@ -6,7 +6,7 @@ Defines the contract for document data access without implementation details.
 from __future__ import annotations
 from typing import Protocol, List, Dict, Optional, Any
 from datetime import datetime
-
+from core.qm_logging.logic.logger import logger
 from documents.models.document_models import DocumentRecord, DocumentStatus
 from documents.dto.assignments import Assignments
 
@@ -78,16 +78,20 @@ class DocumentRepository(Protocol):
     # ===== Signatures =====
 
     def list_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
-        """
-        Return signature rows for the document.
+        """Return signature rows for the given document."""
+        if not doc_id:
+            return []
+        try:
+            rows = self._db.fetchall(
+                "SELECT doc_id, role, username, signed_at, comment "
+                "FROM signatures WHERE doc_id = ? ORDER BY signed_at ASC",
+                (doc_id,),
+            )
+            return [dict(r) for r in (rows or [])]
+        except Exception as ex:
+            logger.error(f"Error listing signatures for {doc_id}: {ex}")
+            return []
 
-        Each row is expected to contain at least:
-        - role (str): action/step name (e.g., "approve", "publish")
-        - username (str): user id who signed
-        - signed_at (str/datetime): timestamp
-        - comment (optional)
-        """
-        ...
 
 # ===== PDF Operations =====
 

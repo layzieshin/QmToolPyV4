@@ -726,8 +726,32 @@ class SQLiteDocumentRepository:
             logger.error(f"Error getting signing_pdf_path: {ex}")
             return None
 
-    def set_signing_pdf(self, doc_id: str, pdf_path: str) -> None:
-        """Persist the current signing PDF path for the document."""
+    def set_current_file_path(self, doc_id: str, file_path: str) -> None:
+        """Persist current_file_path for a document.
+
+        This field is the single source of truth for the 'Öffnen' button.
+        """
+        if not doc_id:
+            raise ValueError("doc_id is required")
+        if not self.exists(doc_id):
+            raise ValueError(f"Document not found: {doc_id}")
+
+        try:
+            self._db.execute(
+                "UPDATE documents SET current_file_path = ? WHERE doc_id = ?",
+                (file_path, doc_id),
+            )
+            self._db.commit()
+        except Exception as ex:
+            logger.error(f"Error setting current_file_path: {ex}")
+            raise
+
+    def set_signing_pdf_path_only(self, doc_id: str, pdf_path: str) -> None:
+        """Persist signing_pdf_path for a document WITHOUT changing current_file_path.
+
+        Used for archival moves where we relocate the entire version folder and must
+        keep both fields consistent.
+        """
         if not self.exists(doc_id):
             raise ValueError(f"Document not found: {doc_id}")
 
@@ -738,11 +762,17 @@ class SQLiteDocumentRepository:
             )
             self._db.commit()
         except Exception as ex:
-            logger.error(f"Error setting signing_pdf_path: {ex}")
+            logger.error(f"Error setting signing_pdf_path only: {ex}")
             raise
 
+
     def clear_signing_pdf(self, doc_id: str) -> None:
-        """Clear signing PDF reference for the document (e.g. on workflow abort)."""
+        """Clear signing PDF reference for the document (e.g. on workflow abort).
+
+        Note:
+            This intentionally does NOT change current_file_path. The caller is responsible
+            for restoring current_file_path back to the DOCX working copy on abort/backward transitions.
+        """
         if not self.exists(doc_id):
             return
 
@@ -755,6 +785,7 @@ class SQLiteDocumentRepository:
         except Exception as ex:
             logger.error(f"Error clearing signing_pdf_path: {ex}")
             raise
+
 
     
     def list_signatures(self, doc_id: str) -> List[Dict[str, Any]]:
@@ -808,18 +839,27 @@ class SQLiteDocumentRepository:
     ) -> Optional[str]:
         """Copy controlled document to destination.
 
-        Robust Windows implementation:
-        - Validates dest_dir strictly (must be an existing directory or creatable).
-        - Retries on Windows sharing violations / transient errors.
-        - Does NOT use mkstemp(dir=dest_dir) and does NOT use os.replace()
-          (both can trigger WinError 87 depending on path quirks).
+        Phase 4 behavior:
+        - For EFFECTIVE documents, the exported PDF filename gets exactly one '_signed'
+          suffix to indicate fully signed/final state.
+        - No '_signed' naming is used during intermediate signing rounds.
         """
         rec = self.get(doc_id)
         if not rec:
             return None
 
-        # Prefer signing PDF if available (single source of truth), else fallback.
-        src_path = None
+        if not isinstance(dest_dir, str) or not dest_dir.strip():
+            logger.error("copy_to_destination: dest_dir is empty or not a string")
+            return None
+
+        dest_dir = os.path.expandvars(os.path.expanduser(dest_dir.strip()))
+        try:
+            Path(dest_dir).mkdir(parents=True, exist_ok=True)
+        except Exception as ex:
+            logger.error(f"copy_to_destination: cannot create dest_dir '{dest_dir}': {ex}")
+            return None
+
+        # Source: prefer signing PDF if available
         try:
             signing_pdf = self.get_signing_pdf(doc_id)
         except Exception:
@@ -831,57 +871,65 @@ class SQLiteDocumentRepository:
             src_path = rec.current_file_path
 
         if not src_path or not os.path.isfile(src_path):
+            logger.error("copy_to_destination: source path missing or not a file")
             return None
 
-        if not isinstance(dest_dir, str) or not dest_dir.strip():
-            logger.error("copy_to_destination: dest_dir is empty or not a string")
-            return None
+        src_ext = os.path.splitext(src_path)[1].lower()
 
-        dest_dir = os.path.expandvars(os.path.expanduser(dest_dir.strip()))
-
-        # dest_dir MUST be a directory (askdirectory should provide that, but we enforce it)
+        # Build destination filename
+        dest_filename = None
         try:
-            os.makedirs(dest_dir, exist_ok=True)
-        except Exception as ex:
-            logger.error(f"copy_to_destination: invalid dest_dir={dest_dir!r}: {ex}")
-            return None
+            from documents.logic.lifecycle_paths import LifecyclePathResolver, LifecycleRoots
 
-        if not os.path.isdir(dest_dir):
-            logger.error(f"copy_to_destination: dest_dir is not a directory: {dest_dir!r}")
-            return None
+            resolver = LifecyclePathResolver(LifecycleRoots.from_cwd())
 
-        # Build destination filename (keep base name)
-        base = os.path.basename(src_path)
-        dst_path = os.path.join(dest_dir, base)
-
-        # If file exists, add suffix _copyN
-        if os.path.exists(dst_path):
-            name, ext = os.path.splitext(base)
-            n = 1
-            while True:
-                cand = os.path.join(dest_dir, f"{name}_copy{n}{ext}")
-                if not os.path.exists(cand):
-                    dst_path = cand
-                    break
-                n += 1
-
-        # Copy with retries
-        retries = 5
-        for attempt in range(1, retries + 1):
+            # Determine document code
+            doc_code = getattr(rec, "doc_code", None) or resolver.parse_document_code_from_filename(src_path) or "DOC00000"
             try:
-                shutil.copy2(src_path, dst_path)
-                return dst_path
-            except Exception as ex:
-                if attempt >= retries:
-                    logger.error(f"copy_to_destination failed after retries: {ex}")
-                    return None
-                try:
-                    import time
-                    time.sleep(0.2 * attempt)
-                except Exception:
-                    pass
+                doc_code = resolver.normalize_document_code(doc_code)
+            except Exception:
+                # Keep best effort code
+                doc_code = str(doc_code).strip().upper() or "DOC00000"
 
-        return None
+            version = f"{getattr(rec, 'version_major', 1)}.{getattr(rec, 'version_minor', 0)}"
+            title = getattr(rec, "title", None) or ""
+
+            if rec.status == DocumentStatus.EFFECTIVE and src_ext == ".pdf":
+                # FINAL export name with exactly one '_signed'
+                dest_filename = resolver.build_filename(
+                    document_code=doc_code,
+                    title=title,
+                    version=version,
+                    ext=".pdf",
+                    signed=True,
+                )
+            else:
+                # Non-effective export or non-PDF fallback: keep original name
+                dest_filename = os.path.basename(src_path)
+
+        except Exception as ex:
+            logger.warning(f"copy_to_destination: failed to build canonical export name: {ex}")
+            dest_filename = os.path.basename(src_path)
+
+        dest_path = os.path.join(dest_dir, dest_filename)
+
+        # If exists, add increment suffix
+        if os.path.exists(dest_path):
+            name, ext = os.path.splitext(dest_filename)
+            for i in range(2, 1000):
+                candidate = os.path.join(dest_dir, f"{name}_{i}{ext}")
+                if not os.path.exists(candidate):
+                    dest_path = candidate
+                    break
+
+        # Copy
+        try:
+            shutil.copy2(src_path, dest_path)
+            return dest_path
+        except Exception as ex:
+            logger.error(f"copy_to_destination failed: {ex}")
+            return None
+
 
     # =========================================================================
     # Internal Helpers: Row mapping
